@@ -1,0 +1,44 @@
+# MoveIt2 move_group node configuration
+
+move_group:
+  # Planning scene configuration
+  planning_scene_monitor_options:
+    name: "planning_scene_monitor"
+    robot_description: "robot_description"
+    joint_state_topic: "/joint_states"
+    attached_collision_object_topic: "/move_group/planning_scene_monitor"
+    publish_planning_scene_topic: "/move_group/publish_planning_scene"
+    monitored_planning_scene_topic: "/move_group/monitored_planning_scene"
+    wait_for_initial_state_timeout: 10.0
+
+  # Trajectory execution settings
+  trajectory_execution:
+    manage_controllers: true
+    allowed_execution_duration_scaling: 1.2
+    allowed_goal_duration_margin: 0.5
+    allowed_start_tolerance: 0.01
+
+  # Planning parameters
+  planning_pipelines:
+    pipeline_names: ["ompl", "pilz_industrial_motion_planner"]
+    default_planning_pipeline: ompl
+
+  # Sensor data configuration (disabled for pure simulation)
+  octomap_resolution: 0.025
+  max_safe_path_cost: 1
+  jiggle_fraction: 0.05
+  default_workspace_bounds: 2.0
+
+  # Move group capabilities
+  capabilities: >
+    move_group/MoveGroupCartesianPathService
+    move_group/MoveGroupExecuteTrajectoryAction
+    move_group/MoveGroupKinematicsService
+    move_group/MoveGroupMoveAction
+    move_group/MoveGroupPickPlaceAction
+    move_group/MoveGroupPlanService
+    move_group/MoveGroupQueryPlannersService
+    move_group/MoveGroupStateValidationService
+    move_group/MoveGroupGetPlanningSceneService
+    move_group/ApplyPlanningSceneService
+    move_group/ClearOctomapService

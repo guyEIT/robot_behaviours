@@ -1,0 +1,36 @@
+# ROS2 build artifacts
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+!*Config.cmake
+!*ConfigVersion.cmake
+
+# Compiled objects
+*.o
+*.so
+*.dylib
+*.a
+
+# Editor
+.vscode/c_cpp_properties.json
+*.swp
+*.swo
+.DS_Store
+
+# Compound skills persisted by agents (optional - may want to commit these)
+# ~/.ros2_robot_skills/
+
+# Environment
+.env

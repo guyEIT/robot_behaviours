@@ -1,0 +1,105 @@
+<!--
+  PickAndPlace behavior tree
+
+  Generic pick-and-place with recovery:
+  - Attempts to pick an object by class
+  - On grasp failure, retries up to 2 times
+  - Places object at a target pose
+  - Returns home
+
+  Demonstrates:
+  - Fallback (Selector) nodes for recovery
+  - RetryUntilSuccessful decorator
+  - Subtree reuse (MoveToHome)
+  - Blackboard data passing between subtrees
+
+  Required blackboard inputs (set before running):
+  - {object_class}   : string, e.g. "seed"
+  - {place_pose}     : geometry_msgs/PoseStamped, where to place the object
+-->
+<root BTCPP_format="4" main_tree_to_execute="PickAndPlace">
+
+  <BehaviorTree ID="PickAndPlace">
+    <Sequence name="pick_and_place_main">
+
+      <!-- ── PICK phase with retry ──────────────────────────────────────── -->
+      <RetryUntilSuccessful name="pick_with_retry" num_attempts="3">
+        <SubTree ID="PickObject" name="pick_attempt"
+                 object_class="{object_class}"
+                 detected_pose="{picked_pose}"/>
+      </RetryUntilSuccessful>
+
+      <!-- ── PLACE phase ───────────────────────────────────────────────── -->
+      <SubTree ID="PlaceObject" name="place_object"
+               place_pose="{place_pose}"/>
+
+      <!-- ── Return home ───────────────────────────────────────────────── -->
+      <SubTree ID="MoveToHome" name="return_home"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- PickObject subtree: detect + grasp -->
+  <BehaviorTree ID="PickObject">
+    <Sequence name="pick_sequence">
+      <MoveToNamedConfig name="go_observe"
+                         config_name="observe"
+                         velocity_scaling="0.5"/>
+      <DetectObject name="find_object"
+                    object_class="{object_class}"
+                    confidence_threshold="0.7"
+                    timeout_sec="6.0"
+                    require_pose="true"
+                    best_object_pose="{detected_pose}"/>
+      <ComputePreGraspPose name="calc_pregrasp"
+                           input_pose="{detected_pose}"
+                           z_offset_m="0.06"
+                           output_pose="{pregrasp_pose}"/>
+      <GripperControl name="open_gripper" command="open"/>
+      <MoveToCartesianPose name="go_to_pregrasp"
+                           target_pose="{pregrasp_pose}"
+                           velocity_scaling="0.4"/>
+      <MoveToCartesianPose name="descend"
+                           target_pose="{detected_pose}"
+                           velocity_scaling="0.08"/>
+      <GripperControl name="grasp"
+                      command="close"
+                      force_limit="15.0"
+                      object_grasped="{object_grasped}"/>
+      <ScriptCondition name="verify_grasp"
+                       code="object_grasped == true"/>
+      <MoveToCartesianPose name="lift"
+                           target_pose="{pregrasp_pose}"
+                           velocity_scaling="0.2"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- PlaceObject subtree: move to place pose + release -->
+  <BehaviorTree ID="PlaceObject">
+    <Sequence name="place_sequence">
+      <ComputePreGraspPose name="calc_pre_place"
+                           input_pose="{place_pose}"
+                           z_offset_m="0.08"
+                           output_pose="{pre_place_pose}"/>
+      <MoveToCartesianPose name="move_to_pre_place"
+                           target_pose="{pre_place_pose}"
+                           velocity_scaling="0.4"/>
+      <MoveToCartesianPose name="descend_to_place"
+                           target_pose="{place_pose}"
+                           velocity_scaling="0.1"/>
+      <GripperControl name="release" command="open"/>
+      <MoveToCartesianPose name="retreat_from_place"
+                           target_pose="{pre_place_pose}"
+                           velocity_scaling="0.3"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- MoveToHome subtree -->
+  <BehaviorTree ID="MoveToHome">
+    <Sequence name="go_home">
+      <GripperControl name="open_gripper" command="open"/>
+      <MoveToNamedConfig name="home" config_name="home" velocity_scaling="0.3"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

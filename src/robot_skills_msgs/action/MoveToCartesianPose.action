@@ -1,0 +1,18 @@
+# Goal: Move the end-effector to a Cartesian pose in world frame
+geometry_msgs/PoseStamped target_pose
+float64 velocity_scaling          # 0.0-1.0, default 0.5
+float64 acceleration_scaling      # 0.0-1.0, default 0.5
+bool plan_only                     # If true, plan but do not execute
+string planning_group              # MoveIt group name, default "arm"
+float64 planning_time              # Max planning time seconds, default 5.0
+---
+# Result
+bool success
+string message
+float64 execution_time_sec
+geometry_msgs/PoseStamped final_pose
+---
+# Feedback
+float64 progress                   # 0.0-1.0 through trajectory
+geometry_msgs/PoseStamped current_pose
+string status_message

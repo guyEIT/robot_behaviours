@@ -1,0 +1,30 @@
+<!--
+  MoveToHome behavior tree
+
+  Safely returns the robot to the home configuration:
+  1. Open gripper (release any held object safely)
+  2. Move arm to "home" named configuration
+
+  Usage:
+    - Direct execution: send as BT XML to /skill_server/execute_behavior_tree
+    - As compound skill: register as "move_to_home" compound skill
+    - As SubTree: reference this tree ID from other trees
+-->
+<root BTCPP_format="4" main_tree_to_execute="MoveToHome">
+
+  <BehaviorTree ID="MoveToHome">
+    <Sequence name="move_to_home">
+      <!-- Safety: open gripper before moving home -->
+      <GripperControl name="open_gripper"
+                      command="open"
+                      speed="0.5"/>
+
+      <!-- Move to home configuration -->
+      <MoveToNamedConfig name="go_home"
+                         config_name="home"
+                         velocity_scaling="0.3"
+                         acceleration_scaling="0.3"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

@@ -1,0 +1,68 @@
+{
+  "name": "ROS2 Jazzy Robot Skills",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
+  "remoteUser": "ros",
+  "workspaceFolder": "/home/ws",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // C++ development
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        // Python development
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        // ROS2 specific
+        "ms-iot.vscode-ros",
+        // XML (BT trees, URDF, launch files)
+        "DotJoshJohnson.xml",
+        "redhat.vscode-xml",
+        // General
+        "streetsidesoftware.code-spell-checker",
+        "ms-vscode-remote.remote-containers",
+        "github.vscode-github-actions"
+      ],
+      "settings": {
+        // Python interpreter inside container
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.autoComplete.extraPaths": [
+          "/opt/ros/jazzy/lib/python3.12/site-packages",
+          "/home/ws/install/lib/python3.12/site-packages"
+        ],
+        "python.analysis.extraPaths": [
+          "/opt/ros/jazzy/lib/python3.12/site-packages",
+          "/home/ws/install/lib/python3.12/site-packages"
+        ],
+        // C++ IntelliSense from colcon compile_commands
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+        "C_Cpp.default.cppStandard": "c++17",
+        // ROS extension settings
+        "ros.distro": "jazzy",
+        // Editor
+        "editor.formatOnSave": true,
+        "files.associations": {
+          "*.xml": "xml",
+          "*.xacro": "xml",
+          "*.urdf": "xml"
+        }
+      }
+    }
+  },
+
+  "remoteEnv": {
+    "ROS_DOMAIN_ID": "0",
+    "ROS_LOCALHOST_ONLY": "0",
+    "RCUTILS_COLORIZED_OUTPUT": "1"
+  },
+
+  // Install workspace dependencies after container creation
+  "postCreateCommand": "bash -c 'sudo rosdep update --rosdistro jazzy && rosdep install --from-paths src --ignore-src -y --rosdistro jazzy 2>/dev/null || true'",
+
+  // Build the workspace after attaching
+  "postAttachCommand": "bash -c 'source /opt/ros/jazzy/setup.bash && cd /home/ws && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo 2>&1 | tail -20 || true'"
+}

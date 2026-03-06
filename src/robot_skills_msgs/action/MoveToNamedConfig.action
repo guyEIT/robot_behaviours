@@ -1,0 +1,14 @@
+# Goal: Move to a named joint configuration (e.g. "home", "ready", "stow", "observe")
+string config_name
+float64 velocity_scaling           # 0.0-1.0, default 0.3
+float64 acceleration_scaling       # 0.0-1.0, default 0.3
+string planning_group              # MoveIt group name, default "arm"
+---
+# Result
+bool success
+string message
+float64 execution_time_sec
+---
+# Feedback
+float64 progress                   # 0.0-1.0 through trajectory
+string status_message

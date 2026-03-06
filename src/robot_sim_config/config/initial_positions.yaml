@@ -1,0 +1,13 @@
+# Initial joint positions for the simulation
+# Robot starts in the "home" configuration
+
+initial_positions:
+  panda_joint1: 0.0
+  panda_joint2: -0.785398   # -45 degrees
+  panda_joint3: 0.0
+  panda_joint4: -2.356194   # -135 degrees
+  panda_joint5: 0.0
+  panda_joint6: 1.570796    # +90 degrees
+  panda_joint7: 0.785398    # +45 degrees
+  panda_finger_joint1: 0.035  # Open gripper
+  panda_finger_joint2: 0.035

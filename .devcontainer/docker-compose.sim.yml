@@ -1,0 +1,68 @@
+# Simulation container for the Robot Skills Framework
+#
+# Runs the MoveIt2 simulation server separately from the dev container.
+# This keeps the dev container focused on framework development while
+# the sim container provides the robot backend.
+#
+# Usage:
+#   cd .devcontainer
+#   docker compose -f docker-compose.sim.yml up
+#
+# The sim container and dev container communicate over host networking
+# (both use network_mode: host) so ROS2 DDS discovery is automatic.
+#
+# For macOS - display forwarding (XQuartz required):
+#   brew install xquartz && open -a XQuartz
+#   XQuartz Preferences → Security → Allow connections from network clients
+#   xhost +localhost
+
+services:
+  sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.sim
+    image: ros2-jazzy-robot-sim:latest
+    container_name: ros2_robot_sim
+
+    # Host networking: ROS2 DDS discovers dev container's nodes automatically
+    network_mode: host
+    ipc: host
+
+    stdin_open: true
+    tty: true
+
+    environment:
+      # Display forwarding for RViz2
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - ROS_DOMAIN_ID=0
+      - ROS_LOCALHOST_ONLY=0
+      - RCUTILS_COLORIZED_OUTPUT=1
+
+    volumes:
+      # Mount workspace source (read-only: sim only needs to build sim packages)
+      - ../src:/home/ws/src:ro
+      # X11 display socket for RViz2
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Persistent build/install volumes (avoid full rebuild on restart)
+      - sim_colcon_build:/home/ws/build
+      - sim_colcon_install:/home/ws/install
+      - sim_colcon_log:/home/ws/log
+
+    # Health check: verify move_group is accepting connections
+    healthcheck:
+      test: ["CMD-SHELL",
+             "source /opt/ros/jazzy/setup.bash && \
+              source /home/ws/install/setup.bash 2>/dev/null || true && \
+              ros2 node list 2>/dev/null | grep -q move_group && echo OK || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+volumes:
+  sim_colcon_build:
+    name: ros2_robot_sim_build
+  sim_colcon_install:
+    name: ros2_robot_sim_install
+  sim_colcon_log:
+    name: ros2_robot_sim_log

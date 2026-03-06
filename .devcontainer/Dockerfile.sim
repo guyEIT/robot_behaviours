@@ -1,0 +1,77 @@
+# Simulation container for the Robot Skills Framework
+#
+# Lean image focused purely on MoveIt2 + ros2_control simulation.
+# Does NOT include: RealSense, PlanSys2, Groot2, heavy perception stack.
+# This keeps the sim container fast to build and minimal at runtime.
+#
+# Communicates with the dev container over host networking (ROS2 DDS).
+
+FROM osrf/ros:jazzy-desktop-full
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── Install simulation dependencies only ──────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+    # MoveIt2 core
+    ros-jazzy-moveit \
+    ros-jazzy-moveit-ros-move-group \
+    ros-jazzy-moveit-ros-planning \
+    ros-jazzy-moveit-ros-planning-interface \
+    ros-jazzy-moveit-planners-ompl \
+    ros-jazzy-moveit-kinematics \
+    ros-jazzy-moveit-ros-visualization \
+    ros-jazzy-moveit-configs-utils \
+    ros-jazzy-pilz-industrial-motion-planner \
+    # Panda robot resources (URDF + moveit config)
+    ros-jazzy-moveit-resources-panda-description \
+    ros-jazzy-moveit-resources-panda-moveit-config \
+    # ros2_control + mock hardware
+    ros-jazzy-ros2-control \
+    ros-jazzy-ros2-controllers \
+    ros-jazzy-controller-manager \
+    ros-jazzy-joint-state-broadcaster \
+    ros-jazzy-joint-trajectory-controller \
+    ros-jazzy-gripper-controllers \
+    # Robot state + TF
+    ros-jazzy-robot-state-publisher \
+    ros-jazzy-xacro \
+    ros-jazzy-tf2-ros \
+    ros-jazzy-tf2-tools \
+    # Build tools
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    # Utilities
+    git wget curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Create non-root user ──────────────────────────────────────────────────────
+RUN useradd -m -s /bin/bash ros \
+    && apt-get update && apt-get install -y sudo \
+    && echo "ros ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Workspace setup ───────────────────────────────────────────────────────────
+RUN mkdir -p /home/ws/src && chown -R ros:ros /home/ws
+
+# ── Shell setup ───────────────────────────────────────────────────────────────
+RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/ros/.bashrc \
+    && echo "source /home/ws/install/setup.bash 2>/dev/null || true" >> /home/ros/.bashrc \
+    && echo "export ROS_DOMAIN_ID=0" >> /home/ros/.bashrc \
+    && echo "export RCUTILS_COLORIZED_OUTPUT=1" >> /home/ros/.bashrc
+
+# ── rosdep init ───────────────────────────────────────────────────────────────
+RUN rosdep update --rosdistro jazzy
+
+WORKDIR /home/ws
+USER ros
+
+# Default: build the workspace and launch the simulation
+CMD ["/bin/bash", "-c", \
+    "sudo chown -R ros:ros /home/ws/build /home/ws/install /home/ws/log 2>/dev/null; \
+     source /opt/ros/jazzy/setup.bash && \
+     cd /home/ws && \
+     colcon build --symlink-install \
+       --packages-select robot_skills_msgs robot_sim_config \
+       --cmake-args -DCMAKE_BUILD_TYPE=Release && \
+     source install/setup.bash && \
+     ros2 launch robot_sim_config sim.launch.py"]

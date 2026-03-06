@@ -1,0 +1,31 @@
+{
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "python.autoComplete.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages",
+    "/home/ws/install/lib/python3.12/site-packages"
+  ],
+  "python.analysis.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages",
+    "/home/ws/install/lib/python3.12/site-packages"
+  ],
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+  "ros.distro": "jazzy",
+  "editor.formatOnSave": true,
+  "files.associations": {
+    "*.xml": "xml",
+    "*.xacro": "xml",
+    "*.urdf": "xml",
+    "*.action": "yaml",
+    "*.msg": "yaml",
+    "*.srv": "yaml"
+  },
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "cmake.ignoreCMakeListsMissing": true
+}

@@ -1,0 +1,11 @@
+# Request all available skill descriptions from the SkillRegistry
+# Used by agents to discover what capabilities are available
+
+string[] filter_categories         # Filter by category; empty = return all
+string[] filter_tags               # Filter by tags; empty = return all
+bool include_compounds             # Whether to include compound (agent-composed) skills
+bool include_pddl                  # Whether to populate pddl_action fields
+---
+robot_skills_msgs/SkillDescription[] skills
+bool success
+string message

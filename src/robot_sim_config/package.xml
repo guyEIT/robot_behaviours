@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_sim_config</name>
+  <version>0.1.0</version>
+  <description>
+    MoveIt2 simulation configuration for the Robot Skills Framework.
+    Uses the Franka Panda robot with mock_components hardware to provide
+    a complete MoveIt2 simulation without physical hardware.
+
+    Defines:
+    - Planning group "arm" (matching skill_atoms default)
+    - Named configurations: home, ready, stow, observe
+    - Gripper controller on /gripper_controller/gripper_cmd
+    - KDL IK solver, OMPL planners, ros2_control mock hardware
+  </description>
+  <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Robot description resources -->
+  <exec_depend>moveit_resources_panda_description</exec_depend>
+
+  <!-- MoveIt2 -->
+  <exec_depend>moveit_ros_move_group</exec_depend>
+  <exec_depend>moveit_ros_planning_interface</exec_depend>
+  <exec_depend>moveit_kinematics</exec_depend>
+  <exec_depend>moveit_planners_ompl</exec_depend>
+  <exec_depend>moveit_configs_utils</exec_depend>
+
+  <!-- ros2_control -->
+  <exec_depend>ros2_control</exec_depend>
+  <exec_depend>ros2_controllers</exec_depend>
+  <exec_depend>mock_components</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>gripper_controllers</exec_depend>
+
+  <!-- Launch infrastructure -->
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

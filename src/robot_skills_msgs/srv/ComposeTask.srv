@@ -1,0 +1,13 @@
+# Compose a behavior tree from an ordered list of skill steps
+# The server generates valid BT XML that can be executed or registered as a compound skill
+
+string task_name                   # Name for the composed task
+string task_description            # Natural language description
+robot_skills_msgs/TaskStep[] steps # Ordered list of skill steps
+bool sequential                    # True=Sequence node, False=Parallel node at top level
+bool add_precondition_checks       # Add condition nodes to check preconditions before each skill
+---
+bool success
+string message
+string bt_xml                      # Generated BehaviorTree.CPP v4 XML
+string[] warnings                  # Non-fatal issues (e.g. unverified skill names)

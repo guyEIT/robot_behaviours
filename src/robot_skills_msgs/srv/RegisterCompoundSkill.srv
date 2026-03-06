@@ -1,0 +1,10 @@
+# Register a compound skill (composed BT) in the SkillRegistry
+# After registration, the skill appears in GetSkillDescriptions and can be called like any atom
+
+robot_skills_msgs/SkillDescription skill_description  # Metadata for the new skill
+string bt_xml                      # BehaviorTree.CPP v4 XML implementing the skill
+bool persist                       # If true, save to disk so it survives restarts
+---
+bool success
+string message
+string registered_name             # The name under which the skill was registered

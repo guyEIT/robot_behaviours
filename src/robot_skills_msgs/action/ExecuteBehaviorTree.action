@@ -1,0 +1,19 @@
+# Goal: Execute a BehaviorTree.CPP v4 XML behavior tree
+string tree_xml                    # Full BT XML content (BehaviorTree.CPP v4 format)
+string tree_name                   # Human-readable label for logging/monitoring
+bool enable_groot_monitor          # Stream execution to Groot2 for live visualization
+int32 groot_zmq_port               # Groot2 ZMQ port, default 1666
+float64 tick_rate_hz               # Tree tick frequency, default 10.0
+---
+# Result
+bool success
+string message
+string final_status                # "SUCCESS", "FAILURE", "HALTED", "ERROR"
+float64 total_execution_time_sec
+---
+# Feedback
+string current_node_name           # Name of currently executing BT node
+string current_node_type           # Type of node (Action, Condition, Sequence, etc.)
+string tree_status                 # "RUNNING", "SUCCESS", "FAILURE"
+float64 elapsed_time_sec
+string status_message

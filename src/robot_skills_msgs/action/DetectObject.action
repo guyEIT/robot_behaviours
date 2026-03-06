@@ -1,0 +1,17 @@
+# Goal: Detect objects using the camera
+string object_class                # Target class label, empty string = detect any
+float64 confidence_threshold       # Minimum detection confidence 0.0-1.0, default 0.7
+int32 max_detections               # Max objects to return, 0 = unlimited
+float64 timeout_sec                # Max time to wait for detections, default 5.0
+bool require_pose                  # If true, compute 3D pose for each detection
+string camera_frame                # TF frame of camera, default "camera_color_optical_frame"
+string world_frame                 # TF frame for pose output, default "world"
+---
+# Result
+bool success
+string message
+robot_skills_msgs/DetectedObject[] detections
+---
+# Feedback
+int32 detections_so_far
+string status_message

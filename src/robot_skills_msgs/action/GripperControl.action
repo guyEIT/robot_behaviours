@@ -1,0 +1,15 @@
+# Goal: Control the gripper
+string command                     # "open", "close", "set_position"
+float64 position                   # 0.0=fully closed, 1.0=fully open (used with "set_position")
+float64 force_limit                # Max force in Newtons, 0.0 = use default
+float64 speed                      # 0.0-1.0, default 0.5
+---
+# Result
+bool success
+string message
+float64 final_position             # Actual gripper position achieved
+bool object_grasped                # True if force limit triggered (object detected)
+---
+# Feedback
+float64 current_position
+float64 current_force

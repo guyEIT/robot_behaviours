@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_behaviors</name>
+  <version>0.1.0</version>
+  <description>
+    Behavior tree XML definitions for the Robot Skills Framework.
+    Contains pre-built composite behaviors:
+    - move_to_home: safely return to home configuration
+    - seed_collection: detect seed, grasp, return home
+    - pick_and_place: generic pick and place with retry/recovery
+
+    Also provides a BehaviorLibrary Python module for programmatic
+    tree loading and agent-friendly behavior discovery.
+  </description>
+  <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>robot_skills_msgs</depend>
+  <depend>robot_skill_server</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

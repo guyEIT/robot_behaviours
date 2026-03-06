@@ -1,0 +1,53 @@
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ros2-jazzy-robot-skills:latest
+    container_name: ros2_robot_skills_dev
+
+    # RealSense needs privileged access for USB
+    privileged: true
+
+    # ROS2 DDS discovery requires host networking
+    network_mode: host
+
+    # Shared memory for zero-copy DDS communication
+    ipc: host
+
+    stdin_open: true
+    tty: true
+
+    environment:
+      # Display forwarding (macOS: requires XQuartz + xhost +localhost)
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      # ROS2 configuration
+      - ROS_DOMAIN_ID=0
+      - ROS_LOCALHOST_ONLY=0
+      - RCUTILS_COLORIZED_OUTPUT=1
+      # Hardware mode: 'sim' or 'real'
+      - ROBOT_HARDWARE_MODE=${ROBOT_HARDWARE_MODE:-sim}
+
+    volumes:
+      # Workspace source (this repo)
+      - ..:/home/ws:rw
+      # X11 display socket
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # USB device access for RealSense
+      - /dev/bus/usb:/dev/bus/usb:rw
+      # Build cache (persisted across container restarts)
+      - ros2_ccache:/home/ros/.ccache
+      - ros2_colcon_build:/home/ws/build
+      - ros2_colcon_install:/home/ws/install
+      - ros2_colcon_log:/home/ws/log
+
+    # Video devices for RealSense (add more if needed)
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+
+volumes:
+  ros2_ccache:
+  ros2_colcon_build:
+  ros2_colcon_install:
+  ros2_colcon_log:

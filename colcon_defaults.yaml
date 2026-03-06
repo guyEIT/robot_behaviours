@@ -1,0 +1,13 @@
+# colcon build defaults for the Robot Skills Framework
+build:
+  symlink-install: true
+  cmake-args:
+    - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    - -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  event-handlers:
+    - console_cohesion+
+    - console_package_list+
+
+test:
+  event-handlers:
+    - console_cohesion+

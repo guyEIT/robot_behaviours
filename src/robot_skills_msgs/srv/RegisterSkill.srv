@@ -1,0 +1,7 @@
+# Internal service: skill atom servers call this on startup to register themselves
+# with the SkillRegistry in robot_skill_server
+
+robot_skills_msgs/SkillDescription description
+---
+bool success
+string message

@@ -1,0 +1,113 @@
+<!--
+  SeedCollection behavior tree
+
+  Full seed pickup sequence for Meca500 + RealSense setup:
+  1. Move to observation pose (camera facing workspace)
+  2. Detect seed objects in the scene
+  3. Move to pregrasp pose (above best seed)
+  4. Open gripper
+  5. Move down to grasp pose
+  6. Close gripper (force-controlled)
+  7. Verify grasp succeeded
+  8. Retreat to pregrasp height
+  9. Move to home
+
+  Blackboard entries written:
+  - {detections}          : vector of DetectedObject
+  - {seed_pose}           : geometry_msgs/PoseStamped of target seed
+  - {pregrasp_pose}       : geometry_msgs/PoseStamped (seed_pose + z_offset)
+  - {object_grasped}      : bool - whether gripper detected a grasp
+  - {grasp_final_position}: float64 - final gripper position
+
+  Notes:
+  - ComputePreGraspPose is a utility BT node that offsets the seed pose by +Z
+  - If detect fails, tree returns FAILURE (no seed found)
+  - If grasp check fails, tree returns FAILURE (drops to recovery)
+-->
+<root BTCPP_format="4" main_tree_to_execute="SeedCollection">
+
+  <BehaviorTree ID="SeedCollection">
+    <Sequence name="seed_collection_main">
+
+      <!-- ── Phase 1: Move to observation position ─────────────────────── -->
+      <MoveToNamedConfig name="go_to_observe"
+                         config_name="observe"
+                         velocity_scaling="0.5"
+                         acceleration_scaling="0.4"/>
+
+      <!-- ── Phase 2: Detect seed ──────────────────────────────────────── -->
+      <DetectObject name="find_seed"
+                    object_class="seed"
+                    confidence_threshold="0.75"
+                    max_detections="5"
+                    timeout_sec="8.0"
+                    require_pose="true"
+                    detected_objects="{detections}"
+                    best_object_pose="{seed_pose}"/>
+
+      <!-- ── Phase 3: Compute pregrasp pose (50mm above seed) ──────────── -->
+      <!--
+        ComputePreGraspPose is a utility synchronous action node.
+        It reads {seed_pose}, adds z_offset_m, writes to {pregrasp_pose}.
+        Source: robot_bt_nodes/src/compute_pregrasp_pose_node.cpp
+      -->
+      <ComputePreGraspPose name="compute_pregrasp"
+                           input_pose="{seed_pose}"
+                           z_offset_m="0.06"
+                           output_pose="{pregrasp_pose}"/>
+
+      <!-- ── Phase 4: Open gripper ──────────────────────────────────────── -->
+      <GripperControl name="open_for_grasp"
+                      command="open"
+                      speed="0.8"/>
+
+      <!-- ── Phase 5: Move to pregrasp pose ────────────────────────────── -->
+      <MoveToCartesianPose name="move_to_pregrasp"
+                           target_pose="{pregrasp_pose}"
+                           velocity_scaling="0.4"
+                           acceleration_scaling="0.3"/>
+
+      <!-- ── Phase 6: Slow descend to grasp position ───────────────────── -->
+      <MoveToCartesianPose name="descend_to_seed"
+                           target_pose="{seed_pose}"
+                           velocity_scaling="0.1"
+                           acceleration_scaling="0.1"/>
+
+      <!-- ── Phase 7: Close gripper with force control ──────────────────── -->
+      <GripperControl name="close_for_grasp"
+                      command="close"
+                      force_limit="15.0"
+                      object_grasped="{object_grasped}"
+                      final_position="{grasp_final_position}"/>
+
+      <!-- ── Phase 8: Verify grasp ─────────────────────────────────────── -->
+      <!--
+        GraspVerification checks {object_grasped} from blackboard.
+        Returns FAILURE if gripper closed fully without detecting an object.
+        This triggers the Fallback/recovery logic if wrapped in one.
+      -->
+      <ScriptCondition name="check_grasp_success"
+                       code="object_grasped == true"/>
+
+      <!-- ── Phase 9: Retreat to pregrasp height ───────────────────────── -->
+      <MoveToCartesianPose name="retreat_after_grasp"
+                           target_pose="{pregrasp_pose}"
+                           velocity_scaling="0.2"
+                           acceleration_scaling="0.2"/>
+
+      <!-- ── Phase 10: Move to home ────────────────────────────────────── -->
+      <SubTree ID="MoveToHome" name="go_home_with_seed"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Include the MoveToHome subtree definition inline -->
+  <BehaviorTree ID="MoveToHome">
+    <Sequence name="move_to_home">
+      <MoveToNamedConfig name="go_home"
+                         config_name="home"
+                         velocity_scaling="0.3"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>
