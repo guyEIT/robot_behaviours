@@ -17,6 +17,8 @@ BT.CPP execution, since BT.CPP is a C++ library. The subprocess communicates
 results back via ROS2 topics. Alternatively, use rclpy bindings if available.
 """
 
+import os
+import signal
 import subprocess
 import tempfile
 import threading
@@ -25,10 +27,16 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+from __future__ import annotations
+
 import rclpy
+import rclpy.time
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
+
+from diagnostic_updater import Updater
+from diagnostic_msgs.msg import DiagnosticStatus
 
 from robot_skills_msgs.action import ExecuteBehaviorTree
 from robot_skills_msgs.msg import TaskState
@@ -50,8 +58,10 @@ class BtExecutor(Node):
         self.declare_parameter("tick_rate_hz", 10.0)
         self.declare_parameter("groot_zmq_port", 1666)
         self.declare_parameter("bt_runner_executable", "bt_runner")
+        self.declare_parameter("bt_shutdown_timeout_s", 3.0)
 
         callback_group = ReentrantCallbackGroup()
+        self._callback_group = callback_group
 
         self._action_server = ActionServer(
             self,
@@ -69,6 +79,15 @@ class BtExecutor(Node):
 
         self._current_task_id: Optional[str] = None
         self._cancel_requested = threading.Event()
+        self._task_started_at = None
+        self._total_tasks_executed = 0
+        self._last_task_result = "IDLE"
+        self._bt_runner_available = True
+
+        # Diagnostics
+        self._diag_updater = Updater(self)
+        self._diag_updater.setHardwareID("bt_executor")
+        self._diag_updater.add("executor_status", self._produce_diagnostics)
 
         self.get_logger().info(
             "BtExecutor started on /skill_server/execute_behavior_tree"
@@ -94,6 +113,7 @@ class BtExecutor(Node):
         task_id = str(uuid.uuid4())[:8]
         self._current_task_id = task_id
         self._cancel_requested.clear()
+        self._task_started_at = self.get_clock().now().to_msg()
 
         self.get_logger().info(
             f"Executing BT '{goal.tree_name}' (id={task_id})"
@@ -131,15 +151,29 @@ class BtExecutor(Node):
             if goal.enable_groot_monitor:
                 cmd += ["--groot-port", str(groot_port)]
 
-            self.get_logger().debug(f"Launching bt_runner: {' '.join(cmd)}")
+            self.get_logger().info(f"Launching bt_runner: {' '.join(cmd)}")
+            self.get_logger().debug(f"BT XML written to: {xml_path}")
 
-            # Subscribe to status updates from the C++ runner
-            # The runner publishes to /skill_server/bt_status/<task_id>
+            # Track current BT node from the C++ runner's published TaskState.
+            # bt_runner publishes to /skill_server/bt_runner_status/<task_id>.
             final_status = "FAILURE"
-            current_node = "initializing"
+            current_node_ref: list[str] = ["initializing"]
+
+            def _on_runner_status(msg: TaskState) -> None:
+                if msg.current_bt_node:
+                    current_node_ref[0] = msg.current_bt_node
+
+            status_sub = self.create_subscription(
+                TaskState,
+                f"/skill_server/bt_runner_status/{task_id}",
+                _on_runner_status,
+                10,
+                callback_group=self._callback_group,
+            )
 
             # Poll the runner process
             feedback = ExecuteBehaviorTree.Feedback()
+            shutdown_timeout = self.get_parameter("bt_shutdown_timeout_s").value
 
             try:
                 proc = subprocess.Popen(
@@ -147,12 +181,21 @@ class BtExecutor(Node):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    preexec_fn=os.setsid,  # new process group — ensures all children are killed
                 )
 
                 while proc.poll() is None:
                     if self._cancel_requested.is_set():
-                        proc.terminate()
-                        proc.wait(timeout=3.0)
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                            proc.wait(timeout=shutdown_timeout)
+                        except subprocess.TimeoutExpired:
+                            self.get_logger().warning(
+                                "bt_runner did not terminate gracefully, killing"
+                            )
+                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                            proc.wait()
+                        self.destroy_subscription(status_sub)
                         result.success = False
                         result.final_status = "HALTED"
                         result.message = "Task cancelled by request"
@@ -164,13 +207,14 @@ class BtExecutor(Node):
                     elapsed = time.time() - start_time
                     feedback.elapsed_time_sec = elapsed
                     feedback.tree_status = "RUNNING"
-                    feedback.current_node_name = current_node
+                    feedback.current_node_name = current_node_ref[0]
                     feedback.status_message = f"Running... ({elapsed:.1f}s)"
                     goal_handle.publish_feedback(feedback)
 
                     time.sleep(1.0 / max(tick_rate, 1.0))
 
-                # Process finished
+                # Process finished — clean up status subscription
+                self.destroy_subscription(status_sub)
                 stdout, stderr = proc.communicate()
                 exit_code = proc.returncode
 
@@ -181,20 +225,34 @@ class BtExecutor(Node):
                 else:
                     final_status = "ERROR"
 
+                if stdout:
+                    for line in stdout.splitlines():
+                        if line.strip():
+                            self.get_logger().debug(f"bt_runner: {line}")
                 if stderr:
-                    self.get_logger().warn(f"bt_runner stderr: {stderr[:500]}")
+                    lines = stderr.splitlines()
+                    for line in lines[-50:]:  # tail — most relevant context
+                        if line.strip():
+                            self.get_logger().error(f"bt_runner stderr: {line}")
+                    if len(lines) > 50:
+                        self.get_logger().warning(
+                            f"bt_runner stderr had {len(lines)} lines; showing last 50"
+                        )
 
             except FileNotFoundError:
-                # bt_runner not available yet - log and return failure
-                # This happens before Phase 5 (bt_runner C++ executable) is built
-                self.get_logger().warn(
+                self._bt_runner_available = False
+                self.get_logger().error(
                     f"bt_runner executable '{bt_runner_exec}' not found. "
-                    "Build the bt_runner target in robot_skill_server to enable "
-                    "actual BT execution. Returning simulated result."
+                    "Build the bt_runner target in robot_skill_server: "
+                    "colcon build --packages-select robot_skill_server"
                 )
-                # Simulated success for development/testing
-                time.sleep(1.0)
-                final_status = "SUCCESS"
+                final_status = "ERROR"
+
+            except OSError as e:
+                self.get_logger().error(
+                    f"Failed to launch bt_runner: {e}"
+                )
+                final_status = "ERROR"
 
             elapsed_total = time.time() - start_time
 
@@ -220,6 +278,9 @@ class BtExecutor(Node):
                 f"in {elapsed_total:.2f}s"
             )
 
+            self._total_tasks_executed += 1
+            self._last_task_result = final_status
+
             self.get_logger().info(result.message)
             goal_handle.succeed(result)
             return result
@@ -229,19 +290,52 @@ class BtExecutor(Node):
             Path(xml_path).unlink(missing_ok=True)
             self._current_task_id = None
 
+    def _produce_diagnostics(self, stat):
+        """Publish diagnostic status for the BT executor."""
+        if not self._bt_runner_available:
+            stat.summary(
+                DiagnosticStatus.ERROR,
+                "bt_runner executable not found - build robot_skill_server",
+            )
+        elif self._current_task_id:
+            stat.summary(DiagnosticStatus.OK, f"Running task {self._current_task_id}")
+        elif self._last_task_result == "FAILURE":
+            stat.summary(DiagnosticStatus.WARN, "Last task failed")
+        else:
+            stat.summary(DiagnosticStatus.OK, "Idle")
+
+        stat.add("current_task", self._current_task_id or "none")
+        stat.add("total_executed", str(self._total_tasks_executed))
+        stat.add("last_result", self._last_task_result)
+        stat.add("bt_runner_available", str(self._bt_runner_available))
+        return stat
+
     def _publish_task_state(
         self,
         task_id: str,
         task_name: str,
         status: str,
         current_node: str,
+        error_message: str = "",
+        error_skill: str = "",
     ):
         """Publish current task state for monitoring."""
+        now = self.get_clock().now().to_msg()
         msg = TaskState()
         msg.task_id = task_id
         msg.task_name = task_name
         msg.status = status
         msg.current_skill = current_node
         msg.current_bt_node = current_node
-        msg.timestamp = self.get_clock().now().to_msg()
+        msg.started_at = self._task_started_at if self._task_started_at else now
+        msg.updated_at = now
+        msg.elapsed_sec = (
+            (self.get_clock().now().nanoseconds -
+             rclpy.time.Time.from_msg(msg.started_at).nanoseconds) / 1e9
+            if self._task_started_at else 0.0
+        )
+        msg.completed_skills = []
+        msg.failed_skills = []
+        msg.error_message = error_message
+        msg.error_skill = error_skill
         self._task_state_pub.publish(msg)

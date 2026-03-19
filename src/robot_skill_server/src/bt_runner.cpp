@@ -30,16 +30,48 @@
 #include "behaviortree_ros2/bt_action_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-// Include all BT node headers from robot_bt_nodes
-// These are defined in the plugin but we register them directly here
-// for standalone executable use
-#include "robot_skills_msgs/action/move_to_named_config.hpp"
-#include "robot_skills_msgs/action/move_to_cartesian_pose.hpp"
-#include "robot_skills_msgs/action/gripper_control.hpp"
-#include "robot_skills_msgs/action/detect_object.hpp"
+// Robot BT node class definitions (shared with bt_nodes_plugin)
+#include "robot_bt_nodes/bt_skill_nodes.hpp"
 
-// BT node classes (defined in robot_bt_nodes package)
-// Included via the shared library - we register them manually below
+#include "robot_skills_msgs/msg/task_state.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+
+// ── ComputePreGraspPose: synchronous BT node ─────────────────────────────────
+// Takes an input pose and offsets it along Z to produce a pre-grasp approach pose.
+class ComputePreGraspPose : public BT::SyncActionNode
+{
+public:
+  ComputePreGraspPose(const std::string & name, const BT::NodeConfiguration & config)
+  : BT::SyncActionNode(name, config)
+  {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<geometry_msgs::msg::PoseStamped>("input_pose"),
+      BT::InputPort<double>("z_offset_m", 0.05, "Z offset above input pose (meters)"),
+      BT::OutputPort<geometry_msgs::msg::PoseStamped>("output_pose"),
+    };
+  }
+
+  BT::NodeStatus tick() override
+  {
+    auto input_pose = getInput<geometry_msgs::msg::PoseStamped>("input_pose");
+    if (!input_pose) {
+      throw BT::RuntimeError("ComputePreGraspPose: missing input_pose: ",
+                             input_pose.error());
+    }
+
+    double z_offset = 0.05;
+    getInput("z_offset_m", z_offset);
+
+    auto output = input_pose.value();
+    output.pose.position.z += z_offset;
+
+    setOutput("output_pose", output);
+    return BT::NodeStatus::SUCCESS;
+  }
+};
 
 namespace
 {
@@ -105,26 +137,18 @@ int main(int argc, char ** argv)
   ros_params.server_timeout = std::chrono::seconds(30);
   ros_params.wait_for_server_timeout = std::chrono::seconds(10);
 
-  // Register each robot BT node
-  // MoveToNamedConfig
-  BT::RegisterRosAction<BT::RosActionNode<robot_skills_msgs::action::MoveToNamedConfig>>(
-    factory, "MoveToNamedConfig", ros_params,
-    "/skill_atoms/move_to_named_config");
+  // Register robot BT nodes directly with proper ROS node params
+  factory.registerNodeType<robot_bt_nodes::MoveToNamedConfigNode>(
+    "MoveToNamedConfig", ros_params);
+  factory.registerNodeType<robot_bt_nodes::MoveToCartesianPoseNode>(
+    "MoveToCartesianPose", ros_params);
+  factory.registerNodeType<robot_bt_nodes::GripperControlNode>(
+    "GripperControl", ros_params);
+  factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
+    "DetectObject", ros_params);
 
-  // MoveToCartesianPose
-  BT::RegisterRosAction<BT::RosActionNode<robot_skills_msgs::action::MoveToCartesianPose>>(
-    factory, "MoveToCartesianPose", ros_params,
-    "/skill_atoms/move_to_cartesian_pose");
-
-  // GripperControl
-  BT::RegisterRosAction<BT::RosActionNode<robot_skills_msgs::action::GripperControl>>(
-    factory, "GripperControl", ros_params,
-    "/skill_atoms/gripper_control");
-
-  // DetectObject
-  BT::RegisterRosAction<BT::RosActionNode<robot_skills_msgs::action::DetectObject>>(
-    factory, "DetectObject", ros_params,
-    "/skill_atoms/detect_object");
+  // ComputePreGraspPose (synchronous - no action server needed)
+  factory.registerNodeType<ComputePreGraspPose>("ComputePreGraspPose");
 
   // ── Load the tree XML ─────────────────────────────────────────────────────
   std::string tree_xml;
@@ -161,6 +185,10 @@ int main(int argc, char ** argv)
     }
   }
 
+  // ── Status publisher for progress tracking ───────────────────────────────
+  auto status_pub = node->create_publisher<robot_skills_msgs::msg::TaskState>(
+    "/skill_server/bt_runner_status/" + cfg.task_id, 10);
+
   // ── Spin the tree ─────────────────────────────────────────────────────────
   const auto tick_interval = std::chrono::duration<double>(1.0 / cfg.tick_rate_hz);
   BT::NodeStatus status = BT::NodeStatus::RUNNING;
@@ -173,6 +201,48 @@ int main(int argc, char ** argv)
   while (rclcpp::ok() && status == BT::NodeStatus::RUNNING) {
     status = tree.tickWhileRunning(
       std::chrono::duration_cast<std::chrono::milliseconds>(tick_interval));
+
+    // Compute progress from tree node statuses
+    int total_actions = 0, completed = 0, failed = 0;
+    std::string running_node_name;
+    std::vector<std::string> completed_names, failed_names;
+
+    for (const auto & subtree : tree.subtrees) {
+      for (const auto & bt_node : subtree->nodes) {
+        if (bt_node->type() == BT::NodeType::ACTION) {
+          total_actions++;
+          auto node_status = bt_node->status();
+          if (node_status == BT::NodeStatus::SUCCESS) {
+            completed++;
+            completed_names.push_back(bt_node->name());
+          } else if (node_status == BT::NodeStatus::FAILURE) {
+            failed++;
+            failed_names.push_back(bt_node->name());
+          } else if (node_status == BT::NodeStatus::RUNNING) {
+            running_node_name = bt_node->name();
+          }
+        }
+      }
+    }
+
+    // Publish progress
+    robot_skills_msgs::msg::TaskState state_msg;
+    state_msg.task_id = cfg.task_id;
+    state_msg.status = "RUNNING";
+    state_msg.current_skill = running_node_name;
+    state_msg.current_bt_node = running_node_name;
+    state_msg.progress = total_actions > 0
+      ? static_cast<double>(completed) / static_cast<double>(total_actions)
+      : 0.0;
+    state_msg.completed_skills = completed_names;
+    state_msg.failed_skills = failed_names;
+    state_msg.updated_at = node->now();
+    status_pub->publish(state_msg);
+
+    RCLCPP_DEBUG(node->get_logger(),
+      "Tick: progress=%.0f%% running='%s' completed=%d/%d failed=%d",
+      state_msg.progress * 100.0, running_node_name.c_str(),
+      completed, total_actions, failed);
 
     std::this_thread::sleep_for(tick_interval);
   }

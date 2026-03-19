@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    container:
+      image: osrf/ros:jazzy-desktop-full
+      options: --user root
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: src/robot_skills  # relative to workspace root
+
+      - name: Create colcon workspace
+        run: |
+          mkdir -p /home/ws/src
+          cp -r $GITHUB_WORKSPACE/. /home/ws/src/
+        working-directory: /
+
+      - name: Install ROS2 Jazzy dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            ros-jazzy-behaviortree-cpp \
+            ros-jazzy-moveit \
+            ros-jazzy-moveit-ros-planning-interface \
+            ros-jazzy-ros2-control \
+            ros-jazzy-ros2-controllers \
+            ros-jazzy-control-msgs \
+            ros-jazzy-diagnostic-updater \
+            ros-jazzy-vision-msgs \
+            python3-pip \
+            python3-colcon-common-extensions \
+            python3-rosdep
+          pip3 install --break-system-packages jsonschema pyyaml
+
+      - name: Install behaviortree_ros2 from source
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          mkdir -p /tmp/btros2_ws/src
+          cd /tmp/btros2_ws/src
+          git clone --depth 1 --branch 4.6.2 https://github.com/BehaviorTree/BehaviorTree.ROS2.git
+          cd /tmp/btros2_ws
+          colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+          echo "source /tmp/btros2_ws/install/setup.bash" >> /etc/bash.bashrc
+        shell: bash
+
+      - name: rosdep install
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source /tmp/btros2_ws/install/setup.bash
+          cd /home/ws
+          rosdep update --rosdistro jazzy
+          rosdep install --from-paths src --ignore-src -r -y
+        shell: bash
+
+      - name: Build
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source /tmp/btros2_ws/install/setup.bash
+          cd /home/ws
+          colcon build --symlink-install \
+            --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            --event-handlers console_cohesion+
+        shell: bash
+
+      - name: Test
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source /tmp/btros2_ws/install/setup.bash
+          source /home/ws/install/setup.bash
+          cd /home/ws
+          colcon test --event-handlers console_cohesion+
+          colcon test-result --verbose
+        shell: bash
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: /home/ws/log/latest_test/

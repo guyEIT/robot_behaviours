@@ -10,8 +10,6 @@
 #include "moveit/move_group_interface/move_group_interface.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
 
 namespace robot_skill_atoms
 {
@@ -45,8 +43,6 @@ public:
     this->declare_parameter("workspace_min_z", 0.0);
     this->declare_parameter("workspace_max_z", 1.5);
 
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   }
 
   robot_skills_msgs::msg::SkillDescription getDescription() override
@@ -80,7 +76,7 @@ public:
       "pose must be reachable (IK solution exists)"
     };
 
-    desc.parameters_schema = R"({
+    desc.parameters_schema = R"json({
       "type": "object",
       "required": ["target_pose"],
       "properties": {
@@ -110,7 +106,7 @@ public:
           "default": false
         }
       }
-    })";
+    })json";
 
     desc.pddl_action = R"(
 (:action move_to_cartesian_pose
@@ -150,6 +146,12 @@ public:
         (goal->velocity_scaling < 0.01 || goal->velocity_scaling > 1.0))
     {
       return {false, "velocity_scaling must be between 0.01 and 1.0"};
+    }
+
+    if (goal->acceleration_scaling > 0.0 &&
+        (goal->acceleration_scaling < 0.01 || goal->acceleration_scaling > 1.0))
+    {
+      return {false, "acceleration_scaling must be between 0.01 and 1.0"};
     }
 
     return {true, ""};
@@ -264,9 +266,6 @@ public:
     return result;
   }
 
-private:
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };
 
 }  // namespace robot_skill_atoms

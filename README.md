@@ -81,7 +81,7 @@ ros2 service call /skill_server/get_skill_descriptions \
   '{include_compounds: true, include_pddl: false}'
 
 # Move to home
-ros2 action send_goal /skill_skills/execute_behavior_tree \
+ros2 action send_goal /skill_server/execute_behavior_tree \
   robot_skills_msgs/action/ExecuteBehaviorTree \
   '{tree_name: "home", tree_xml: "$(cat src/robot_behaviors/trees/move_to_home.xml)", enable_groot_monitor: true}'
 

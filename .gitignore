@@ -23,14 +23,27 @@ CMakeFiles/
 *.dylib
 *.a
 
-# Editor
-.vscode/c_cpp_properties.json
+# Editor / IDE
+.vscode/
+.idea/
 *.swp
 *.swo
+*.code-workspace
 .DS_Store
+
+# Build artifacts
+compile_commands.json
 
 # Compound skills persisted by agents (optional - may want to commit these)
 # ~/.ros2_robot_skills/
+
+# colcon metadata cache
+.colcon/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Environment
 .env

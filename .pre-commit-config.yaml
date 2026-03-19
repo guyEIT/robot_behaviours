@@ -1,0 +1,48 @@
+repos:
+  # Python formatting
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3
+        args: [--line-length=100]
+        files: ^src/.*\.py$
+
+  # Python linting
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        args: [--max-line-length=100, --extend-ignore=E203]
+        files: ^src/.*\.py$
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-d, "{extends: relaxed, rules: {line-length: {max: 120}}}"]
+        files: \.(yaml|yml)$
+        exclude: ^src/robot_behaviors/trees/  # BT XML trees use .xml not .yaml
+
+  # C++ formatting
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        files: ^src/.*\.(cpp|hpp|h)$
+        args: [--style=file]
+
+  # General hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^src/robot_behaviors/trees/
+      - id: end-of-file-fixer
+        exclude: ^src/robot_behaviors/trees/
+      - id: check-yaml
+        exclude: ^src/robot_behaviors/trees/
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]

@@ -15,6 +15,8 @@ Services:
   - /skill_server/compose_task  (ComposeTask.srv)
 """
 
+from __future__ import annotations
+
 import json
 import re
 from typing import List, Optional
@@ -23,6 +25,9 @@ from xml.etree import ElementTree as ET
 
 import rclpy
 from rclpy.node import Node
+
+from diagnostic_updater import Updater
+from diagnostic_msgs.msg import DiagnosticStatus
 
 from robot_skills_msgs.msg import SkillDescription, TaskStep
 from robot_skills_msgs.srv import ComposeTask
@@ -62,6 +67,13 @@ class TaskComposer(Node):
             self._handle_compose_task,
         )
 
+        self._total_compositions = 0
+
+        # Diagnostics
+        self._diag_updater = Updater(self)
+        self._diag_updater.setHardwareID("task_composer")
+        self._diag_updater.add("composer_status", self._produce_diagnostics)
+
         self.get_logger().info("TaskComposer started on /skill_server/compose_task")
 
     # ── Service handler ───────────────────────────────────────────────────────
@@ -87,6 +99,7 @@ class TaskComposer(Node):
                 add_precondition_checks=request.add_precondition_checks,
                 warnings=warnings,
             )
+            self._total_compositions += 1
             response.success = True
             response.bt_xml = bt_xml
             response.warnings = warnings
@@ -98,12 +111,19 @@ class TaskComposer(Node):
                 f"Composed task '{request.task_name}' with {len(request.steps)} steps"
             )
 
-        except Exception as e:
+        except (KeyError, ValueError, ET.ParseError) as e:
             response.success = False
             response.message = f"XML generation failed: {e}"
-            self.get_logger().error(f"TaskComposer error: {e}")
+            response.warnings = warnings
+            self.get_logger().error(f"TaskComposer error: {type(e).__name__}: {e}")
 
         return response
+
+    def _produce_diagnostics(self, stat):
+        """Publish diagnostic status for the task composer."""
+        stat.summary(DiagnosticStatus.OK, "Operational")
+        stat.add("total_compositions", str(self._total_compositions))
+        return stat
 
     # ── XML generation ────────────────────────────────────────────────────────
 
@@ -188,6 +208,24 @@ class TaskComposer(Node):
                     f"Step '{step.skill_name}': invalid parameters_json: {e}"
                 )
 
+        # Validate params against the skill's declared JSON Schema (if any)
+        if params and skill_desc and skill_desc.parameters_schema:
+            try:
+                import jsonschema  # optional dependency; skip if not installed
+                schema = json.loads(skill_desc.parameters_schema)
+                jsonschema.validate(params, schema)
+            except json.JSONDecodeError:
+                warnings.append(
+                    f"Step '{step.skill_name}': parameters_schema is not valid JSON — "
+                    "skipping validation"
+                )
+            except ImportError:
+                pass  # jsonschema not installed; skip silently
+            except Exception as exc:  # jsonschema.ValidationError or SchemaError
+                warnings.append(
+                    f"Step '{step.skill_name}': parameters do not match skill schema: {exc}"
+                )
+
         # Optionally wrap in retry decorator
         if step.retry_on_failure and step.max_retries > 0:
             wrapper = ET.Element("RetryUntilSuccessful")
@@ -195,20 +233,20 @@ class TaskComposer(Node):
             wrapper.set("num_attempts", str(step.max_retries))
 
             if add_precondition_checks and skill_desc:
-                inner = self._make_precondition_sequence(step, skill_desc, node_type, params)
+                inner = self._make_precondition_sequence(step, skill_desc, node_type, params, warnings)
                 wrapper.append(inner)
             else:
                 inner = ET.SubElement(wrapper, node_type)
                 inner.set("name", step.description or step.skill_name)
-                self._set_bt_params(inner, params, step)
+                self._set_bt_params(inner, params, step, warnings)
             return wrapper
 
         if add_precondition_checks and skill_desc and skill_desc.preconditions:
-            return self._make_precondition_sequence(step, skill_desc, node_type, params)
+            return self._make_precondition_sequence(step, skill_desc, node_type, params, warnings)
 
         elem = ET.Element(node_type)
         elem.set("name", step.description or step.skill_name)
-        self._set_bt_params(elem, params, step)
+        self._set_bt_params(elem, params, step, warnings)
         return elem
 
     def _make_compound_step_element(
@@ -223,32 +261,73 @@ class TaskComposer(Node):
         elem.set("name", step.description or step.skill_name)
         return elem
 
+    # Maps precondition names declared in SkillDescription.preconditions to
+    # BT.CPP ScriptCondition expressions that read from the blackboard.
+    # Add entries here as new preconditions are introduced.
+    _PRECOND_EXPRESSIONS: dict = {
+        "object_detected":  "object_detected == true",
+        "gripper_open":     "gripper_state == 'open'",
+        "gripper_closed":   "gripper_state == 'closed'",
+        "at_home":          "current_config == 'home'",
+        "at_ready":         "current_config == 'ready'",
+        "at_observe":       "current_config == 'observe'",
+        "object_grasped":   "object_grasped == true",
+    }
+
+    _MAX_PRECONDITIONS = 3  # BT.CPP ScriptCondition cap; raise when needed
+
     def _make_precondition_sequence(
         self,
         step: TaskStep,
         skill_desc: SkillDescription,
         node_type: str,
         params: dict,
+        warnings: Optional[List[str]] = None,
     ) -> ET.Element:
         """Wrap skill in a Sequence with precondition checks."""
+        if warnings is None:
+            warnings = []
+
         seq = ET.Element("Sequence")
         seq.set("name", f"prechecked_{step.skill_name}")
 
-        # Add a simple Script node to check preconditions
-        # In production, these would be real Condition nodes
-        for precond in skill_desc.preconditions[:3]:  # limit to 3 for readability
+        preconditions = skill_desc.preconditions
+        if len(preconditions) > self._MAX_PRECONDITIONS:
+            warnings.append(
+                f"Skill '{step.skill_name}' has {len(preconditions)} preconditions "
+                f"but only the first {self._MAX_PRECONDITIONS} are emitted in the BT."
+            )
+            preconditions = preconditions[: self._MAX_PRECONDITIONS]
+
+        for precond in preconditions:
+            expr = self._PRECOND_EXPRESSIONS.get(precond)
+            if expr is None:
+                warnings.append(
+                    f"No blackboard mapping for precondition '{precond}' on skill "
+                    f"'{step.skill_name}' — ScriptCondition will always pass. "
+                    "Add an entry to TaskComposer._PRECOND_EXPRESSIONS."
+                )
+                expr = "true"  # fail-open so tree still runs; warning flags it
             check = ET.SubElement(seq, "ScriptCondition")
             check.set("name", f"check_{precond}")
-            check.set("code", f"'{precond}' == 'satisfied'")  # placeholder
+            check.set("code", expr)
 
         action = ET.SubElement(seq, node_type)
         action.set("name", step.description or step.skill_name)
-        self._set_bt_params(action, params, step)
+        self._set_bt_params(action, params, step, warnings)
         return seq
 
     @staticmethod
-    def _set_bt_params(elem: ET.Element, params: dict, step: TaskStep):
+    def _set_bt_params(
+        elem: ET.Element,
+        params: dict,
+        step: TaskStep,
+        warnings: Optional[List[str]] = None,
+    ):
         """Set BT node parameters from parsed JSON and blackboard keys."""
+        if warnings is None:
+            warnings = []
+
         for key, value in params.items():
             if isinstance(value, bool):
                 elem.set(key, "true" if value else "false")
@@ -257,16 +336,26 @@ class TaskComposer(Node):
             elif isinstance(value, str):
                 elem.set(key, value)
 
-        # Wire blackboard keys
+        # Wire blackboard keys (format: "port_name:blackboard_key")
         for bb_key in step.input_blackboard_keys:
             if ":" in bb_key:
                 port, key = bb_key.split(":", 1)
                 elem.set(port, "{" + key + "}")
+            else:
+                warnings.append(
+                    f"Malformed input blackboard key '{bb_key}' in step "
+                    f"'{step.skill_name}' — expected 'port:key' format, skipping"
+                )
 
         for bb_key in step.output_blackboard_keys:
             if ":" in bb_key:
                 port, key = bb_key.split(":", 1)
                 elem.set(port, "{" + key + "}")
+            else:
+                warnings.append(
+                    f"Malformed output blackboard key '{bb_key}' in step "
+                    f"'{step.skill_name}' — expected 'port:key' format, skipping"
+                )
 
     @staticmethod
     def _pretty_xml(root: ET.Element) -> str:

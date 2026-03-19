@@ -24,12 +24,16 @@
   <depend>std_msgs</depend>
   <depend>action_msgs</depend>
   <depend>behaviortree_cpp</depend>
+  <depend>behaviortree_ros2</depend>
   <depend>robot_bt_nodes</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>diagnostic_msgs</depend>
 
   <exec_depend>python3-lxml</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-jsonschema</exec_depend>
 
+  <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

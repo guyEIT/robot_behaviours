@@ -22,6 +22,8 @@ find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_core REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
+find_package(diagnostic_updater REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 
 set(SKILL_DEPS
   rclcpp
@@ -38,6 +40,8 @@ set(SKILL_DEPS
   moveit_core
   moveit_msgs
   control_msgs
+  diagnostic_updater
+  diagnostic_msgs
 )
 
 # ── MoveToNamedConfig skill ──────────────────────────────────────────────────
@@ -87,7 +91,9 @@ rclcpp_components_register_node(detect_object_skill
 # ── Main component manager node ──────────────────────────────────────────────
 add_executable(skills_node src/skills_node.cpp)
 ament_target_dependencies(skills_node rclcpp rclcpp_components)
-target_link_libraries(skills_node)
+target_link_libraries(skills_node
+  rclcpp_components::component_manager
+)
 
 # ── Install ──────────────────────────────────────────────────────────────────
 install(TARGETS

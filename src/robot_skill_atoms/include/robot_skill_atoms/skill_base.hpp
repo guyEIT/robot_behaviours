@@ -1,11 +1,17 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "diagnostic_updater/diagnostic_updater.hpp"
+#include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
 #include "robot_skills_msgs/srv/register_skill.hpp"
 
@@ -34,6 +40,17 @@ public:
   using Goal = typename ActionT::Goal;
   using Result = typename ActionT::Result;
   using Feedback = typename ActionT::Feedback;
+
+  ~SkillBase() override
+  {
+    // Join all tracked execution threads before destruction
+    std::lock_guard<std::mutex> lock(threads_mutex_);
+    for (auto & entry : execution_threads_) {
+      if (entry.thread.joinable()) {
+        entry.thread.join();
+      }
+    }
+  }
 
   explicit SkillBase(
     const std::string & node_name,
@@ -65,6 +82,13 @@ public:
     RCLCPP_INFO(this->get_logger(), "Skill '%s' action server started on '%s'",
       this->get_name(), action_name_.c_str());
 
+    // Setup diagnostics (publishes to /diagnostics at 1 Hz)
+    diagnostic_updater_.setHardwareID(this->get_name());
+    diagnostic_updater_.add("skill_status",
+      [this](diagnostic_updater::DiagnosticStatusWrapper & stat) {
+        produceDiagnostics(stat);
+      });
+
     registerWithRegistry();
   }
 
@@ -95,9 +119,44 @@ public:
   virtual std::shared_ptr<Result> executeGoal(
     const std::shared_ptr<GoalHandle> goal_handle) = 0;
 
+  /**
+   * @brief Produce diagnostic status for this skill.
+   * Override in derived classes for skill-specific diagnostics.
+   */
+  virtual void produceDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat)
+  {
+    using diagnostic_msgs::msg::DiagnosticStatus;
+    if (is_stub_) {
+      stat.summary(DiagnosticStatus::WARN, "STUB - not fully implemented");
+    } else if (failure_count_.load() > 0 && !last_execution_success_.load()) {
+      stat.summary(DiagnosticStatus::WARN, "Last execution failed");
+    } else {
+      stat.summary(DiagnosticStatus::OK, "Operational");
+    }
+    stat.add("action_server", action_name_);
+    stat.add("total_executions", std::to_string(execution_count_.load()));
+    stat.add("successes", std::to_string(success_count_.load()));
+    stat.add("failures", std::to_string(failure_count_.load()));
+    stat.add("is_stub", is_stub_ ? "true" : "false");
+    {
+      std::lock_guard<std::mutex> lock(error_msg_mutex_);
+      stat.add("last_error", last_error_message_);
+    }
+  }
+
 protected:
   std::string action_name_;
   typename rclcpp_action::Server<ActionT>::SharedPtr action_server_;
+  diagnostic_updater::Updater diagnostic_updater_{this};
+  bool is_stub_{false};
+
+  // Execution tracking for diagnostics
+  std::atomic<uint32_t> execution_count_{0};
+  std::atomic<uint32_t> success_count_{0};
+  std::atomic<uint32_t> failure_count_{0};
+  std::atomic<bool> last_execution_success_{true};
+  std::mutex error_msg_mutex_;
+  std::string last_error_message_;
 
   /**
    * @brief Register this skill with the central SkillRegistry.
@@ -163,18 +222,67 @@ private:
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
+  struct TrackedThread {
+    std::thread thread;
+    std::shared_ptr<std::atomic<bool>> done;
+  };
+
   void handleAccepted(const std::shared_ptr<GoalHandle> goal_handle)
   {
-    // Execute in a detached thread so action server is non-blocking
-    std::thread([this, goal_handle]() {
+    // Execute in a tracked thread so we can join on shutdown
+    std::lock_guard<std::mutex> lock(threads_mutex_);
+
+    // Clean up finished threads — join completed ones and remove them
+    for (auto & entry : execution_threads_) {
+      if (entry.done->load() && entry.thread.joinable()) {
+        entry.thread.join();
+      }
+    }
+    execution_threads_.erase(
+      std::remove_if(execution_threads_.begin(), execution_threads_.end(),
+        [](const TrackedThread & entry) { return !entry.thread.joinable(); }),
+      execution_threads_.end());
+
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    TrackedThread entry;
+    entry.done = done;
+    entry.thread = std::thread([this, goal_handle, done]() {
+      RCLCPP_DEBUG(this->get_logger(), "Skill '%s' execution thread started",
+        this->get_name());
       auto result = executeGoal(goal_handle);
+
+      // Track execution stats for diagnostics
+      execution_count_++;
+      if (result && result->success) {
+        success_count_++;
+        last_execution_success_ = true;
+        {
+          std::lock_guard<std::mutex> lock(error_msg_mutex_);
+          last_error_message_ = "";
+        }
+      } else {
+        failure_count_++;
+        last_execution_success_ = false;
+        if (result) {
+          std::lock_guard<std::mutex> lock(error_msg_mutex_);
+          last_error_message_ = result->message;
+        }
+      }
+
       if (goal_handle->is_canceling()) {
+        RCLCPP_INFO(this->get_logger(), "Skill '%s' cancelled", this->get_name());
         goal_handle->canceled(result);
       } else {
         goal_handle->succeed(result);
       }
-    }).detach();
+
+      done->store(true);
+    });
+    execution_threads_.push_back(std::move(entry));
   }
+
+  std::mutex threads_mutex_;
+  std::vector<TrackedThread> execution_threads_;
 };
 
 }  // namespace robot_skill_atoms

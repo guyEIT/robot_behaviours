@@ -40,6 +40,9 @@ RUN apt-get update && apt-get install -y \
     python3-rosdep \
     python3-pip \
     python3-pydantic \
+    # Diagnostics & Monitoring
+    ros-jazzy-diagnostic-updater \
+    ros-jazzy-diagnostic-aggregator \
     # Utilities
     git wget curl build-essential ccache \
     vim nano tmux tree \
@@ -47,7 +50,7 @@ RUN apt-get update && apt-get install -y \
 
 # behaviortree_ros2 is not released for Jazzy — build from source
 RUN mkdir -p /opt/bt_ros2_ws/src \
-    && git clone --depth 1 https://github.com/BehaviorTree/BehaviorTree.ROS2.git \
+    && git clone --branch 4.6.2 --depth 1 https://github.com/BehaviorTree/BehaviorTree.ROS2.git \
        /opt/bt_ros2_ws/src/behaviortree_ros2 \
     && bash -c "source /opt/ros/jazzy/setup.bash \
        && cd /opt/bt_ros2_ws \
@@ -59,7 +62,8 @@ RUN mkdir -p /opt/bt_ros2_ws/src \
 RUN pip3 install --no-cache-dir --break-system-packages \
     jsonschema \
     pyyaml \
-    lxml
+    lxml \
+    rosboard
 
 # Groot2 - BehaviorTree.CPP visualization IDE
 # Note: Groot2 is an AppImage; on macOS/X11 set --no-sandbox

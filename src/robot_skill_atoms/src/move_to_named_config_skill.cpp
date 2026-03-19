@@ -3,7 +3,6 @@
 #include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
 
 #include "robot_skills_msgs/action/move_to_named_config.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
@@ -70,7 +69,7 @@ public:
     };
 
     // JSON Schema for goal parameters
-    desc.parameters_schema = R"({
+    desc.parameters_schema = R"json({
       "type": "object",
       "required": ["config_name"],
       "properties": {
@@ -94,7 +93,7 @@ public:
           "default": 0.3
         }
       }
-    })";
+    })json";
 
     // PDDL action fragment
     desc.pddl_action = R"(
@@ -134,6 +133,12 @@ public:
 
     if (goal->velocity_scaling < 0.01 || goal->velocity_scaling > 1.0) {
       return {false, "velocity_scaling must be between 0.01 and 1.0"};
+    }
+
+    if (goal->acceleration_scaling > 0.0 &&
+        (goal->acceleration_scaling < 0.01 || goal->acceleration_scaling > 1.0))
+    {
+      return {false, "acceleration_scaling must be between 0.01 and 1.0"};
     }
 
     return {true, ""};
@@ -185,6 +190,7 @@ public:
       feedback->progress = 0.1;
       feedback->status_message = "Planning...";
       goal_handle->publish_feedback(feedback);
+      RCLCPP_DEBUG(this->get_logger(), "Planning motion to '%s'...", goal->config_name.c_str());
 
       // Plan
       moveit::planning_interface::MoveGroupInterface::Plan plan;
@@ -198,6 +204,7 @@ public:
         return result;
       }
 
+      RCLCPP_DEBUG(this->get_logger(), "Plan found for '%s', executing...", goal->config_name.c_str());
       feedback->progress = 0.3;
       feedback->status_message = "Plan found, executing...";
       goal_handle->publish_feedback(feedback);

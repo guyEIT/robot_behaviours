@@ -4,10 +4,13 @@ Robot Skills Framework - Main launch file.
 Usage:
   ros2 launch robot_skill_server skill_server.launch.py
   ros2 launch robot_skill_server skill_server.launch.py hardware_mode:=real
+  ros2 launch robot_skill_server skill_server.launch.py log_level:=debug
 
 Arguments:
   hardware_mode:  'sim' (default) or 'real'
   use_rviz:       'true' (default) or 'false'
+  use_rosboard:   'true' (default) or 'false'
+  log_level:      'debug', 'info' (default), 'warn', 'error'
   groot_port:     Groot2 ZMQ port (default: 1666)
   robot_ip:       Robot IP for real mode (default: 192.168.0.100)
 """
@@ -15,6 +18,7 @@ Arguments:
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
     LogInfo,
@@ -44,6 +48,16 @@ def generate_launch_description():
         default_value="true",
         description="Launch RViz2 for visualization",
     )
+    use_rosboard_arg = DeclareLaunchArgument(
+        "use_rosboard",
+        default_value="true",
+        description="Launch rosboard web UI on port 8888",
+    )
+    log_level_arg = DeclareLaunchArgument(
+        "log_level",
+        default_value="info",
+        description="ROS2 log level: debug, info, warn, error",
+    )
     groot_port_arg = DeclareLaunchArgument(
         "groot_port",
         default_value="1666",
@@ -62,6 +76,8 @@ def generate_launch_description():
 
     hardware_mode = LaunchConfiguration("hardware_mode")
     use_rviz = LaunchConfiguration("use_rviz")
+    use_rosboard = LaunchConfiguration("use_rosboard")
+    log_level = LaunchConfiguration("log_level")
     groot_port = LaunchConfiguration("groot_port")
     use_realsense = LaunchConfiguration("use_realsense")
 
@@ -71,6 +87,7 @@ def generate_launch_description():
         executable="skill_server_node",
         name="skill_server",
         output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
         parameters=[
             {
                 "groot_zmq_port": groot_port,
@@ -89,6 +106,7 @@ def generate_launch_description():
         executable="skills_node",
         name="skill_atoms",
         output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
         parameters=[
             {
                 "default_planning_group": "arm",
@@ -104,6 +122,21 @@ def generate_launch_description():
                 "workspace_max_z": 0.7,
             }
         ],
+    )
+
+    # ── Diagnostic Aggregator ─────────────────────────────────────────────────
+    diag_aggregator_config = PathJoinSubstitution([
+        FindPackageShare("robot_skill_server"),
+        "config",
+        "diagnostics_aggregator.yaml",
+    ])
+
+    diagnostic_aggregator_node = Node(
+        package="diagnostic_aggregator",
+        executable="aggregator_node",
+        name="diagnostic_aggregator",
+        output="screen",
+        parameters=[diag_aggregator_config],
     )
 
     # ── MoveIt2 (motion planning) ─────────────────────────────────────────────
@@ -153,27 +186,45 @@ def generate_launch_description():
         arguments=["-d", rviz_config],
     )
 
-    # ── Groot2 reminder ───────────────────────────────────────────────────────
-    groot_reminder = LogInfo(
+    # ── Rosboard web UI ───────────────────────────────────────────────────────
+    rosboard_process = ExecuteProcess(
+        cmd=["python3", "-m", "rosboard", "--port", "8888"],
+        output="screen",
+        condition=IfCondition(use_rosboard),
+    )
+
+    # ── Monitoring info ───────────────────────────────────────────────────────
+    monitoring_info = LogInfo(
         msg=[
-            "\n╔══════════════════════════════════════════════╗\n"
-            "║  Groot2 BT Monitor: Run 'groot2' in terminal ║\n"
-            "║  Connect to ZMQ port: ", groot_port, "              ║\n"
-            "╚══════════════════════════════════════════════╝"
+            "\n╔══════════════════════════════════════════════════════╗\n"
+            "║  Rosboard Web UI:  http://localhost:8888              ║\n"
+            "║  Groot2 BT Monitor: Run 'groot2' in terminal         ║\n"
+            "║  Groot2 ZMQ port:  ", groot_port, "                          ║\n"
+            "║  Log level:        ", log_level, "                          ║\n"
+            "║                                                       ║\n"
+            "║  Key topics to pin in Rosboard:                       ║\n"
+            "║    /diagnostics_agg  — system health                  ║\n"
+            "║    /rosout           — logs (filterable by severity)  ║\n"
+            "║    /skill_server/task_state — task progress           ║\n"
+            "╚══════════════════════════════════════════════════════════╝"
         ]
     )
 
     return LaunchDescription([
         hardware_mode_arg,
         use_rviz_arg,
+        use_rosboard_arg,
+        log_level_arg,
         groot_port_arg,
         robot_ip_arg,
         use_realsense_arg,
         # Nodes
         skill_server_node,
         skill_atoms_node,
+        diagnostic_aggregator_node,
         moveit_reminder,
         realsense_node,
         rviz_node,
-        groot_reminder,
+        rosboard_process,
+        monitoring_info,
     ])

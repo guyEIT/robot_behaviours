@@ -1,7 +1,9 @@
 #include "robot_skill_atoms/skill_base.hpp"
 
 #include <chrono>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "robot_skills_msgs/action/detect_object.hpp"
@@ -12,8 +14,6 @@
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 namespace robot_skill_atoms
@@ -57,6 +57,23 @@ public:
 
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    // Mark as stub until real detection model is integrated
+    this->is_stub_ = true;
+  }
+
+  void produceDiagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat) override
+  {
+    using diagnostic_msgs::msg::DiagnosticStatus;
+    stat.summary(DiagnosticStatus::WARN,
+      "STUB: No detection model integrated. "
+      "Replace executeGoal() in detect_object_skill.cpp with YOLO or similar.");
+    stat.add("action_server", action_name_);
+    stat.add("total_executions", std::to_string(execution_count_.load()));
+    stat.add("successes", std::to_string(success_count_.load()));
+    stat.add("failures", std::to_string(failure_count_.load()));
+    stat.add("is_stub", "true");
+    stat.add("detection_model", "none (stub)");
   }
 
   robot_skills_msgs::msg::SkillDescription getDescription() override
@@ -91,7 +108,7 @@ public:
       "adequate lighting for color-based detection"
     };
 
-    desc.parameters_schema = R"({
+    desc.parameters_schema = R"json({
       "type": "object",
       "properties": {
         "object_class": {
@@ -122,7 +139,7 @@ public:
           "default": true
         }
       }
-    })";
+    })json";
 
     desc.pddl_action = R"(
 (:action detect-object
@@ -153,6 +170,10 @@ public:
       "Detecting objects: class='%s' timeout=%.1fs",
       goal->object_class.c_str(), goal->timeout_sec);
 
+    RCLCPP_WARN(this->get_logger(),
+      "DetectObject STUB: No detection model integrated. Will return empty detections. "
+      "Replace detect_object_skill.cpp::executeGoal() with real detection (YOLO, etc.)");
+
     auto feedback = std::make_shared<DetectObject::Feedback>();
     feedback->detections_so_far = 0;
     feedback->status_message = "Waiting for detections...";
@@ -164,39 +185,68 @@ public:
     // Subscribe to detections (model-agnostic via parameter)
     // In production: replace with model-specific subscription
     // Here we wait for an image and run basic detection
-    bool got_detection = false;
     std::vector<robot_skills_msgs::msg::DetectedObject> detections;
 
-    // Subscription-based detection loop
+    // Subscription-based detection loop.
+    // Use a condition_variable so the callback wakes the waiting thread
+    // immediately rather than relying on a busy-wait sleep loop.
+    //
+    // INTEGRATION POINT: Replace the callback body with your real detection
+    // model (e.g. YOLO, FoundationPose, SAM). The callback receives each
+    // Image frame; populate `detections` and notify the cv when done.
+    std::mutex cv_mutex;
+    std::condition_variable image_cv;
+    bool image_ready = false;
+
+    // Capture a weak_ptr to image_received so the callback is safe if this
+    // skill node is destroyed while the subscription is still alive.
     auto image_received = std::make_shared<std::atomic<bool>>(false);
+    std::weak_ptr<std::atomic<bool>> weak_received = image_received;
 
     auto image_sub = this->create_subscription<sensor_msgs::msg::Image>(
       this->get_parameter("color_image_topic").as_string(), 1,
-      [&, image_received](const sensor_msgs::msg::Image::SharedPtr /*msg*/) {
-        if (!*image_received) {
-          *image_received = true;
-          // TODO: Run actual detection model here
-          // For now, log that we received an image
-          RCLCPP_DEBUG(this->get_logger(), "Received camera image for detection");
+      [weak_received, &cv_mutex, &image_cv, &image_ready](
+        const sensor_msgs::msg::Image::SharedPtr /*msg*/)
+      {
+        auto received = weak_received.lock();
+        if (!received || received->load()) {
+          return;  // skill already done or destroyed
         }
+        received->store(true);
+
+        // TODO: Run actual detection model here (YOLO, SAM, etc.)
+        // Populate detections vector in the outer scope via a shared container,
+        // then notify below.
+
+        {
+          std::lock_guard<std::mutex> lk(cv_mutex);
+          image_ready = true;
+        }
+        image_cv.notify_one();
       });
 
-    // Wait for detections or timeout
-    while (this->now() < deadline && !goal_handle->is_canceling()) {
-      rclcpp::sleep_for(std::chrono::milliseconds(100));
-
-      if (*image_received) {
-        // TODO: Replace with actual detection results from your model
-        // This is a placeholder that demonstrates the interface
-        RCLCPP_INFO_ONCE(this->get_logger(),
-          "Camera active. Integrate detection model in detect_object_skill.cpp");
-        got_detection = false;
-        break;
-      }
-
-      feedback->status_message = "Waiting for camera data...";
-      goal_handle->publish_feedback(feedback);
+    // Wait for the first image callback or timeout — no busy-wait.
+    const auto timeout_duration =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(timeout));
+    {
+      std::unique_lock<std::mutex> lk(cv_mutex);
+      image_cv.wait_for(lk, timeout_duration,
+        [&image_ready, &goal_handle] {
+          return image_ready || goal_handle->is_canceling();
+        });
     }
+
+    if (image_received->load()) {
+      // TODO: Replace with actual detection results from your model
+      RCLCPP_WARN(this->get_logger(),
+        "Camera active but no detection model integrated. "
+        "Returning empty detections (STUB behavior).");
+    }
+
+    // Destroy subscription before processing results to prevent callbacks on stale state
+    image_sub.reset();
+    image_received->store(true);  // signal callback to stop if still pending
 
     if (goal_handle->is_canceling()) {
       result->success = false;
@@ -204,7 +254,7 @@ public:
       return result;
     }
 
-    if (!*image_received) {
+    if (!image_received->load()) {
       result->success = false;
       result->message = "No camera data received within timeout. "
         "Check that realsense2_camera is running and topic '" +
@@ -214,10 +264,10 @@ public:
     }
 
     // Filter by class if specified
-    if (!goal->object_class.empty() && detections.empty() && !got_detection) {
+    if (!goal->object_class.empty() && detections.empty()) {
       result->success = false;
-      result->message = "No '" + goal->object_class + "' objects detected. "
-        "Integrate a detection model (YOLO, etc.) in detect_object_skill.cpp";
+      result->message = "No '" + goal->object_class + "' objects detected (STUB — no model)";
+      RCLCPP_WARN(this->get_logger(), "%s", result->message.c_str());
       return result;
     }
 
@@ -225,15 +275,16 @@ public:
     result->success = !detections.empty();
     result->message = result->success
       ? "Detected " + std::to_string(detections.size()) + " object(s)"
-      : "No objects detected matching criteria";
+      : "No objects detected (STUB — no detection model integrated)";
 
-    RCLCPP_INFO(this->get_logger(), "%s", result->message.c_str());
+    if (result->success) {
+      RCLCPP_INFO(this->get_logger(), "%s", result->message.c_str());
+    } else {
+      RCLCPP_WARN(this->get_logger(), "%s", result->message.c_str());
+    }
     return result;
   }
 
-private:
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };
 
 }  // namespace robot_skill_atoms

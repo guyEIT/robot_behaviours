@@ -29,6 +29,9 @@
   <depend>moveit_msgs</depend>
   <!-- ros2_control -->
   <depend>control_msgs</depend>
+  <!-- Diagnostics -->
+  <depend>diagnostic_updater</depend>
+  <depend>diagnostic_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

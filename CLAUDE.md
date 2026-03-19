@@ -37,6 +37,12 @@ Run tests:
 docker exec -it ros2_robot_skills_dev bash -c "source /opt/ros/jazzy/setup.bash && source /home/ws/install/setup.bash && cd /home/ws && colcon test && colcon test-result --verbose"
 ```
 
+### Launch the skill server
+
+```bash
+docker exec -it ros2_robot_skills_dev bash -c "source /opt/ros/jazzy/setup.bash && source /home/ws/install/setup.bash && ros2 launch robot_skill_server skill_server.launch.py"
+```
+
 ### Packages
 
 - `robot_skills_msgs` — ROS2 interfaces (actions/msgs/srvs)
@@ -44,3 +50,4 @@ docker exec -it ros2_robot_skills_dev bash -c "source /opt/ros/jazzy/setup.bash 
 - `robot_bt_nodes` — C++ BehaviorTree.CPP v4 leaf node plugins
 - `robot_skill_server` — Python orchestrator (SkillRegistry, TaskComposer, BtExecutor)
 - `robot_behaviors` — XML behavior tree definitions
+- `robot_sim_config` — MoveIt2 + ros2_control configuration (URDF, SRDF, controllers)
