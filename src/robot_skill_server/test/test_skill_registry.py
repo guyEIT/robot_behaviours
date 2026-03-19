@@ -50,6 +50,7 @@ def _stub_ros_modules():
             return MagicMock()
 
     sys.modules["rclpy.node"].Node = _Node
+    sys.modules["rclpy.time"].Time = MagicMock
     sys.modules["diagnostic_updater"].Updater = MagicMock
     sys.modules["diagnostic_msgs.msg"].DiagnosticStatus = MagicMock
 
@@ -78,14 +79,16 @@ def _stub_ros_modules():
     sys.modules["robot_skills_msgs.msg"].SkillDescription = _SkillDescription
 
     # Service stubs
-    for svc in [
-        "RegisterSkill", "GetSkillDescriptions", "RegisterCompoundSkill"
-    ]:
-        svc_mod = types.ModuleType(f"robot_skills_msgs.srv.{svc}")
-        svc_stub = MagicMock()
-        svc_mod.__name__ = svc
-        sys.modules[f"robot_skills_msgs.srv"].Request = MagicMock
-        setattr(sys.modules["robot_skills_msgs.srv"], svc, svc_stub)
+    srv_mod = sys.modules["robot_skills_msgs.srv"]
+    for svc_name in ["RegisterSkill", "GetSkillDescriptions", "RegisterCompoundSkill", "ComposeTask"]:
+        setattr(srv_mod, svc_name, MagicMock())
+
+    # std_msgs stub
+    if "std_msgs" not in sys.modules:
+        sys.modules["std_msgs"] = types.ModuleType("std_msgs")
+    if "std_msgs.msg" not in sys.modules:
+        sys.modules["std_msgs.msg"] = types.ModuleType("std_msgs.msg")
+    sys.modules["std_msgs.msg"].String = MagicMock
 
 
 _stub_ros_modules()
@@ -106,7 +109,7 @@ def _make_registry(persist_dir: str = "") -> SkillRegistry:
         reg.get_logger = MagicMock(return_value=MagicMock())
         reg.get_clock = MagicMock(return_value=mock_clock)
         reg._persist_dir = Path(persist_dir) if persist_dir else Path(tempfile.mkdtemp())
-        reg._skill_list_pub = MagicMock()
+        reg._skills_pub = MagicMock()
         return reg
 
 

@@ -17,6 +17,8 @@ BT.CPP execution, since BT.CPP is a C++ library. The subprocess communicates
 results back via ROS2 topics. Alternatively, use rclpy bindings if available.
 """
 
+from __future__ import annotations
+
 import os
 import signal
 import subprocess
@@ -26,8 +28,6 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
-
-from __future__ import annotations
 
 import rclpy
 import rclpy.time

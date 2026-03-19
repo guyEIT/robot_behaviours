@@ -43,6 +43,7 @@ def _stub_ros_modules():
             return MagicMock()
 
     sys.modules["rclpy.node"].Node = _Node
+    sys.modules["rclpy.time"].Time = MagicMock
 
     # diagnostic_updater.Updater stub
     sys.modules["diagnostic_updater"].Updater = MagicMock
@@ -84,6 +85,18 @@ def _stub_ros_modules():
     msg_mod = sys.modules["robot_skills_msgs.msg"]
     msg_mod.SkillDescription = _SkillDescription
     msg_mod.TaskStep = _TaskStep
+
+    # Service stubs
+    srv_mod = sys.modules["robot_skills_msgs.srv"]
+    for svc_name in ["ComposeTask", "RegisterSkill", "GetSkillDescriptions", "RegisterCompoundSkill"]:
+        setattr(srv_mod, svc_name, MagicMock())
+
+    # std_msgs stub
+    if "std_msgs" not in sys.modules:
+        sys.modules["std_msgs"] = types.ModuleType("std_msgs")
+    if "std_msgs.msg" not in sys.modules:
+        sys.modules["std_msgs.msg"] = types.ModuleType("std_msgs.msg")
+    sys.modules["std_msgs.msg"].String = MagicMock
 
     sys.modules["robot_skills_msgs"].msg = msg_mod
 

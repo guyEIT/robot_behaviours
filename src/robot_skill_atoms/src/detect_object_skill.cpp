@@ -55,9 +55,6 @@ public:
     this->declare_parameter("detection_model", "color_blob");  // "color_blob" | "yolo" | "external"
     this->declare_parameter("external_detections_topic", "/detections");
 
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-
     // Mark as stub until real detection model is integrated
     this->is_stub_ = true;
   }
