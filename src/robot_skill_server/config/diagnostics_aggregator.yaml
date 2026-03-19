@@ -1,0 +1,37 @@
+analyzers:
+  skill_atoms:
+    type: diagnostic_aggregator/AnalyzerGroup
+    path: Skill Atoms
+    analyzers:
+      move_to_named_config:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: MoveToNamedConfig
+        contains: ["move_to_named_config"]
+      move_to_cartesian_pose:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: MoveToCartesianPose
+        contains: ["move_to_cartesian_pose"]
+      gripper_control:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: GripperControl
+        contains: ["gripper_control"]
+      detect_object:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: DetectObject
+        contains: ["detect_object"]
+  skill_server:
+    type: diagnostic_aggregator/AnalyzerGroup
+    path: Skill Server
+    analyzers:
+      registry:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: SkillRegistry
+        contains: ["skill_registry"]
+      executor:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: BtExecutor
+        contains: ["bt_executor"]
+      composer:
+        type: diagnostic_aggregator/GenericAnalyzer
+        path: TaskComposer
+        contains: ["task_composer"]
