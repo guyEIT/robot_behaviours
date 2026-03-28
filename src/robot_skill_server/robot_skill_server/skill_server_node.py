@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Main entry point for the Robot Skill Server.
 
@@ -14,9 +15,9 @@ Usage:
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 
-from .skill_registry import SkillRegistry
-from .task_composer import TaskComposer
-from .bt_executor import BtExecutor
+from robot_skill_server.skill_registry import SkillRegistry
+from robot_skill_server.task_composer import TaskComposer
+from robot_skill_server.bt_executor import BtExecutor
 
 
 def main(args=None):

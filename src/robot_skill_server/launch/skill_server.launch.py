@@ -188,9 +188,15 @@ def generate_launch_description():
 
     # ── Rosboard web UI ───────────────────────────────────────────────────────
     rosboard_process = ExecuteProcess(
-        cmd=["python3", "-m", "rosboard", "--port", "8888"],
+        cmd=["rosboard_node", "--port", "8888"],
         output="screen",
         condition=IfCondition(use_rosboard),
+    )
+
+    # ── Groot2 BT visualization ─────────────────────────────────────────────
+    groot2_process = ExecuteProcess(
+        cmd=["groot2", "--appimage-extract-and-run"],
+        output="screen",
     )
 
     # ── Monitoring info ───────────────────────────────────────────────────────
@@ -226,5 +232,6 @@ def generate_launch_description():
         realsense_node,
         rviz_node,
         rosboard_process,
+        groot2_process,
         monitoring_info,
     ])

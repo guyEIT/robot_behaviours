@@ -1,76 +1,87 @@
-# OMPL planner configuration
+# OMPL planner configuration for the simulation robot
 
-ompl:
+planning_plugins:
+  - ompl_interface/OMPLPlanner
+request_adapters:
+  - default_planning_request_adapters/ResolveConstraintFrames
+  - default_planning_request_adapters/ValidateWorkspaceBounds
+  - default_planning_request_adapters/CheckStartStateBounds
+  - default_planning_request_adapters/CheckStartStateCollision
+response_adapters:
+  - default_planning_response_adapters/AddTimeOptimalParameterization
+  - default_planning_response_adapters/ValidateSolution
+  - default_planning_response_adapters/DisplayMotionPath
+
+planner_configs:
+  SBL:
+    type: geometric::SBL
+    range: 0.0
+  EST:
+    type: geometric::EST
+    range: 0.0
+    goal_bias: 0.05
+  LBKPIECE:
+    type: geometric::LBKPIECE
+    range: 0.0
+    border_fraction: 0.9
+    min_valid_path_fraction: 0.5
+  BKPIECE:
+    type: geometric::BKPIECE
+    range: 0.0
+    border_fraction: 0.9
+    failed_expansion_score_factor: 0.5
+    min_valid_path_fraction: 0.5
+  KPIECE:
+    type: geometric::KPIECE
+    range: 0.0
+    goal_bias: 0.05
+    border_fraction: 0.9
+    failed_expansion_score_factor: 0.5
+    min_valid_path_fraction: 0.5
+  RRT:
+    type: geometric::RRT
+    range: 0.0
+    goal_bias: 0.05
+  RRTConnect:
+    type: geometric::RRTConnect
+    range: 0.0
+  RRTstar:
+    type: geometric::RRTstar
+    range: 0.0
+    goal_bias: 0.05
+    delay_collision_checking: 1
+  PRM:
+    type: geometric::PRM
+    max_nearest_neighbors: 10
+  PRMstar:
+    type: geometric::PRMstar
+  FMT:
+    type: geometric::FMT
+    num_samples: 1000
+    radius_multiplier: 1.1
+
+# Group-specific planner settings
+arm:
+  default_planner_config: RRTConnect
   planner_configs:
-    SBL:
-      type: geometric::SBL
-      range: 0.0  # 0 = auto
-    EST:
-      type: geometric::EST
-      range: 0.0
-      goal_bias: 0.05
-    LBKPIECE:
-      type: geometric::LBKPIECE
-      range: 0.0
-      border_fraction: 0.9
-      min_valid_path_fraction: 0.5
-    BKPIECE:
-      type: geometric::BKPIECE
-      range: 0.0
-      border_fraction: 0.9
-      failed_expansion_score_factor: 0.5
-      min_valid_path_fraction: 0.5
-    KPIECE:
-      type: geometric::KPIECE
-      range: 0.0
-      goal_bias: 0.05
-      border_fraction: 0.9
-      failed_expansion_score_factor: 0.5
-      min_valid_path_fraction: 0.5
-    RRT:
-      type: geometric::RRT
-      range: 0.0
-      goal_bias: 0.05
-    RRTConnect:
-      type: geometric::RRTConnect
-      range: 0.0
-    RRTstar:
-      type: geometric::RRTstar
-      range: 0.0
-      goal_bias: 0.05
-      delay_collision_checking: 1
-    PRM:
-      type: geometric::PRM
-      max_nearest_neighbors: 10
-    PRMstar:
-      type: geometric::PRMstar
-    FMT:
-      type: geometric::FMT
-      num_samples: 1000
-      radius_multiplier: 1.1
+    - SBL
+    - EST
+    - LBKPIECE
+    - BKPIECE
+    - KPIECE
+    - RRT
+    - RRTConnect
+    - RRTstar
+    - PRM
+    - PRMstar
+    - FMT
+  projection_evaluator: joints(panda_joint1,panda_joint2)
+  longest_valid_segment_fraction: 0.005
 
-  # Group-specific planner settings
-  arm:
-    default_planner_config: RRTConnect
-    planner_configs:
-      - SBL
-      - EST
-      - LBKPIECE
-      - BKPIECE
-      - KPIECE
-      - RRT
-      - RRTConnect
-      - RRTstar
-      - PRM
-      - PRMstar
-      - FMT
-    projection_evaluator: joints(panda_joint1,panda_joint2)
-    longest_valid_segment_fraction: 0.005
-
-  gripper:
-    default_planner_config: RRTConnect
-    planner_configs:
-      - RRTConnect
-      - RRT
-    projection_evaluator: joints(panda_finger_joint1)
-    longest_valid_segment_fraction: 0.005
+gripper:
+  default_planner_config: RRTConnect
+  planner_configs:
+    - RRTConnect
+    - RRT
+  projection_evaluator: joints(panda_finger_joint1)
+  longest_valid_segment_fraction: 0.005

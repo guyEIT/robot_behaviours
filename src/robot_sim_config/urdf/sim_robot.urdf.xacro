@@ -112,11 +112,9 @@
       </state_interface>
     </joint>
 
+    <!-- panda_finger_joint2 is a mimic joint in the Panda URDF —
+         mimic joints cannot have command interfaces in ros2_control -->
     <joint name="panda_finger_joint2">
-      <command_interface name="position">
-        <param name="min">0.0</param>
-        <param name="max">0.08</param>
-      </command_interface>
       <state_interface name="position">
         <param name="initial_value">0.035</param>
       </state_interface>

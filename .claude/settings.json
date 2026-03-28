@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xhost)",
+      "Bash(xdpyinfo)",
+      "Bash(DISPLAY=:1 xhost +local:)",
+      "Bash(pip3 install:*)"
+    ]
+  }
+}

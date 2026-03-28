@@ -1,8 +1,8 @@
 services:
   devcontainer:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
     image: ros2-jazzy-robot-skills:latest
     container_name: ros2_robot_skills_dev
 
@@ -19,8 +19,8 @@ services:
     tty: true
 
     environment:
-      # Display forwarding (macOS: requires XQuartz + xhost +localhost)
-      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      # Display forwarding (Linux: :1 or :0, macOS: requires XQuartz)
+      - DISPLAY=${DISPLAY:-:1}
       # ROS2 configuration
       - ROS_DOMAIN_ID=0
       - ROS_LOCALHOST_ONLY=0
@@ -30,16 +30,13 @@ services:
 
     volumes:
       # Workspace source (this repo)
-      - ..:/home/ws:rw
+      - ../src:/home/ws/src:rw
       # X11 display socket
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       # USB device access for RealSense
       - /dev/bus/usb:/dev/bus/usb:rw
       # Build cache (persisted across container restarts)
       - ros2_ccache:/home/ros/.ccache
-      - ros2_colcon_build:/home/ws/build
-      - ros2_colcon_install:/home/ws/install
-      - ros2_colcon_log:/home/ws/log
 
     # Video devices for RealSense (add more if needed)
     devices:
@@ -48,6 +45,3 @@ services:
 
 volumes:
   ros2_ccache:
-  ros2_colcon_build:
-  ros2_colcon_install:
-  ros2_colcon_log:

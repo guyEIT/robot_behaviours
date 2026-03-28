@@ -13,7 +13,7 @@ controller_manager:
       type: joint_trajectory_controller/JointTrajectoryController
 
     gripper_controller:
-      type: gripper_controllers/GripperActionController
+      type: position_controllers/GripperActionController
 
 # Arm trajectory controller configuration
 arm_controller:

@@ -32,49 +32,54 @@ A hierarchical, extensible, agent-callable robot control framework for the **Mec
 
 ## Quick Start
 
-### 1. Open in DevContainer (macOS)
+### Prerequisites
+
+- Docker and Docker Compose
+- X11 display (Linux desktop, or XQuartz on macOS)
+
+### 1. Build and start
 
 ```bash
-# Install XQuartz for display forwarding
-brew install xquartz
-open -a XQuartz  # Enable: Security → Allow connections from network clients
-xhost +localhost
+# Build images (compiles all ROS2 packages — only needed once or after source changes)
+docker compose build
 
-# Open in VSCode with DevContainer extension
-code /path/to/workspace
-# → "Reopen in Container"
+# Allow containers to access your display (run once per session, for Groot2/RViz)
+DISPLAY=:1 xhost +local:
+
+# Launch everything
+docker compose up -d
 ```
 
-### 2. Build
+That's it. `docker compose up` launches the full stack:
+1. **sim container** — MoveIt2 + ros2_control simulation (Franka Panda mock hardware)
+2. **dev container** — skill server (orchestrator + skill atoms + diagnostics)
+
+Watch the logs with `docker compose logs -f`.
+
+### 2. Shell into the dev container
 
 ```bash
-# Inside the container:
-cd /home/ws
-rosdep install --from-paths src --ignore-src -y
-colcon build --symlink-install
-source install/setup.bash
+docker exec -it ros2_robot_skills_dev bash
 ```
 
-### 3. Launch
+Everything is already sourced via `.bashrc`. Useful aliases: `cb` (build), `cbt <pkg>` (build one package), `ct` (test).
+
+### 3. Run tests
 
 ```bash
-# Simulation mode (default)
-ros2 launch robot_skill_server skill_server.launch.py
-
-# Real hardware + RealSense
-ros2 launch robot_skill_server skill_server.launch.py \
-  hardware_mode:=real \
-  use_realsense:=true \
-  robot_ip:=192.168.0.100
-
-# With Groot2 monitoring (run groot2 separately, connect to port 1666)
-ros2 launch robot_skill_server skill_server.launch.py \
-  groot_port:=1666
+docker exec ros2_robot_skills_dev bash -c \
+  "source /opt/ros/jazzy/setup.bash && \
+   source /opt/bt_ros2_ws/install/setup.bash && \
+   source /home/ws/install/setup.bash && \
+   cd /home/ws && colcon test && colcon test-result --verbose"
 ```
 
-### 4. Call Skills (CLI)
+### 5. Call skills
 
 ```bash
+# Shell into the dev container
+docker exec -it ros2_robot_skills_dev bash
+
 # List all available skills
 ros2 service call /skill_server/get_skill_descriptions \
   robot_skills_msgs/srv/GetSkillDescriptions \
@@ -83,17 +88,8 @@ ros2 service call /skill_server/get_skill_descriptions \
 # Move to home
 ros2 action send_goal /skill_server/execute_behavior_tree \
   robot_skills_msgs/action/ExecuteBehaviorTree \
-  '{tree_name: "home", tree_xml: "$(cat src/robot_behaviors/trees/move_to_home.xml)", enable_groot_monitor: true}'
+  '{tree_name: "home", tree_xml: "'"$(cat src/robot_behaviors/trees/move_to_home.xml)"'"}'
 
-# Run seed collection
-ros2 action send_goal /skill_server/execute_behavior_tree \
-  robot_skills_msgs/action/ExecuteBehaviorTree \
-  '{tree_name: "seed_collection", tree_xml: "$(cat src/robot_behaviors/trees/seed_collection.xml)"}'
-```
-
-### 5. Agent Composition
-
-```bash
 # Compose a custom task from skill steps
 ros2 service call /skill_server/compose_task \
   robot_skills_msgs/srv/ComposeTask \
@@ -107,23 +103,58 @@ ros2 service call /skill_server/compose_task \
       {skill_name: "gripper_control", parameters_json: "{\"command\": \"open\"}"}
     ]
   }'
-
-# Register the composed task as a named compound skill
-ros2 service call /skill_server/register_compound_skill \
-  robot_skills_msgs/srv/RegisterCompoundSkill \
-  '{skill_description: {name: "my_task", category: "compound"}, bt_xml: "<...>", persist: true}'
 ```
 
-### 6. Groot2 Monitoring
+### 6. Groot2 (BT monitoring)
+
+Groot2 v1.9.0 is pre-installed in the dev container.
 
 ```bash
-# Open Groot2 in a terminal inside the container
-groot2 --no-sandbox &
+docker exec -it ros2_robot_skills_dev bash
 
-# In Groot2:
-# → Connect → ZMQ Server → Port 1666
+# Launch Groot2 (needs --appimage-extract-and-run inside Docker)
+groot2 --appimage-extract-and-run &
+
+# In Groot2: Connect → ZMQ Server → Port 1666
 # You'll see the live behavior tree with node status colors
 ```
+
+### 7. RViz2 (robot visualization)
+
+RViz2 is available in both containers. From the dev container:
+
+```bash
+docker exec -it ros2_robot_skills_dev bash
+source /home/ws/install/setup.bash
+rviz2
+```
+
+To launch the sim with RViz enabled (default is disabled in the sim container):
+
+```bash
+# Stop and restart sim with RViz
+docker exec ros2_robot_sim bash -c \
+  "source /opt/ros/jazzy/setup.bash && \
+   source /home/ws/install/setup.bash && \
+   ros2 launch robot_sim_config sim.launch.py use_rviz:=true"
+```
+
+### Stopping
+
+```bash
+docker compose down
+```
+
+## Docker Setup
+
+| Container | Image | Purpose |
+|-----------|-------|---------|
+| `ros2_robot_sim` | `ros2-jazzy-robot-sim` | MoveIt2 + ros2_control simulation (Franka Panda with mock hardware) |
+| `ros2_robot_skills_dev` | `ros2-jazzy-robot-skills` | Full dev toolchain: BT.CPP, MoveIt2, Groot2, RealSense drivers |
+
+Both containers use **host networking** for ROS2 DDS discovery and share `/tmp/.X11-unix` for GUI forwarding. All packages are pre-built during `docker compose build` so startup is fast.
+
+The dev container bind-mounts `./src` from the host for development. On startup it runs a fast incremental rebuild (instant if source hasn't changed). After editing source files, run `cb` inside the container to rebuild.
 
 ## Package Structure
 
@@ -132,48 +163,26 @@ groot2 --no-sandbox &
 | `robot_skills_msgs` | — | ROS2 message/service/action definitions |
 | `robot_skill_atoms` | C++ | Primitive skill action servers |
 | `robot_bt_nodes` | C++ | BT.CPP v4 leaf node plugins |
-| `robot_skill_server` | Python | Orchestrator: SkillRegistry, TaskComposer, BtExecutor |
-| `robot_behaviors` | XML/Python | Pre-built behavior trees |
+| `robot_skill_server` | Python/C++ | Orchestrator: SkillRegistry, TaskComposer, BtExecutor |
+| `robot_behaviors` | XML | Pre-built behavior trees |
+| `robot_sim_config` | — | MoveIt2 + ros2_control config (URDF, SRDF, controllers) |
 
 ## Skill Atoms
 
 | Skill | Action Topic | Description |
 |-------|-------------|-------------|
-| `move_to_named_config` | `/skill_atoms/move_to_named_config` | Move to named joint config |
+| `move_to_named_config` | `/skill_atoms/move_to_named_config` | Move to named joint config (home, ready, stow, observe) |
 | `move_to_cartesian_pose` | `/skill_atoms/move_to_cartesian_pose` | Move EEF to 6-DOF pose |
-| `gripper_control` | `/skill_atoms/gripper_control` | Open/close/position gripper |
-| `detect_object` | `/skill_atoms/detect_object` | Detect objects with RealSense |
+| `gripper_control` | `/skill_atoms/gripper_control` | Open/close/position gripper with force control |
+| `detect_object` | `/skill_atoms/detect_object` | Detect objects with RealSense (stub — needs ML backend) |
 
 ## Pre-built Behaviors
 
 | Behavior | File | Description |
 |----------|------|-------------|
-| `move_to_home` | `trees/move_to_home.xml` | Safe home return |
-| `seed_collection` | `trees/seed_collection.xml` | Full seed pick sequence |
-| `pick_and_place` | `trees/pick_and_place.xml` | Generic pick+place with retry |
-
-## Self-Describing Skills for Planning
-
-Each skill exposes PDDL-compatible metadata via `GetSkillDescriptions`:
-- **preconditions**: what must be true before executing
-- **postconditions**: what is guaranteed after success
-- **effects**: PDDL-style world state changes
-- **constraints**: safety and operational limits
-- **parameters_schema**: JSON Schema for goal parameters
-
-This metadata feeds directly into:
-- LLM agent prompting (skill discovery)
-- PlanSys2 PDDL domain generation
-- Runtime precondition checking
-
-## Hardware Modes
-
-| Mode | MoveIt2 | RealSense | Hardware |
-|------|---------|-----------|---------|
-| `sim` | Fake controllers | Not required | None |
-| `real` | Real controllers | Required | Physical Meca500 |
-
-Switch with: `ros2 launch robot_skill_server skill_server.launch.py hardware_mode:=real`
+| `move_to_home` | `trees/move_to_home.xml` | Safe home return (open gripper + move to home config) |
+| `seed_collection` | `trees/seed_collection.xml` | Full seed pick sequence (uses detect_object) |
+| `pick_and_place` | `trees/pick_and_place.xml` | Generic pick+place with retry logic |
 
 ## Adding New Skills
 
@@ -182,14 +191,3 @@ Switch with: `ros2 launch robot_skill_server skill_server.launch.py hardware_mod
 3. Add a `YourSkillNode : BT::RosActionNode<YourAction>` in `robot_bt_nodes/src/`
 4. Register in `bt_runner.cpp` and `bt_nodes_plugin.cpp`
 5. The skill auto-appears in `GetSkillDescriptions` after `colcon build`
-
-## Dependencies
-
-- ROS2 Jazzy
-- BehaviorTree.CPP v4 (`ros-jazzy-behaviortree-cpp`)
-- BehaviorTree.ROS2 (`ros-jazzy-behaviortree-ros2`)
-- MoveIt2 (`ros-jazzy-moveit`)
-- ros2_control (`ros-jazzy-ros2-control`)
-- realsense2_camera (`ros-jazzy-realsense2-camera`)
-- PlanSys2 (`ros-jazzy-plansys2-*`) — optional, for PDDL task planning
-- Groot2 — download from https://www.behaviortree.dev/groot/

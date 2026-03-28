@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y \
 
 # behaviortree_ros2 is not released for Jazzy — build from source
 RUN mkdir -p /opt/bt_ros2_ws/src \
-    && git clone --branch 4.6.2 --depth 1 https://github.com/BehaviorTree/BehaviorTree.ROS2.git \
+    && git clone --branch 0.3.0 --depth 1 https://github.com/BehaviorTree/BehaviorTree.ROS2.git \
        /opt/bt_ros2_ws/src/behaviortree_ros2 \
     && bash -c "source /opt/ros/jazzy/setup.bash \
        && cd /opt/bt_ros2_ws \
@@ -63,14 +63,19 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     jsonschema \
     pyyaml \
     lxml \
-    rosboard
+    git+https://github.com/dheera/rosboard.git
 
-# Groot2 - BehaviorTree.CPP visualization IDE
-# Note: Groot2 is an AppImage; on macOS/X11 set --no-sandbox
-RUN wget -q https://github.com/BehaviorTree/Groot/releases/download/1.6.1/Groot2-v1.6.1-x86_64.AppImage \
+# Groot2 - BehaviorTree.CPP visualization IDE (v1.9.0)
+# AppImage needs FUSE or --appimage-extract-and-run; on Wayland/X11 may need --no-sandbox
+RUN wget -q https://pub-32cef6782a9e411e82222dee82af193e.r2.dev/Groot2-v1.9.0-x86_64.AppImage \
     -O /usr/local/bin/groot2 \
     && chmod +x /usr/local/bin/groot2 \
     || echo "WARNING: Groot2 download failed - install manually from https://www.behaviortree.dev/groot/"
+
+# FUSE is needed for AppImage execution (or use --appimage-extract-and-run)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fuse libfuse2t64 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Setup ccache for faster rebuilds
 ENV PATH="/usr/lib/ccache:$PATH"
@@ -87,8 +92,8 @@ RUN mkdir -p /home/ws/src && chown -R ros:ros /home/ws
 
 # Shell setup for ros user
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/ros/.bashrc \
-    && echo "source /home/ws/install/setup.bash 2>/dev/null || true" >> /home/ros/.bashrc \
     && echo "source /opt/bt_ros2_ws/install/setup.bash 2>/dev/null || true" >> /home/ros/.bashrc \
+    && echo "source /home/ws/install/setup.bash 2>/dev/null || true" >> /home/ros/.bashrc \
     && echo "export ROS_DOMAIN_ID=0" >> /home/ros/.bashrc \
     && echo "export RCUTILS_COLORIZED_OUTPUT=1" >> /home/ros/.bashrc \
     && echo "alias cb='cd /home/ws && colcon build --symlink-install'" >> /home/ros/.bashrc \
@@ -98,7 +103,19 @@ RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/ros/.bashrc \
 # Initialize rosdep
 RUN rosdep update --rosdistro jazzy
 
+# ── Copy source and build at image build time ─────────────────────────────────
+COPY --chown=ros:ros src/ /home/ws/src/
+
 WORKDIR /home/ws
 USER ros
 
-CMD ["/bin/bash"]
+RUN bash -c "source /opt/ros/jazzy/setup.bash && \
+    source /opt/bt_ros2_ws/install/setup.bash && \
+    colcon build --symlink-install \
+      --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+
+CMD ["bash", "-c", \
+    "source /opt/ros/jazzy/setup.bash && \
+     source /opt/bt_ros2_ws/install/setup.bash && \
+     source /home/ws/install/setup.bash && \
+     ros2 launch robot_skill_server skill_server.launch.py"]

@@ -1,18 +1,16 @@
-# Standalone Docker Compose for development without VS Code devcontainer.
+# Docker Compose for the Robot Skills Framework.
 #
 # Usage:
-#   docker compose up -d          # start dev container
-#   docker compose exec dev bash  # shell into it
-#
-#   docker compose --profile sim up -d   # also start sim container
-#
-# The .devcontainer/ setup remains available for VS Code users.
+#   docker compose build              # build images (includes colcon build)
+#   docker compose up -d              # start sim + dev containers
+#   docker compose exec dev bash      # shell into dev container
+#   docker compose down               # stop everything
 
 services:
   dev:
     build:
-      context: .devcontainer
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: .devcontainer/Dockerfile
     image: ros2-jazzy-robot-skills:latest
     container_name: ros2_robot_skills_dev
 
@@ -23,34 +21,29 @@ services:
     tty: true
 
     environment:
-      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - DISPLAY=${DISPLAY:-:1}
       - ROS_DOMAIN_ID=0
       - ROS_LOCALHOST_ONLY=0
       - RCUTILS_COLORIZED_OUTPUT=1
       - ROBOT_HARDWARE_MODE=${ROBOT_HARDWARE_MODE:-sim}
 
     volumes:
-      # Workspace source
-      - .:/home/ws:rw
+      # Mount source for development — edit on host, rebuild in container
+      - ./src:/home/ws/src:rw
       # X11 display socket
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      # Build cache (shared with devcontainer)
+      # Build cache persisted across container restarts
       - ros2_ccache:/home/ros/.ccache
-      - ros2_colcon_build:/home/ws/build
-      - ros2_colcon_install:/home/ws/install
-      - ros2_colcon_log:/home/ws/log
 
     user: ros
-    entrypoint: ["/bin/bash", "-c",
-      "sudo chown -R ros:ros /home/ws/build /home/ws/install /home/ws/log /home/ros/.ccache 2>/dev/null; exec bash"]
     depends_on:
       sim:
         condition: service_healthy
 
   sim:
     build:
-      context: .devcontainer
-      dockerfile: Dockerfile.sim
+      context: .
+      dockerfile: .devcontainer/Dockerfile.sim
     image: ros2-jazzy-robot-sim:latest
     container_name: ros2_robot_sim
     network_mode: host
@@ -60,36 +53,23 @@ services:
     tty: true
 
     environment:
-      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - DISPLAY=${DISPLAY:-:1}
       - ROS_DOMAIN_ID=0
       - ROS_LOCALHOST_ONLY=0
       - RCUTILS_COLORIZED_OUTPUT=1
 
     volumes:
-      - ./src:/home/ws/src:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - sim_colcon_build:/home/ws/build
-      - sim_colcon_install:/home/ws/install
-      - sim_colcon_log:/home/ws/log
 
     healthcheck:
       test: ["CMD-SHELL",
-             "source /opt/ros/jazzy/setup.bash && \
-              source /home/ws/install/setup.bash 2>/dev/null || true && \
-              ros2 node list 2>/dev/null | grep -q move_group && echo OK || exit 1"]
+             "bash -c 'source /opt/ros/jazzy/setup.bash && \
+              source /home/ws/install/setup.bash 2>/dev/null; \
+              ros2 node list 2>/dev/null | grep -q move_group'"]
       interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 60s
+      retries: 18
+      start_period: 30s
 
 volumes:
   ros2_ccache:
-  ros2_colcon_build:
-  ros2_colcon_install:
-  ros2_colcon_log:
-  sim_colcon_build:
-    name: ros2_robot_sim_build
-  sim_colcon_install:
-    name: ros2_robot_sim_install
-  sim_colcon_log:
-    name: ros2_robot_sim_log

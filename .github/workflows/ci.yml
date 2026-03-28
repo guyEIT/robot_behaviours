@@ -47,7 +47,7 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           mkdir -p /tmp/btros2_ws/src
           cd /tmp/btros2_ws/src
-          git clone --depth 1 --branch 4.6.2 https://github.com/BehaviorTree/BehaviorTree.ROS2.git
+          git clone --depth 1 --branch 0.3.0 https://github.com/BehaviorTree/BehaviorTree.ROS2.git
           cd /tmp/btros2_ws
           colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
           echo "source /tmp/btros2_ws/install/setup.bash" >> /etc/bash.bashrc

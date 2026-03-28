@@ -25,7 +25,6 @@ Usage:
 
 Launch arguments:
   use_rviz      : true/false (default: true)
-  rviz_config   : path to rviz config (default: built-in MoveIt config)
   log_level     : debug/info/warn/error (default: info)
 """
 
@@ -36,22 +35,17 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
-    ExecuteProcess,
     LogInfo,
-    RegisterEventHandler,
     TimerAction,
 )
 from launch.conditions import IfCondition
-from launch.event_handlers import OnProcessExit, OnProcessStart
 from launch.substitutions import (
-    Command,
-    FindExecutable,
     LaunchConfiguration,
     PathJoinSubstitution,
 )
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
+from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
@@ -74,48 +68,44 @@ def generate_launch_description():
     use_rviz = LaunchConfiguration("use_rviz")
     log_level = LaunchConfiguration("log_level")
 
-    # ── Robot description (URDF from xacro) ──────────────────────────────────
-    robot_description_content = Command([
-        FindExecutable(name="xacro"),
-        " ",
-        str(sim_pkg_path / "urdf" / "sim_robot.urdf.xacro"),
-    ])
-    robot_description = {
-        "robot_description": ParameterValue(robot_description_content, value_type=str)
-    }
+    # ── MoveIt2 configuration via MoveItConfigsBuilder ─────────────────────
+    moveit_config = (
+        MoveItConfigsBuilder(
+            robot_name="panda",
+            package_name="robot_sim_config",
+        )
+        .robot_description(file_path="urdf/sim_robot.urdf.xacro")
+        .robot_description_semantic(file_path="config/sim_robot.srdf")
+        .robot_description_kinematics(file_path="config/kinematics.yaml")
+        .joint_limits(file_path="config/joint_limits.yaml")
+        .trajectory_execution(file_path="config/moveit_controllers.yaml")
+        .planning_pipelines(
+            pipelines=["ompl"],
+            default_planning_pipeline="ompl",
+        )
+        .planning_scene_monitor(
+            publish_robot_description=True,
+            publish_robot_description_semantic=True,
+        )
+        .to_moveit_configs()
+    )
 
-    # ── Semantic robot description (SRDF) ─────────────────────────────────────
-    robot_description_semantic_content = (
-        sim_pkg_path / "config" / "sim_robot.srdf"
-    ).read_text()
-    robot_description_semantic = {
-        "robot_description_semantic": robot_description_semantic_content
-    }
-
-    # ── Load config files ─────────────────────────────────────────────────────
-    kinematics_yaml = str(sim_pkg_path / "config" / "kinematics.yaml")
-    joint_limits_yaml = str(sim_pkg_path / "config" / "joint_limits.yaml")
-    moveit_controllers_yaml = str(sim_pkg_path / "config" / "moveit_controllers.yaml")
-    ompl_planning_yaml = str(sim_pkg_path / "config" / "ompl_planning.yaml")
-    moveit_yaml = str(sim_pkg_path / "config" / "moveit.yaml")
     ros2_controllers_yaml = str(sim_pkg_path / "config" / "ros2_controllers.yaml")
 
     # ── Node 1: robot_state_publisher ─────────────────────────────────────────
-    # Publishes /robot_description parameter and TF transforms
     robot_state_publisher_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
         name="robot_state_publisher",
         output="screen",
         parameters=[
-            robot_description,
+            moveit_config.robot_description,
             {"use_sim_time": False},
         ],
         arguments=["--ros-args", "--log-level", log_level],
     )
 
     # ── Node 2: static_transform_publisher (world → panda_link0) ─────────────
-    # Required because the SRDF virtual joint connects world → panda_link0
     static_tf_node = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -125,14 +115,13 @@ def generate_launch_description():
     )
 
     # ── Node 3: ros2_control_node (controller_manager) ───────────────────────
-    # Loads the mock hardware system and manages all controllers
     ros2_control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
         name="controller_manager",
         output="screen",
         parameters=[
-            robot_description,
+            moveit_config.robot_description,
             ros2_controllers_yaml,
             {"use_sim_time": False},
         ],
@@ -140,8 +129,6 @@ def generate_launch_description():
     )
 
     # ── Node 4-6: Controller spawners ─────────────────────────────────────────
-    # Must spawn AFTER controller_manager is ready
-
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -179,34 +166,16 @@ def generate_launch_description():
     )
 
     # ── Node 7: MoveIt2 move_group ────────────────────────────────────────────
-    # The central motion planning server
     move_group_node = Node(
         package="moveit_ros_move_group",
         executable="move_group",
         name="move_group",
         output="screen",
-        parameters=[
-            robot_description,
-            robot_description_semantic,
-            {"robot_description_kinematics": {}},  # Will be loaded from kinematics_yaml
-            kinematics_yaml,
-            joint_limits_yaml,
-            moveit_controllers_yaml,
-            ompl_planning_yaml,
-            moveit_yaml,
-            {"use_sim_time": False},
-            {"publish_robot_description_semantic": True},
-            # Planning pipeline config
-            {
-                "planning_pipelines": ["ompl", "pilz_industrial_motion_planner"],
-                "default_planning_pipeline": "ompl",
-            },
-        ],
+        parameters=[moveit_config.to_dict()],
         arguments=["--ros-args", "--log-level", log_level],
     )
 
     # ── Node 8: RViz2 with MoveIt2 plugin ────────────────────────────────────
-    # Uses the default MoveIt2 RViz config if no custom one is provided
     rviz_config = PathJoinSubstitution([
         FindPackageShare("moveit_ros_visualization"),
         "motion_planning_panda",
@@ -222,30 +191,31 @@ def generate_launch_description():
         condition=IfCondition(use_rviz),
         arguments=["-d", rviz_config, "--ros-args", "--log-level", "warn"],
         parameters=[
-            robot_description,
-            robot_description_semantic,
-            kinematics_yaml,
-            {"use_sim_time": False},
+            moveit_config.robot_description,
+            moveit_config.robot_description_semantic,
+            moveit_config.robot_description_kinematics,
+            moveit_config.planning_pipelines,
+            moveit_config.joint_limits,
         ],
     )
 
     # ── Startup banner ────────────────────────────────────────────────────────
     startup_info = LogInfo(
         msg="""
-╔══════════════════════════════════════════════════════════════╗
-║         Robot Skills Framework - Simulation Server           ║
-╠══════════════════════════════════════════════════════════════╣
-║  Robot:     Franka Panda (mock hardware)                     ║
-║  Planning:  group='arm', configs: home/ready/stow/observe    ║
-║  MoveIt2:   /move_group/*                                    ║
-║  Arm:       /arm_controller/follow_joint_trajectory          ║
-║  Gripper:   /gripper_controller/gripper_cmd                  ║
-║                                                              ║
-║  Waiting for move_group to be ready (~30s)...                ║
-║                                                              ║
-║  Then launch skill_server in dev container:                  ║
-║    ros2 launch robot_skill_server skill_server.launch.py     ║
-╚══════════════════════════════════════════════════════════════╝"""
+\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
+\u2551         Robot Skills Framework - Simulation Server           \u2551
+\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
+\u2551  Robot:     Franka Panda (mock hardware)                     \u2551
+\u2551  Planning:  group='arm', configs: home/ready/stow/observe    \u2551
+\u2551  MoveIt2:   /move_group/*                                    \u2551
+\u2551  Arm:       /arm_controller/follow_joint_trajectory          \u2551
+\u2551  Gripper:   /gripper_controller/gripper_cmd                  \u2551
+\u2551                                                              \u2551
+\u2551  Waiting for move_group to be ready (~30s)...                \u2551
+\u2551                                                              \u2551
+\u2551  Then launch skill_server in dev container:                  \u2551
+\u2551    ros2 launch robot_skill_server skill_server.launch.py     \u2551
+\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"""
     )
 
     return LaunchDescription([
