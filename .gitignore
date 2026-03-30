@@ -47,3 +47,9 @@ htmlcov/
 
 # Environment
 .env
+
+# Pixi
+.pixi/
+
+# Host-local binaries (Groot2 etc.)
+.local/

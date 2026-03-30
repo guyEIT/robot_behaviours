@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_mock_skill_atoms</name>
+  <version>0.1.0</version>
+  <description>
+    Lightweight mock skill action servers for testing the orchestration pipeline
+    without MoveIt2, ros2_control, or physical hardware. Drop-in replacement for
+    robot_skill_atoms — same action interfaces, configurable delays, fake joint states.
+  </description>
+  <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>rclcpp_components</depend>
+  <depend>robot_skills_msgs</depend>
+  <!-- Uses a local copy of skill_base.hpp (no MoveIt2 dependency) -->
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>diagnostic_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

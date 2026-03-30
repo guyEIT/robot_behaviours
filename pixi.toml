@@ -1,0 +1,73 @@
+[workspace]
+name = "robot-skills"
+version = "0.1.0"
+description = "ROS2 Robot Skills Framework — pixi task runner for host-side tooling"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64"]
+
+[dependencies]
+nodejs = ">=20"
+
+[tasks]
+groot2-config = { cmd = "python3 scripts/groot2_manager.py config", description = "Print the managed Groot2 configuration for this platform" }
+
+# ── Dashboard ───────────────────────────────────────────────────────────────
+dashboard-dev = { cmd = "cd src/robot_dashboard/frontend && npx vite --host", description = "Run dashboard dev server with hot-reload" }
+dashboard-build = { cmd = "cd src/robot_dashboard/frontend && npm ci && npm run build", description = "Build dashboard frontend for production" }
+
+# ── Lite sim (no MoveIt2, single container) ──────────────────────────────────
+lite-build = { cmd = "docker compose -f docker-compose.lite.yml build", description = "Build lite sim image" }
+lite-up = { cmd = "docker compose -f docker-compose.lite.yml up -d", description = "Start lite sim container" }
+lite-down = { cmd = "docker compose -f docker-compose.lite.yml down", description = "Stop lite sim container" }
+lite-shell = { cmd = "docker exec -it ros2_robot_skills_lite bash", description = "Shell into lite container" }
+lite-logs = { cmd = "docker compose -f docker-compose.lite.yml logs -f", description = "Follow lite container logs" }
+lite-restart = { cmd = "docker compose -f docker-compose.lite.yml restart", description = "Restart lite container" }
+
+# ── Full sim (MoveIt2 + dev container) ───────────────────────────────────────
+full-build = { cmd = "docker compose build", description = "Build full sim images" }
+full-up = { cmd = "docker compose up -d", description = "Start full sim (MoveIt2 + dev)" }
+full-down = { cmd = "docker compose down", description = "Stop full sim" }
+full-shell = { cmd = "docker exec -it ros2_robot_skills_dev bash", description = "Shell into dev container" }
+full-logs = { cmd = "docker compose logs -f", description = "Follow full sim logs" }
+
+# ── Build & test (inside whichever container is running) ─────────────────────
+build = { cmd = """
+  if docker ps --format '{{.Names}}' | grep -q ros2_robot_skills_lite; then
+    docker exec ros2_robot_skills_lite bash -c \
+      'source /opt/ros/jazzy/setup.bash && cd /home/ws && colcon build --symlink-install'
+  elif docker ps --format '{{.Names}}' | grep -q ros2_robot_skills_dev; then
+    docker exec ros2_robot_skills_dev bash -c \
+      'source /opt/ros/jazzy/setup.bash && cd /home/ws && colcon build --symlink-install'
+  else
+    echo 'No running container found. Run: pixi run lite-up (or full-up)' && exit 1
+  fi
+""", description = "Build all packages in running container" }
+
+test = { cmd = """
+  if docker ps --format '{{.Names}}' | grep -q ros2_robot_skills_lite; then
+    docker exec ros2_robot_skills_lite bash -c \
+      'source /opt/ros/jazzy/setup.bash && source /home/ws/install/setup.bash && \
+       cd /home/ws && colcon test && colcon test-result --verbose'
+  elif docker ps --format '{{.Names}}' | grep -q ros2_robot_skills_dev; then
+    docker exec ros2_robot_skills_dev bash -c \
+      'source /opt/ros/jazzy/setup.bash && source /home/ws/install/setup.bash && \
+       cd /home/ws && colcon test && colcon test-result --verbose'
+  else
+    echo 'No running container found. Run: pixi run lite-up (or full-up)' && exit 1
+  fi
+""", description = "Run all tests in running container" }
+
+[target.osx-arm64.tasks]
+groot2-download = { cmd = "python3 scripts/groot2_manager.py ensure --platform-key macos --force", description = "Download or refresh Groot2 for macOS" }
+groot2 = { cmd = "python3 scripts/groot2_manager.py run --platform-key macos", description = "Ensure and launch Groot2 on macOS" }
+groot2-path = { cmd = "python3 scripts/groot2_manager.py path --platform-key macos", description = "Print the managed Groot2 path on macOS" }
+
+[target.osx-64.tasks]
+groot2-download = { cmd = "python3 scripts/groot2_manager.py ensure --platform-key macos --force", description = "Download or refresh Groot2 for macOS" }
+groot2 = { cmd = "python3 scripts/groot2_manager.py run --platform-key macos", description = "Ensure and launch Groot2 on macOS" }
+groot2-path = { cmd = "python3 scripts/groot2_manager.py path --platform-key macos", description = "Print the managed Groot2 path on macOS" }
+
+[target.linux-64.tasks]
+groot2-download = { cmd = "python3 scripts/groot2_manager.py ensure --platform-key linux --force", description = "Download or refresh Groot2 for Linux" }
+groot2 = { cmd = "python3 scripts/groot2_manager.py run --platform-key linux", description = "Ensure and launch Groot2 on Linux" }
+groot2-path = { cmd = "python3 scripts/groot2_manager.py path --platform-key linux", description = "Print the managed Groot2 path on Linux" }

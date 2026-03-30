@@ -38,6 +38,8 @@ from rclpy.node import Node
 from diagnostic_updater import Updater
 from diagnostic_msgs.msg import DiagnosticStatus
 
+from std_msgs.msg import String
+
 from robot_skills_msgs.action import ExecuteBehaviorTree
 from robot_skills_msgs.msg import TaskState
 
@@ -76,6 +78,12 @@ class BtExecutor(Node):
         self._task_state_pub = self.create_publisher(
             TaskState, "/skill_server/task_state", 10
         )
+        # Publish active BT XML for the web dashboard (latched via transient_local)
+        from rclpy.qos import QoSProfile, DurabilityPolicy
+        latched_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self._active_bt_xml_pub = self.create_publisher(
+            String, "/skill_server/active_bt_xml", latched_qos
+        )
 
         self._current_task_id: Optional[str] = None
         self._cancel_requested = threading.Event()
@@ -110,7 +118,7 @@ class BtExecutor(Node):
         """Execute a behavior tree and publish feedback."""
         goal = goal_handle.request
         result = ExecuteBehaviorTree.Result()
-        task_id = str(uuid.uuid4())[:8]
+        task_id = "t" + str(uuid.uuid4()).replace("-", "")[:8]
         self._current_task_id = task_id
         self._cancel_requested.clear()
         self._task_started_at = self.get_clock().now().to_msg()
@@ -118,6 +126,9 @@ class BtExecutor(Node):
         self.get_logger().info(
             f"Executing BT '{goal.tree_name}' (id={task_id})"
         )
+
+        # Publish active BT XML for the web dashboard
+        self._active_bt_xml_pub.publish(String(data=goal.tree_xml))
 
         # Publish initial task state
         self._publish_task_state(
@@ -230,10 +241,21 @@ class BtExecutor(Node):
                         if line.strip():
                             self.get_logger().debug(f"bt_runner: {line}")
                 if stderr:
+                    import re
+                    _ansi_re = re.compile(r"\x1b\[[0-9;]*m")
                     lines = stderr.splitlines()
                     for line in lines[-50:]:  # tail — most relevant context
-                        if line.strip():
-                            self.get_logger().error(f"bt_runner stderr: {line}")
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        clean = _ansi_re.sub("", stripped)
+                        # ROS2 logs go to stderr; route by level
+                        if "[ERROR]" in clean:
+                            self.get_logger().error(f"bt_runner: {clean}")
+                        elif "[WARN]" in clean:
+                            self.get_logger().warning(f"bt_runner: {clean}")
+                        else:
+                            self.get_logger().info(f"bt_runner: {clean}")
                     if len(lines) > 50:
                         self.get_logger().warning(
                             f"bt_runner stderr had {len(lines)} lines; showing last 50"
@@ -262,6 +284,8 @@ class BtExecutor(Node):
             feedback.status_message = f"Completed: {final_status}"
             goal_handle.publish_feedback(feedback)
 
+            # Keep the last BT XML visible — it will be replaced on next execution
+
             # Publish final task state
             self._publish_task_state(
                 task_id=task_id,
@@ -285,6 +309,24 @@ class BtExecutor(Node):
             goal_handle.succeed(result)
             return result
 
+        except Exception as e:
+            # Publish error state if _execute_bt crashes unexpectedly
+            self.get_logger().error(f"BT execution crashed: {e}")
+            elapsed_total = time.time() - start_time
+            self._publish_task_state(
+                task_id=task_id,
+                task_name=goal.tree_name,
+                status="FAILURE",
+                current_node="",
+                error_message=str(e),
+            )
+            result.success = False
+            result.final_status = "ERROR"
+            result.total_execution_time_sec = elapsed_total
+            result.message = f"BT execution crashed: {e}"
+            self._last_task_result = "ERROR"
+            goal_handle.abort(result)
+            return result
         finally:
             # Clean up temp file
             Path(xml_path).unlink(missing_ok=True)

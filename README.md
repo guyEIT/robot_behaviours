@@ -107,17 +107,29 @@ ros2 service call /skill_server/compose_task \
 
 ### 6. Groot2 (BT monitoring)
 
-Groot2 v1.9.0 is pre-installed in the dev container.
+On the host, Pixi manages a platform-specific Groot2 binary under `.local/bin`.
+It checks the configured path first and only downloads when the binary is
+missing. The download metadata lives in `config/groot2.json`.
+
+Note: the official download page may not provide a macOS installer. If that
+applies, place your own `groot2` binary at `.local/bin/groot2` and `pixi run groot2`
+will use it.
 
 ```bash
-docker exec -it ros2_robot_skills_dev bash
+# Show the resolved host config for your platform
+pixi run groot2-config
 
-# Launch Groot2 (needs --appimage-extract-and-run inside Docker)
-groot2 --appimage-extract-and-run &
+# Download or refresh the host-native Groot2 binary
+pixi run groot2-download
 
-# In Groot2: Connect → ZMQ Server → Port 1666
-# You'll see the live behavior tree with node status colors
+# Launch Groot2 on the host (auto-downloads if missing)
+pixi run groot2
+
+# Optional: print the managed binary path
+pixi run groot2-path
 ```
+
+In Groot2: `Connect -> ZMQ Server -> Port 1666`.
 
 ### 7. RViz2 (robot visualization)
 

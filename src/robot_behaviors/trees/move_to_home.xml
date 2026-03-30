@@ -16,8 +16,7 @@
     <Sequence name="move_to_home">
       <!-- Safety: open gripper before moving home -->
       <GripperControl name="open_gripper"
-                      command="open"
-                      speed="0.5"/>
+                      command="open"/>
 
       <!-- Move to home configuration -->
       <MoveToNamedConfig name="go_home"

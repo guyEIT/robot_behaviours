@@ -85,7 +85,6 @@ def generate_launch_description():
     skill_server_node = Node(
         package="robot_skill_server",
         executable="skill_server_node",
-        name="skill_server",
         output="screen",
         arguments=["--ros-args", "--log-level", log_level],
         parameters=[

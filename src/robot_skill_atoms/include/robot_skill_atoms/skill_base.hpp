@@ -62,6 +62,7 @@ public:
     // Declare common parameters
     this->declare_parameter("skill_registry_service", "/skill_server/register_skill");
     this->declare_parameter("registration_timeout_sec", 5.0);
+    this->declare_parameter("registration_refresh_sec", 30.0);
   }
 
   /**
@@ -90,6 +91,16 @@ public:
       });
 
     registerWithRegistry();
+
+    // Keep the registry heartbeat fresh so the orchestrator can flag crashed atoms.
+    const auto refresh_sec = this->get_parameter("registration_refresh_sec").as_double();
+    reg_refresh_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(static_cast<int>(refresh_sec * 1000.0)),
+      [this]() {
+        if (registered_) {
+          sendRegistrationRequest();
+        }
+      });
   }
 
   /**
@@ -179,18 +190,30 @@ protected:
       return;
     }
 
+    reg_client_ = client;
+    sendRegistrationRequest();
+  }
+
+  void sendRegistrationRequest()
+  {
     auto request = std::make_shared<robot_skills_msgs::srv::RegisterSkill::Request>();
     request->description = getDescription();
     request->description.action_server_name = action_name_;
 
-    auto future = client->async_send_request(request);
+    auto future = reg_client_->async_send_request(request);
     if (rclcpp::spin_until_future_complete(
           this->get_node_base_interface(), future,
           std::chrono::seconds(3)) == rclcpp::FutureReturnCode::SUCCESS)
     {
       if (future.get()->success) {
-        RCLCPP_INFO(this->get_logger(), "Skill '%s' registered successfully",
-          this->get_name());
+        if (!registered_) {
+          RCLCPP_INFO(this->get_logger(), "Skill '%s' registered successfully",
+            this->get_name());
+        } else {
+          RCLCPP_DEBUG(this->get_logger(), "Skill '%s' heartbeat refreshed",
+            this->get_name());
+        }
+        registered_ = true;
       } else {
         RCLCPP_WARN(this->get_logger(), "Skill '%s' registration failed: %s",
           this->get_name(), future.get()->message.c_str());
@@ -283,6 +306,9 @@ private:
 
   std::mutex threads_mutex_;
   std::vector<TrackedThread> execution_threads_;
+  rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedPtr reg_client_;
+  rclcpp::TimerBase::SharedPtr reg_refresh_timer_;
+  bool registered_{false};
 };
 
 }  // namespace robot_skill_atoms

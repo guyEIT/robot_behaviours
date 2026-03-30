@@ -21,6 +21,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -137,15 +138,21 @@ int main(int argc, char ** argv)
   ros_params.server_timeout = std::chrono::seconds(30);
   ros_params.wait_for_server_timeout = std::chrono::seconds(10);
 
-  // Register robot BT nodes directly with proper ROS node params
+  // Register robot BT nodes with their action server names
+  auto make_params = [&](const std::string& action_name) {
+    auto p = ros_params;
+    p.default_port_value = action_name;
+    return p;
+  };
+
   factory.registerNodeType<robot_bt_nodes::MoveToNamedConfigNode>(
-    "MoveToNamedConfig", ros_params);
+    "MoveToNamedConfig", make_params("/skill_atoms/move_to_named_config"));
   factory.registerNodeType<robot_bt_nodes::MoveToCartesianPoseNode>(
-    "MoveToCartesianPose", ros_params);
+    "MoveToCartesianPose", make_params("/skill_atoms/move_to_cartesian_pose"));
   factory.registerNodeType<robot_bt_nodes::GripperControlNode>(
-    "GripperControl", ros_params);
+    "GripperControl", make_params("/skill_atoms/gripper_control"));
   factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
-    "DetectObject", ros_params);
+    "DetectObject", make_params("/skill_atoms/detect_object"));
 
   // ComputePreGraspPose (synchronous - no action server needed)
   factory.registerNodeType<ComputePreGraspPose>("ComputePreGraspPose");
@@ -193,31 +200,41 @@ int main(int argc, char ** argv)
   const auto tick_interval = std::chrono::duration<double>(1.0 / cfg.tick_rate_hz);
   BT::NodeStatus status = BT::NodeStatus::RUNNING;
 
-  // Spin ROS2 in background thread
+  // Spin ROS2 in background thread for DDS communication.
+  // BT::RosActionNode also has an internal executor, but the global spin
+  // is needed for parameter events and DDS discovery.
   auto ros_thread = std::thread([&node]() {
     rclcpp::spin(node);
   });
 
+  // Count total action nodes and track completed/failed across ticks
+  int total_actions = 0;
+  for (const auto & subtree : tree.subtrees) {
+    for (const auto & bt_node : subtree->nodes) {
+      if (bt_node->type() == BT::NodeType::ACTION) {
+        total_actions++;
+      }
+    }
+  }
+
+  // Track which nodes have completed/failed (BT.CPP resets node status
+  // after a sequence moves past them, so we must track cumulatively)
+  std::set<std::string> ever_completed, ever_failed;
+  std::string last_running_node;
+
   while (rclcpp::ok() && status == BT::NodeStatus::RUNNING) {
-    status = tree.tickWhileRunning(
-      std::chrono::duration_cast<std::chrono::milliseconds>(tick_interval));
+    status = tree.tickExactlyOnce();
 
-    // Compute progress from tree node statuses
-    int total_actions = 0, completed = 0, failed = 0;
+    // Scan nodes for current state
     std::string running_node_name;
-    std::vector<std::string> completed_names, failed_names;
-
     for (const auto & subtree : tree.subtrees) {
       for (const auto & bt_node : subtree->nodes) {
         if (bt_node->type() == BT::NodeType::ACTION) {
-          total_actions++;
           auto node_status = bt_node->status();
           if (node_status == BT::NodeStatus::SUCCESS) {
-            completed++;
-            completed_names.push_back(bt_node->name());
+            ever_completed.insert(bt_node->name());
           } else if (node_status == BT::NodeStatus::FAILURE) {
-            failed++;
-            failed_names.push_back(bt_node->name());
+            ever_failed.insert(bt_node->name());
           } else if (node_status == BT::NodeStatus::RUNNING) {
             running_node_name = bt_node->name();
           }
@@ -225,26 +242,49 @@ int main(int argc, char ** argv)
       }
     }
 
+    if (!running_node_name.empty()) {
+      last_running_node = running_node_name;
+    }
+
     // Publish progress
     robot_skills_msgs::msg::TaskState state_msg;
     state_msg.task_id = cfg.task_id;
     state_msg.status = "RUNNING";
-    state_msg.current_skill = running_node_name;
-    state_msg.current_bt_node = running_node_name;
+    state_msg.current_skill = running_node_name.empty() ? last_running_node : running_node_name;
+    state_msg.current_bt_node = state_msg.current_skill;
     state_msg.progress = total_actions > 0
-      ? static_cast<double>(completed) / static_cast<double>(total_actions)
+      ? static_cast<double>(ever_completed.size()) / static_cast<double>(total_actions)
       : 0.0;
-    state_msg.completed_skills = completed_names;
-    state_msg.failed_skills = failed_names;
+    state_msg.completed_skills.assign(ever_completed.begin(), ever_completed.end());
+    state_msg.failed_skills.assign(ever_failed.begin(), ever_failed.end());
     state_msg.updated_at = node->now();
     status_pub->publish(state_msg);
 
     RCLCPP_DEBUG(node->get_logger(),
-      "Tick: progress=%.0f%% running='%s' completed=%d/%d failed=%d",
-      state_msg.progress * 100.0, running_node_name.c_str(),
-      completed, total_actions, failed);
+      "Tick: progress=%.0f%% running='%s' completed=%zu/%d failed=%zu",
+      state_msg.progress * 100.0, state_msg.current_skill.c_str(),
+      ever_completed.size(), total_actions, ever_failed.size());
 
-    std::this_thread::sleep_for(tick_interval);
+    if (status == BT::NodeStatus::RUNNING) {
+      std::this_thread::sleep_for(tick_interval);
+    }
+  }
+
+  // Publish final status
+  {
+    robot_skills_msgs::msg::TaskState final_msg;
+    final_msg.task_id = cfg.task_id;
+    final_msg.status = (status == BT::NodeStatus::SUCCESS) ? "SUCCESS" : "FAILURE";
+    final_msg.current_skill = last_running_node;
+    final_msg.current_bt_node = last_running_node;
+    final_msg.progress = (status == BT::NodeStatus::SUCCESS) ? 1.0 :
+      (total_actions > 0 ? static_cast<double>(ever_completed.size()) / total_actions : 0.0);
+    final_msg.completed_skills.assign(ever_completed.begin(), ever_completed.end());
+    final_msg.failed_skills.assign(ever_failed.begin(), ever_failed.end());
+    final_msg.updated_at = node->now();
+    status_pub->publish(final_msg);
+    // Small delay to ensure the message is sent before shutdown
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
   // Halt the tree cleanly

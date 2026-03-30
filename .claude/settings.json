@@ -4,7 +4,14 @@
       "Bash(xhost)",
       "Bash(xdpyinfo)",
       "Bash(DISPLAY=:1 xhost +local:)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "WebFetch(domain:www.behaviortree.dev)",
+      "WebFetch(domain:robostack.github.io)",
+      "Bash(curl -s http://localhost:8080/)",
+      "Bash(npx tsc:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/guy.burroughes/.claude/plans"
     ]
   }
 }

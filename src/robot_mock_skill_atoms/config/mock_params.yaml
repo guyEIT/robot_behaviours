@@ -1,0 +1,43 @@
+# Mock Skill Atoms Configuration
+# Configurable delays and behavior for lite simulation mode.
+
+mock_move_to_named_config_skill:
+  ros__parameters:
+    move_to_named_config_delay: 1.0
+    default_planning_group: "arm"
+    default_velocity_scaling: 0.3
+    allowed_named_configs: ["home", "ready", "stow", "observe"]
+
+mock_move_to_cartesian_pose_skill:
+  ros__parameters:
+    move_to_cartesian_pose_delay: 1.5
+    default_planning_group: "arm"
+    default_velocity_scaling: 0.3
+    workspace_min_x: -0.6
+    workspace_max_x: 0.6
+    workspace_min_y: -0.6
+    workspace_max_y: 0.6
+    workspace_min_z: -0.05
+    workspace_max_z: 0.7
+
+mock_gripper_control_skill:
+  ros__parameters:
+    gripper_control_delay: 0.5
+    open_position: 0.085
+    closed_position: 0.0
+    default_force_limit: 50.0
+    simulate_grasp: true
+
+mock_detect_object_skill:
+  ros__parameters:
+    detect_object_delay: 0.8
+    mock_detection_x: 0.4
+    mock_detection_y: 0.0
+    mock_detection_z: 0.1
+    mock_detection_class: "seed"
+    mock_detection_confidence: 0.95
+
+mock_joint_state_publisher:
+  ros__parameters:
+    publish_rate: 50.0
+    interpolation_speed: 1.0

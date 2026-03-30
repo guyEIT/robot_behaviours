@@ -119,13 +119,18 @@ class SkillRegistry(Node):
         desc.created_at = now
         desc.updated_at = now
         with self._lock:
+            existing = self._skills.get(desc.name)
             self._skills[desc.name] = desc
             self._skill_last_seen[desc.name] = time.monotonic()
             self._stale_skills.discard(desc.name)
-            self.get_logger().info(
+            message = (
                 f"Registered skill atom: '{desc.name}' "
                 f"[{desc.category}] -> {desc.action_server_name}"
             )
+            if existing is None:
+                self.get_logger().info(message)
+            else:
+                self.get_logger().debug(message)
         self._publish_skill_list()
         response.success = True
         response.message = f"Skill '{desc.name}' registered"

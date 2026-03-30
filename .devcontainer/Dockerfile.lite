@@ -1,0 +1,105 @@
+# Lightweight simulation container for the Robot Skills Framework.
+#
+# NO MoveIt2, NO ros2_control, NO RealSense, NO RViz, NO Gazebo.
+# Runs mock skill atoms with configurable delays for testing the
+# orchestration pipeline (SkillRegistry, TaskComposer, BtExecutor).
+#
+# Image size: ~2.5 GB (vs ~8 GB for full sim)
+# Startup time: ~5 seconds (vs ~60 seconds for full sim)
+
+FROM ros:jazzy-ros-base
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── Install only what the orchestration pipeline needs ────────────────────────
+RUN apt-get update && apt-get install -y \
+    # Behavior Trees
+    ros-jazzy-behaviortree-cpp \
+    # TF2 (for static transform publisher)
+    ros-jazzy-tf2-ros \
+    ros-jazzy-tf2-geometry-msgs \
+    # Diagnostics
+    ros-jazzy-diagnostic-updater \
+    ros-jazzy-diagnostic-aggregator \
+    ros-jazzy-diagnostic-msgs \
+    # Python deps for skill_server
+    python3-pip \
+    python3-lxml \
+    python3-yaml \
+    python3-jsonschema \
+    # Build tools
+    python3-colcon-common-extensions \
+    ros-jazzy-ament-cmake \
+    ros-jazzy-ament-cmake-python \
+    ros-jazzy-rosidl-default-generators \
+    # Required by behaviortree_ros2 build
+    ros-jazzy-generate-parameter-library \
+    libboost-dev \
+    # rosbridge (WebSocket bridge for web dashboard)
+    ros-jazzy-rosbridge-suite \
+    # Robot meshes for web visualization
+    ros-jazzy-moveit-resources-panda-description \
+    # Utilities
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Patch rosbridge QoS: default to RELIABLE so /tf works ────────────────────
+# rosbridge defaults to BEST_EFFORT which can't receive from RELIABLE publishers
+# like robot_state_publisher's /tf topic. Fix: start RELIABLE, only downgrade
+# when a publisher explicitly requires BEST_EFFORT.
+RUN find /opt/ros/jazzy -path '*/rosbridge_library/internal/subscribers.py' \
+      -exec sed -i 's/reliability=ReliabilityPolicy.BEST_EFFORT/reliability=ReliabilityPolicy.RELIABLE/' {} \; \
+    # Fix rosbridge action client crash: the handler is deleted immediately after
+    # run() completes, destroying the action client while the executor still has its
+    # event handlers in the wait set. Add a brief sleep before cleanup.
+    && find /opt/ros/jazzy -path '*/rosbridge_library/capabilities/send_action_goal.py' \
+      -exec sed -i '/client_handler.run()/a\\n        import time; time.sleep(0.1)' {} \;
+
+# ── behaviortree_ros2 (not released for Jazzy — build from source) ───────────
+RUN mkdir -p /opt/bt_ros2_ws/src \
+    && git clone --branch humble --depth 1 \
+       https://github.com/BehaviorTree/BehaviorTree.ROS2.git \
+       /opt/bt_ros2_ws/src/behaviortree_ros2 \
+    && bash -c "source /opt/ros/jazzy/setup.bash \
+       && cd /opt/bt_ros2_ws \
+       && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release" \
+    && rm -rf /opt/bt_ros2_ws/build /opt/bt_ros2_ws/log
+
+# ── Install rosboard for web monitoring ──────────────────────────────────────
+RUN pip3 install --break-system-packages --no-cache-dir \
+    git+https://github.com/dheera/rosboard.git || true
+
+# ── Create workspace ─────────────────────────────────────────────────────────
+RUN mkdir -p /home/ws/src
+WORKDIR /home/ws
+
+# ── Copy source and build ────────────────────────────────────────────────────
+COPY src/ /home/ws/src/
+
+# Build only lite-mode packages (no robot_skill_atoms — it needs MoveIt2)
+RUN bash -c "source /opt/ros/jazzy/setup.bash && \
+    source /opt/bt_ros2_ws/install/setup.bash && \
+    colcon build --symlink-install \
+      --packages-select \
+        robot_skills_msgs \
+        robot_sim_config \
+        robot_mock_skill_atoms \
+        robot_bt_nodes \
+        robot_skill_server \
+        robot_behaviors \
+        robot_dashboard"
+
+# ── Copy robot meshes to www for browser access ─────────────────────────────
+RUN mkdir -p /home/ws/install/robot_dashboard/share/robot_dashboard/www/meshes/panda && \
+    cp /opt/ros/jazzy/share/moveit_resources_panda_description/meshes/collision/*.stl \
+       /home/ws/install/robot_dashboard/share/robot_dashboard/www/meshes/panda/ 2>/dev/null; \
+    cp /opt/ros/jazzy/share/moveit_resources_panda_description/meshes/visual/*.dae \
+       /home/ws/install/robot_dashboard/share/robot_dashboard/www/meshes/panda/ 2>/dev/null; \
+    ls /home/ws/install/robot_dashboard/share/robot_dashboard/www/meshes/panda/ || true
+
+# ── Default command ──────────────────────────────────────────────────────────
+CMD ["bash", "-c", \
+     "source /opt/ros/jazzy/setup.bash && \
+      source /opt/bt_ros2_ws/install/setup.bash && \
+      source /home/ws/install/setup.bash && \
+      ros2 launch robot_skill_server skill_server_lite.launch.py"]

@@ -1,0 +1,24 @@
+{
+  "install": {
+    "dir": ".local/bin"
+  },
+  "platform": {
+    "macos": {
+      "filename": "groot2",
+      "url": null,
+      "download_page": "https://www.behaviortree.dev/groot/",
+      "note": "The official Groot2 download page currently lists Windows and Linux installers, but no macOS installer.",
+      "launch": [
+        "{install_dir}/{filename}"
+      ]
+    },
+    "linux": {
+      "filename": "groot2.AppImage",
+      "url": "https://s3.us-west-1.amazonaws.com/download.behaviortree.dev/groot2/groot2-linux-installer",
+      "launch": [
+        "{install_dir}/{filename}",
+        "--appimage-extract-and-run"
+      ]
+    }
+  }
+}

@@ -58,8 +58,7 @@
 
       <!-- ── Phase 4: Open gripper ──────────────────────────────────────── -->
       <GripperControl name="open_for_grasp"
-                      command="open"
-                      speed="0.8"/>
+                      command="open"/>
 
       <!-- ── Phase 5: Move to pregrasp pose ────────────────────────────── -->
       <MoveToCartesianPose name="move_to_pregrasp"

@@ -1,0 +1,39 @@
+# Docker Compose for Lite Simulation Mode.
+#
+# Single container, no MoveIt2, no ros2_control.
+# Mock skill atoms with configurable delays for testing
+# the orchestration pipeline.
+#
+# Usage:
+#   pixi run lite-build    # build image
+#   pixi run lite-up       # start container
+#   pixi run lite-shell    # shell in
+#   pixi run lite-logs     # follow logs
+#   pixi run lite-down     # stop
+
+services:
+  lite:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile.lite
+    image: ros2-jazzy-robot-skills-lite:latest
+    container_name: ros2_robot_skills_lite
+
+    network_mode: host
+    ipc: host
+
+    stdin_open: true
+    tty: true
+
+    environment:
+      - ROS_DOMAIN_ID=0
+      - ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - RCUTILS_COLORIZED_OUTPUT=1
+      - ROBOT_HARDWARE_MODE=lite
+
+    volumes:
+      # Mount source for development — edit on host, rebuild in container
+      - ./src:/home/ws/src:rw
+
+    # NO depends_on, NO healthcheck wait — starts immediately
