@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useTaskStore } from "../../stores/task-store";
 import BtTreeGraph from "./BtTreeGraph";
 import BtLegend from "./BtLegend";
 import BtXmlViewer from "./BtXmlViewer";
-import { TreePine } from "lucide-react";
+import { TreePine, Locate } from "lucide-react";
+import clsx from "clsx";
 
 // Demo tree for when no task is running
 const DEMO_XML = `<root BTCPP_format="4" main_tree_to_execute="Demo">
@@ -18,6 +20,7 @@ export default function BtTreePanel() {
   const taskState = useTaskStore((s) => s.taskState);
   const activeBtXml = useTaskStore((s) => s.activeBtXml);
   const taskHistory = useTaskStore((s) => s.taskHistory);
+  const [followActive, setFollowActive] = useState(true);
 
   const xml = activeBtXml || DEMO_XML;
   const activeNodeName = taskState?.status === "RUNNING" ? taskState.current_bt_node : null;
@@ -53,7 +56,20 @@ export default function BtTreePanel() {
           </div>
         )}
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setFollowActive(!followActive)}
+            className={clsx(
+              "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+              followActive
+                ? "bg-blue-500/20 text-blue-400"
+                : "text-gray-500 hover:text-gray-300"
+            )}
+            title="Auto-follow active node during execution"
+          >
+            <Locate className="w-3 h-3" />
+            Follow
+          </button>
           <BtLegend />
         </div>
       </div>
@@ -69,7 +85,7 @@ export default function BtTreePanel() {
             </div>
           </div>
         )}
-        <BtTreeGraph xml={xml} activeNodeName={activeNodeName} />
+        <BtTreeGraph xml={xml} activeNodeName={activeNodeName} followActive={followActive} />
       </div>
 
       {/* XML viewer */}

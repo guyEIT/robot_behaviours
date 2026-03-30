@@ -86,8 +86,40 @@ function computeWorldPoses(frames: Map<string, FrameData>): Map<string, WorldPos
   return worldPoses;
 }
 
+/**
+ * Static transforms from the URDF's fixed joints. These are published on
+ * /tf_static with TRANSIENT_LOCAL durability, but rosbridge often misses
+ * them due to subscription timing. Seed them here as fallback.
+ */
+const STATIC_FRAMES: FrameData[] = [
+  {
+    parent: "world", child: "panda_link0",
+    translation: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: 0, w: 1 },
+    lastUpdate: 0,
+  },
+  {
+    parent: "panda_link7", child: "panda_link8",
+    translation: { x: 0, y: 0, z: 0.107 },
+    rotation: { x: 0, y: 0, z: 0, w: 1 },
+    lastUpdate: 0,
+  },
+  {
+    parent: "panda_link8", child: "panda_hand",
+    translation: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: -0.3826834, w: 0.9238795 },
+    lastUpdate: 0,
+  },
+];
+
+function buildInitialFrames(): Map<string, FrameData> {
+  const m = new Map<string, FrameData>();
+  for (const f of STATIC_FRAMES) m.set(f.child, f);
+  return m;
+}
+
 export default function TfFrameViewer() {
-  const [frames, setFrames] = useState<Map<string, FrameData>>(new Map());
+  const [frames, setFrames] = useState<Map<string, FrameData>>(buildInitialFrames);
   const [showLabels, setShowLabels] = useState(true);
   const [showTree, setShowTree] = useState(true);
   const [showMeshes, setShowMeshes] = useState(true);

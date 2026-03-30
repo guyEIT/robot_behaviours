@@ -6,6 +6,7 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type Node,
   type Edge,
 } from "@xyflow/react";
@@ -23,9 +24,12 @@ const edgeTypes = { btEdge: BtEdgeComponent };
 interface Props {
   xml: string;
   activeNodeName: string | null;
+  followActive?: boolean;
 }
 
-export default function BtTreeGraph({ xml, activeNodeName }: Props) {
+function BtTreeGraphInner({ xml, activeNodeName, followActive = false }: Props) {
+  const { setCenter } = useReactFlow();
+
   const { layoutNodes, layoutEdges, nameIndex } = useMemo(() => {
     try {
       const parsed = parseBtXml(xml);
@@ -70,7 +74,20 @@ export default function BtTreeGraph({ xml, activeNodeName }: Props) {
         animated: edge.target === activeNodeId,
       }))
     );
-  }, [activeNodeName, nameIndex, setNodes, setEdges]);
+
+    // Follow the active node
+    if (followActive && activeNodeName) {
+      const activeNodeId = nameIndex.get(activeNodeName);
+      if (activeNodeId) {
+        const activeNode = nodes.find((n) => n.id === activeNodeId);
+        if (activeNode?.position) {
+          const x = activeNode.position.x + (activeNode.measured?.width ?? 120) / 2;
+          const y = activeNode.position.y + (activeNode.measured?.height ?? 40) / 2;
+          setCenter(x, y, { duration: 300, zoom: 1.2 });
+        }
+      }
+    }
+  }, [activeNodeName, nameIndex, setNodes, setEdges, followActive, nodes, setCenter]);
 
   // Re-layout when XML changes
   useEffect(() => {
@@ -105,4 +122,8 @@ export default function BtTreeGraph({ xml, activeNodeName }: Props) {
       />
     </ReactFlow>
   );
+}
+
+export default function BtTreeGraph(props: Props) {
+  return <BtTreeGraphInner {...props} />;
 }
