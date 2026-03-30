@@ -341,11 +341,9 @@ function StlMesh({ url, rpy }: { url: string; rpy?: [number, number, number] }) 
   return (
     <mesh geometry={geometry} rotation={euler}>
       <meshStandardMaterial
-        color="#7c8db5"
-        transparent
-        opacity={0.6}
-        roughness={0.6}
-        metalness={0.2}
+        color="#8899bb"
+        roughness={0.5}
+        metalness={0.3}
       />
     </mesh>
   );

@@ -153,18 +153,26 @@ export const useLayoutStore = create<LayoutStoreState>()(
       },
     }),
     {
-      name: "robot-dashboard-layout",
+      name: "robot-dashboard-layout-v2",
       partialize: (state) => ({
         layout: state.layout,
         activePresetName: state.activePresetName,
         savedLayouts: state.savedLayouts,
       }),
       merge: (persisted: any, current) => {
-        if (persisted?.layout) {
-          const validated = validateLayout(persisted.layout, VALID_PANEL_IDS);
-          if (validated) {
-            return { ...current, ...persisted, layout: validated };
+        try {
+          if (
+            persisted?.layout &&
+            typeof persisted.layout === "object" &&
+            ("type" in persisted.layout)
+          ) {
+            const validated = validateLayout(persisted.layout, VALID_PANEL_IDS);
+            if (validated) {
+              return { ...current, ...persisted, layout: validated };
+            }
           }
+        } catch {
+          // Corrupt persisted state — fall back to defaults
         }
         return current;
       },

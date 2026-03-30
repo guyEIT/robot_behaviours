@@ -17,13 +17,16 @@ const DEMO_XML = `<root BTCPP_format="4" main_tree_to_execute="Demo">
 </root>`;
 
 export default function BtTreePanel() {
-  const taskState = useTaskStore((s) => s.taskState);
+  const taskName = useTaskStore((s) => s.taskState?.task_name ?? null);
+  const taskStatus = useTaskStore((s) => s.taskState?.status ?? null);
+  const activeNodeName = useTaskStore((s) =>
+    s.taskState?.status === "RUNNING" ? s.taskState.current_bt_node : null
+  );
   const activeBtXml = useTaskStore((s) => s.activeBtXml);
-  const taskHistory = useTaskStore((s) => s.taskHistory);
+  const hasHistory = useTaskStore((s) => s.taskHistory.length > 0);
   const [followActive, setFollowActive] = useState(true);
 
   const xml = activeBtXml || DEMO_XML;
-  const activeNodeName = taskState?.status === "RUNNING" ? taskState.current_bt_node : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -32,25 +35,23 @@ export default function BtTreePanel() {
         <TreePine className="w-4 h-4 text-blue-400" />
         <h2 className="text-sm font-semibold">Behavior Tree</h2>
 
-        {taskHistory.length > 0 && (
+        {hasHistory && taskName && (
           <div className="ml-4 text-xs text-gray-400">
             Task:{" "}
-            <span className="text-gray-200">
-              {taskState?.task_name || "none"}
-            </span>
-            {taskState?.status && (
+            <span className="text-gray-200">{taskName}</span>
+            {taskStatus && (
               <span
                 className={
-                  taskState.status === "RUNNING"
+                  taskStatus === "RUNNING"
                     ? "ml-2 text-blue-400"
-                    : taskState.status === "SUCCESS"
+                    : taskStatus === "SUCCESS"
                     ? "ml-2 text-green-400"
-                    : taskState.status === "FAILURE"
+                    : taskStatus === "FAILURE"
                     ? "ml-2 text-red-400"
                     : "ml-2 text-gray-400"
                 }
               >
-                [{taskState.status}]
+                [{taskStatus}]
               </span>
             )}
           </div>

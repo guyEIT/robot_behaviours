@@ -37,6 +37,38 @@
 #include "robot_skills_msgs/msg/task_state.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
+// ── SetPose: puts a fixed PoseStamped on the blackboard ──────────────────────
+class SetPose : public BT::SyncActionNode
+{
+public:
+  SetPose(const std::string & name, const BT::NodeConfiguration & config)
+  : BT::SyncActionNode(name, config)
+  {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<double>("x", 0.0, "Position X"),
+      BT::InputPort<double>("y", 0.0, "Position Y"),
+      BT::InputPort<double>("z", 0.0, "Position Z"),
+      BT::InputPort<std::string>("frame_id", "world", "Frame ID"),
+      BT::OutputPort<geometry_msgs::msg::PoseStamped>("pose"),
+    };
+  }
+
+  BT::NodeStatus tick() override
+  {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = getInput<std::string>("frame_id").value_or("world");
+    pose.pose.position.x = getInput<double>("x").value_or(0.0);
+    pose.pose.position.y = getInput<double>("y").value_or(0.0);
+    pose.pose.position.z = getInput<double>("z").value_or(0.0);
+    pose.pose.orientation.w = 1.0;
+    setOutput("pose", pose);
+    return BT::NodeStatus::SUCCESS;
+  }
+};
+
 // ── ComputePreGraspPose: synchronous BT node ─────────────────────────────────
 // Takes an input pose and offsets it along Z to produce a pre-grasp approach pose.
 class ComputePreGraspPose : public BT::SyncActionNode
@@ -154,8 +186,9 @@ int main(int argc, char ** argv)
   factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
     "DetectObject", make_params("/skill_atoms/detect_object"));
 
-  // ComputePreGraspPose (synchronous - no action server needed)
+  // Synchronous utility nodes (no action server needed)
   factory.registerNodeType<ComputePreGraspPose>("ComputePreGraspPose");
+  factory.registerNodeType<SetPose>("SetPose");
 
   // ── Load the tree XML ─────────────────────────────────────────────────────
   std::string tree_xml;

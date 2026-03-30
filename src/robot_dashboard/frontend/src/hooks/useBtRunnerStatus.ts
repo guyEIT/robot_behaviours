@@ -21,7 +21,14 @@ export function useBtRunnerStatus() {
       : null;
 
   const handleStatus = useCallback(
-    (msg: TaskState) => setTaskState(msg),
+    (msg: TaskState) => {
+      // bt_runner messages don't include task_name — preserve it from prior state
+      if (!msg.task_name) {
+        const prev = useTaskStore.getState().taskState;
+        if (prev) msg.task_name = prev.task_name;
+      }
+      setTaskState(msg);
+    },
     [setTaskState]
   );
 

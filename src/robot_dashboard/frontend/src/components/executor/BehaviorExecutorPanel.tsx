@@ -71,8 +71,9 @@ const PRESET_TREES = [
     xml: `<root BTCPP_format="4" main_tree_to_execute="PickAndPlace">
   <BehaviorTree ID="PickAndPlace">
     <Sequence name="pick_and_place_main">
+      <SetPose name="set_place_target" x="0.3" y="-0.2" z="0.1" pose="{place_pose}"/>
       <RetryUntilSuccessful name="pick_with_retry" num_attempts="3">
-        <SubTree ID="PickObject" name="pick_attempt" object_class="{object_class}" detected_pose="{picked_pose}"/>
+        <SubTree ID="PickObject" name="pick_attempt" object_class="seed" detected_pose="{picked_pose}"/>
       </RetryUntilSuccessful>
       <SubTree ID="PlaceObject" name="place_object" place_pose="{place_pose}"/>
       <SubTree ID="MoveToHome" name="return_home"/>

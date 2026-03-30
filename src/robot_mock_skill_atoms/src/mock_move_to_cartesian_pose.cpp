@@ -1,13 +1,16 @@
 #include "robot_mock_skill_atoms/skill_base.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "robot_skills_msgs/action/move_to_cartesian_pose.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
 
 namespace robot_mock_skill_atoms
 {
@@ -37,6 +40,51 @@ public:
     this->declare_parameter("workspace_min_z", 0.0);
     this->declare_parameter("workspace_max_z", 1.5);
     this->declare_parameter("move_to_cartesian_pose_delay", 1.5);
+
+    joint_target_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
+      "/mock/joint_target", 10);
+  }
+
+  /**
+   * Simple approximate IK for the Panda arm (7-DOF).
+   * Not accurate — just produces plausible joint angles that visually
+   * move the robot toward the target position for mock visualization.
+   */
+  std::vector<double> approximateIK(double x, double y, double z)
+  {
+    // Panda link lengths (approximate)
+    constexpr double L1 = 0.333;  // base to shoulder
+    constexpr double L2 = 0.316;  // shoulder to elbow
+    constexpr double L3 = 0.384;  // elbow to wrist
+    constexpr double L4 = 0.107;  // wrist to flange
+
+    // Joint 1: base rotation toward target XY
+    double j1 = std::atan2(y, x);
+
+    // Horizontal distance and height
+    double r = std::sqrt(x * x + y * y);
+    double h = z - L1;  // height relative to shoulder
+
+    // Distance from shoulder to target (minus wrist length)
+    double d = std::sqrt(r * r + h * h) - L4;
+    d = std::clamp(d, 0.1, L2 + L3 - 0.01);
+
+    // Two-link IK for joints 2,4 (shoulder, elbow)
+    double cos_j4 = (d * d - L2 * L2 - L3 * L3) / (2.0 * L2 * L3);
+    cos_j4 = std::clamp(cos_j4, -1.0, 1.0);
+    double j4 = -(M_PI - std::acos(cos_j4));  // elbow angle (negative = elbow up)
+
+    double alpha = std::atan2(h, r);
+    double beta = std::atan2(L3 * std::sin(-j4), L2 + L3 * std::cos(-j4));
+    double j2 = alpha - beta;
+
+    // Keep other joints at reasonable defaults
+    double j3 = 0.0;
+    double j5 = 0.0;
+    double j6 = M_PI / 4.0;   // wrist tilt
+    double j7 = 0.785398;     // wrist rotation (same as home)
+
+    return {j1, j2, j3, j4, j5, j6, j7};
   }
 
   robot_skills_msgs::msg::SkillDescription getDescription() override
@@ -137,12 +185,16 @@ public:
     const auto & goal = goal_handle->get_goal();
     const double delay = this->get_parameter("move_to_cartesian_pose_delay").as_double();
 
+    const auto & pos = goal->target_pose.pose.position;
     RCLCPP_INFO(this->get_logger(),
       "[MOCK] MoveToCartesianPose: [%.3f, %.3f, %.3f] (simulating %.1fs)",
-      goal->target_pose.pose.position.x,
-      goal->target_pose.pose.position.y,
-      goal->target_pose.pose.position.z,
-      delay);
+      pos.x, pos.y, pos.z, delay);
+
+    // Publish approximate joint targets for visualization
+    auto joints = approximateIK(pos.x, pos.y, pos.z);
+    auto joint_msg = std_msgs::msg::Float64MultiArray();
+    joint_msg.data = joints;
+    joint_target_pub_->publish(joint_msg);
 
     const int steps = 10;
     const auto step_duration = std::chrono::duration<double>(delay / steps);
@@ -169,6 +221,8 @@ public:
     RCLCPP_INFO(this->get_logger(), "%s", result->message.c_str());
     return result;
   }
+private:
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr joint_target_pub_;
 };
 
 }  // namespace robot_mock_skill_atoms

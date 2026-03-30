@@ -170,7 +170,11 @@ class BtExecutor(Node):
             final_status = "FAILURE"
             current_node_ref: list[str] = ["initializing"]
 
+            # Cache the latest runner status for forwarding to /task_state
+            runner_status_ref: list[TaskState | None] = [None]
+
             def _on_runner_status(msg: TaskState) -> None:
+                runner_status_ref[0] = msg
                 if msg.current_bt_node:
                     current_node_ref[0] = msg.current_bt_node
 
@@ -221,6 +225,21 @@ class BtExecutor(Node):
                     feedback.current_node_name = current_node_ref[0]
                     feedback.status_message = f"Running... ({elapsed:.1f}s)"
                     goal_handle.publish_feedback(feedback)
+
+                    # Forward bt_runner's detailed status to /task_state
+                    runner_msg = runner_status_ref[0]
+                    if runner_msg:
+                        runner_msg.task_name = goal.tree_name
+                        runner_msg.started_at = self._task_started_at if self._task_started_at else self.get_clock().now().to_msg()
+                        runner_msg.elapsed_sec = elapsed
+                        self._task_state_pub.publish(runner_msg)
+                    else:
+                        self._publish_task_state(
+                            task_id=task_id,
+                            task_name=goal.tree_name,
+                            status="RUNNING",
+                            current_node=current_node_ref[0],
+                        )
 
                     time.sleep(1.0 / max(tick_rate, 1.0))
 
@@ -286,13 +305,22 @@ class BtExecutor(Node):
 
             # Keep the last BT XML visible — it will be replaced on next execution
 
-            # Publish final task state
-            self._publish_task_state(
-                task_id=task_id,
-                task_name=goal.tree_name,
-                status=final_status,
-                current_node="",
-            )
+            # Publish final task state with accumulated skill lists
+            final_runner = runner_status_ref[0]
+            if final_runner:
+                final_runner.task_name = goal.tree_name
+                final_runner.status = final_status
+                final_runner.elapsed_sec = elapsed_total
+                final_runner.progress = 1.0 if final_status == "SUCCESS" else final_runner.progress
+                final_runner.updated_at = self.get_clock().now().to_msg()
+                self._task_state_pub.publish(final_runner)
+            else:
+                self._publish_task_state(
+                    task_id=task_id,
+                    task_name=goal.tree_name,
+                    status=final_status,
+                    current_node="",
+                )
 
             result.success = final_status == "SUCCESS"
             result.final_status = final_status

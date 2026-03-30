@@ -1,6 +1,7 @@
 import { useMemo, useCallback, useEffect } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
@@ -125,5 +126,9 @@ function BtTreeGraphInner({ xml, activeNodeName, followActive = false }: Props) 
 }
 
 export default function BtTreeGraph(props: Props) {
-  return <BtTreeGraphInner {...props} />;
+  return (
+    <ReactFlowProvider>
+      <BtTreeGraphInner {...props} />
+    </ReactFlowProvider>
+  );
 }
