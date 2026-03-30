@@ -62,18 +62,27 @@ export const PRESET_LAYOUTS: Record<string, LayoutNode> = {
       {
         type: "split",
         direction: "vertical",
-        size: 50,
+        size: 35,
         children: [
-          { type: "leaf", panelId: "topics", size: 50 },
-          { type: "leaf", panelId: "services", size: 50 },
+          { type: "leaf", panelId: "diagnostics", size: 60 },
+          { type: "leaf", panelId: "services", size: 40 },
         ],
       },
       {
         type: "split",
         direction: "vertical",
-        size: 50,
+        size: 35,
         children: [
+          { type: "leaf", panelId: "topics", size: 50 },
           { type: "leaf", panelId: "plotter", size: 50 },
+        ],
+      },
+      {
+        type: "split",
+        direction: "vertical",
+        size: 30,
+        children: [
+          { type: "leaf", panelId: "joints", size: 50 },
           { type: "leaf", panelId: "logs", size: 50 },
         ],
       },

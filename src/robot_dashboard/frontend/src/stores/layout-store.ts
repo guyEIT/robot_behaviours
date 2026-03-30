@@ -15,6 +15,8 @@ interface LayoutStoreState {
   loadSavedLayout: (name: string) => void;
   addPanel: (panelId: PanelId) => void;
   removePanel: (panelId: PanelId) => void;
+  /** Split an existing panel, adding a new panel beside it */
+  splitPanel: (targetPanelId: PanelId, newPanelId: PanelId, direction: "horizontal" | "vertical") => void;
 }
 
 function collectPanelIds(node: LayoutNode): Set<PanelId> {
@@ -49,9 +51,36 @@ function validateLayout(node: LayoutNode, validIds: Set<string>): LayoutNode | n
   return { ...node, children };
 }
 
+/** Replace a leaf matching targetPanelId with a new split containing the original + new panel */
+function splitInTree(
+  node: LayoutNode,
+  targetPanelId: PanelId,
+  newPanelId: PanelId,
+  direction: "horizontal" | "vertical"
+): LayoutNode {
+  if (node.type === "leaf") {
+    if (node.panelId === targetPanelId) {
+      return {
+        type: "split",
+        direction,
+        size: node.size,
+        children: [
+          { type: "leaf", panelId: targetPanelId, size: 50 },
+          { type: "leaf", panelId: newPanelId, size: 50 },
+        ],
+      };
+    }
+    return node;
+  }
+  return {
+    ...node,
+    children: node.children.map((c) => splitInTree(c, targetPanelId, newPanelId, direction)),
+  };
+}
+
 const VALID_PANEL_IDS = new Set<string>([
   "tree", "executor", "monitor", "skills", "joints",
-  "tf", "topics", "plotter", "services", "logs",
+  "tf", "topics", "plotter", "services", "logs", "diagnostics",
 ]);
 
 export const useLayoutStore = create<LayoutStoreState>()(
@@ -116,6 +145,11 @@ export const useLayoutStore = create<LayoutStoreState>()(
       removePanel: (panelId) => {
         const result = removeFromTree(structuredClone(get().layout), panelId);
         if (result) set({ layout: result, activePresetName: null });
+      },
+
+      splitPanel: (targetPanelId, newPanelId, direction) => {
+        const layout = splitInTree(structuredClone(get().layout), targetPanelId, newPanelId, direction);
+        set({ layout, activePresetName: null });
       },
     }),
     {

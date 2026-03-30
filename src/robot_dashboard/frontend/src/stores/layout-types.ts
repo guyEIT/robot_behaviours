@@ -8,7 +8,8 @@ export type PanelId =
   | "topics"
   | "plotter"
   | "services"
-  | "logs";
+  | "logs"
+  | "diagnostics";
 
 export interface LayoutLeaf {
   type: "leaf";

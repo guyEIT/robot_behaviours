@@ -9,6 +9,7 @@ import {
   LineChart,
   PhoneCall,
   Gauge,
+  HeartPulse,
 } from "lucide-react";
 import type { PanelId } from "../../stores/layout-types";
 
@@ -22,6 +23,7 @@ import TfFrameViewer from "../tf-viewer/TfFrameViewer";
 import TopicPlotter from "../plotter/TopicPlotter";
 import ServiceCallerPanel from "../service-caller/ServiceCallerPanel";
 import JointStateViewer from "../joint-viewer/JointStateViewer";
+import DiagnosticsPanel from "../diagnostics/DiagnosticsPanel";
 
 export interface PanelInfo {
   id: PanelId;
@@ -42,6 +44,7 @@ export const PANELS: PanelInfo[] = [
   { id: "plotter", label: "Plot", icon: <LineChart className="w-3.5 h-3.5" />, group: "tools", component: <TopicPlotter /> },
   { id: "services", label: "Services", icon: <PhoneCall className="w-3.5 h-3.5" />, group: "tools", component: <ServiceCallerPanel /> },
   { id: "logs", label: "Logs", icon: <ScrollText className="w-3.5 h-3.5" />, group: "monitor", component: <LogPanel /> },
+  { id: "diagnostics", label: "Diagnostics", icon: <HeartPulse className="w-3.5 h-3.5" />, group: "monitor", component: <DiagnosticsPanel /> },
 ];
 
 export const PANEL_MAP = Object.fromEntries(PANELS.map((p) => [p.id, p])) as Record<PanelId, PanelInfo>;
