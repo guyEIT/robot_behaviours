@@ -1,0 +1,12 @@
+# Goal: Check if a configuration or the current state is in collision
+float64[] joint_positions           # Joint angles to check (empty = check current state)
+string planning_group               # MoveIt group name, default "arm"
+---
+# Result
+bool success
+string message
+bool in_collision                   # True if the configuration is in collision
+string[] colliding_links            # Names of links that are in collision
+---
+# Feedback
+string status_message

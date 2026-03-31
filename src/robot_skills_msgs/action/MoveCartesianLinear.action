@@ -1,0 +1,17 @@
+# Goal: Move end-effector in a straight line to target pose
+geometry_msgs/PoseStamped target_pose  # Target end-effector pose
+float64 velocity_scaling            # 0.0-1.0, default 0.1
+float64 step_size                   # Cartesian step size in meters, default 0.005
+float64 max_deviation               # Max deviation from straight line (meters), default 0.0
+string planning_group               # MoveIt group name, default "arm"
+---
+# Result
+bool success
+string message
+float64 execution_time_sec
+geometry_msgs/PoseStamped final_pose
+float64 fraction_achieved           # 0.0-1.0 how much of the path was completed
+---
+# Feedback
+float64 progress                    # 0.0-1.0
+string status_message

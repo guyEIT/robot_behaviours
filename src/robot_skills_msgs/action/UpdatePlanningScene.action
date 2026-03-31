@@ -1,0 +1,14 @@
+# Goal: Add or remove collision objects in the MoveIt2 planning scene
+string object_id                    # Unique ID for the collision object
+string operation                    # "add", "remove", "clear_all"
+geometry_msgs/PoseStamped pose      # Object pose (for "add")
+float64[3] dimensions               # Box dimensions [x,y,z] in meters (for "add")
+string shape_type                   # "box", "cylinder", "sphere", default "box"
+---
+# Result
+bool success
+string message
+string[] scene_object_ids           # All object IDs in the scene after operation
+---
+# Feedback
+string status_message

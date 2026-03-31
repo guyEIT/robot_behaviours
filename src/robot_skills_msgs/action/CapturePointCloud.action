@@ -1,0 +1,13 @@
+# Goal: Trigger a depth capture from the camera
+string camera_topic                 # Point cloud topic, default "/camera/depth/color/points"
+float64 timeout_sec                 # Max wait for capture, default 5.0
+bool apply_filters                  # Apply voxel/passthrough filters, default true
+---
+# Result
+bool success
+string message
+sensor_msgs/PointCloud2 point_cloud # The captured point cloud
+int32 num_points                    # Number of points in the cloud
+---
+# Feedback
+string status_message

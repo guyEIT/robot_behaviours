@@ -114,6 +114,78 @@ def generate_launch_description():
         parameters=[mock_params],
     )
 
+    mock_move_to_joint_config = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_move_to_joint_config_node",
+        name="mock_move_to_joint_config_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
+    mock_move_cartesian_linear = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_move_cartesian_linear_node",
+        name="mock_move_cartesian_linear_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
+    mock_capture_point_cloud = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_capture_point_cloud_node",
+        name="mock_capture_point_cloud_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
+    mock_set_digital_io = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_set_digital_io_node",
+        name="mock_set_digital_io_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
+    mock_check_collision = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_check_collision_node",
+        name="mock_check_collision_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
+    mock_update_planning_scene = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_update_planning_scene_node",
+        name="mock_update_planning_scene_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
+    mock_robot_enable = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_robot_enable_node",
+        name="mock_robot_enable_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
+    mock_record_rosbag = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_record_rosbag_node",
+        name="mock_record_rosbag_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
     # ── Mock Joint State Publisher ───────────────────────────────────────────
     mock_joint_state_pub = Node(
         package="robot_mock_skill_atoms",
@@ -216,8 +288,16 @@ def generate_launch_description():
         # Mock skill atoms
         mock_move_to_named_config,
         mock_move_to_cartesian_pose,
+        mock_move_to_joint_config,
+        mock_move_cartesian_linear,
         mock_gripper_control,
         mock_detect_object,
+        mock_capture_point_cloud,
+        mock_set_digital_io,
+        mock_check_collision,
+        mock_update_planning_scene,
+        mock_robot_enable,
+        mock_record_rosbag,
         # Orchestrator
         skill_server_node,
         # Monitoring

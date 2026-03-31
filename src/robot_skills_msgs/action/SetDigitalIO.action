@@ -1,0 +1,12 @@
+# Goal: Set or read a digital I/O pin (tool changer, vacuum, etc.)
+string pin_name                     # Logical pin name (e.g. "vacuum", "tool_changer", "led")
+bool value                          # True=HIGH, False=LOW (ignored for read)
+bool read_only                      # If true, just read the current state
+---
+# Result
+bool success
+string message
+bool current_value                  # Current pin state after operation
+---
+# Feedback
+string status_message

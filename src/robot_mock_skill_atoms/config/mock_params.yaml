@@ -37,6 +37,40 @@ mock_detect_object_skill:
     mock_detection_class: "seed"
     mock_detection_confidence: 0.95
 
+mock_move_to_joint_config_skill:
+  ros__parameters:
+    move_to_joint_config_delay: 1.0
+
+mock_move_cartesian_linear_skill:
+  ros__parameters:
+    move_cartesian_linear_delay: 2.0
+
+mock_capture_point_cloud_skill:
+  ros__parameters:
+    capture_delay: 0.5
+    mock_num_points: 15000
+
+mock_set_digital_io_skill:
+  ros__parameters:
+    io_delay: 0.1
+
+mock_check_collision_skill:
+  ros__parameters:
+    check_delay: 0.1
+    mock_collision_result: false
+
+mock_update_planning_scene_skill:
+  ros__parameters:
+    scene_delay: 0.2
+
+mock_robot_enable_skill:
+  ros__parameters:
+    enable_delay: 0.5
+
+mock_record_rosbag_skill:
+  ros__parameters:
+    mock_messages_per_sec: 100
+
 mock_joint_state_publisher:
   ros__parameters:
     publish_rate: 50.0

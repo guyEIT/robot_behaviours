@@ -1,0 +1,10 @@
+# Goal: Enable or disable the robot (servo on/off)
+bool enable                         # true=enable (servo on), false=disable (servo off)
+---
+# Result
+bool success
+string message
+bool is_enabled                     # Robot state after operation
+---
+# Feedback
+string status_message

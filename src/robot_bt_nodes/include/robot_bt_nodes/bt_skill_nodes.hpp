@@ -17,8 +17,16 @@
 
 #include "robot_skills_msgs/action/move_to_named_config.hpp"
 #include "robot_skills_msgs/action/move_to_cartesian_pose.hpp"
+#include "robot_skills_msgs/action/move_to_joint_config.hpp"
+#include "robot_skills_msgs/action/move_cartesian_linear.hpp"
 #include "robot_skills_msgs/action/gripper_control.hpp"
 #include "robot_skills_msgs/action/detect_object.hpp"
+#include "robot_skills_msgs/action/capture_point_cloud.hpp"
+#include "robot_skills_msgs/action/set_digital_io.hpp"
+#include "robot_skills_msgs/action/check_collision.hpp"
+#include "robot_skills_msgs/action/update_planning_scene.hpp"
+#include "robot_skills_msgs/action/robot_enable.hpp"
+#include "robot_skills_msgs/action/record_rosbag.hpp"
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
@@ -332,6 +340,342 @@ public:
       feedback->detections_so_far, feedback->status_message.c_str());
     return BT::NodeStatus::RUNNING;
   }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MoveToJointConfig BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MoveToJointConfigNode
+  : public BT::RosActionNode<robot_skills_msgs::action::MoveToJointConfig>
+{
+public:
+  using MoveToJointConfig = robot_skills_msgs::action::MoveToJointConfig;
+
+  MoveToJointConfigNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<MoveToJointConfig>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<std::vector<double>>("joint_positions", "Target joint angles (radians)"),
+      BT::InputPort<double>("velocity_scaling", 0.3, "Velocity scaling 0.01-1.0"),
+      BT::InputPort<double>("acceleration_scaling", 0.3, "Acceleration scaling 0.01-1.0"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    auto joints = getInput<std::vector<double>>("joint_positions");
+    if (!joints) { RCLCPP_ERROR(logger(), "MoveToJointConfig: missing joint_positions"); return false; }
+    goal.joint_positions = joints.value();
+    goal.velocity_scaling = getInput<double>("velocity_scaling").value_or(0.3);
+    goal.acceleration_scaling = getInput<double>("acceleration_scaling").value_or(0.3);
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  { return result.result->success ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE; }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MoveCartesianLinear BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MoveCartesianLinearNode
+  : public BT::RosActionNode<robot_skills_msgs::action::MoveCartesianLinear>
+{
+public:
+  using MoveCartesianLinear = robot_skills_msgs::action::MoveCartesianLinear;
+
+  MoveCartesianLinearNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<MoveCartesianLinear>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<geometry_msgs::msg::PoseStamped>("target_pose", "Target end-effector pose"),
+      BT::InputPort<double>("velocity_scaling", 0.1, "Velocity scaling 0.01-1.0"),
+      BT::InputPort<double>("step_size", 0.005, "Cartesian step size (meters)"),
+      BT::OutputPort<geometry_msgs::msg::PoseStamped>("final_pose", "Actual pose reached"),
+      BT::OutputPort<double>("fraction_achieved", "Fraction of path completed 0.0-1.0"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    auto pose = getInput<geometry_msgs::msg::PoseStamped>("target_pose");
+    if (!pose) { RCLCPP_ERROR(logger(), "MoveCartesianLinear: missing target_pose"); return false; }
+    goal.target_pose = pose.value();
+    goal.velocity_scaling = getInput<double>("velocity_scaling").value_or(0.1);
+    goal.step_size = getInput<double>("step_size").value_or(0.005);
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  {
+    if (result.result->success) {
+      setOutput("final_pose", result.result->final_pose);
+      setOutput("fraction_achieved", result.result->fraction_achieved);
+      return BT::NodeStatus::SUCCESS;
+    }
+    return BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CapturePointCloud BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CapturePointCloudNode
+  : public BT::RosActionNode<robot_skills_msgs::action::CapturePointCloud>
+{
+public:
+  using CapturePointCloud = robot_skills_msgs::action::CapturePointCloud;
+
+  CapturePointCloudNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<CapturePointCloud>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<double>("timeout_sec", 5.0, "Max wait for capture"),
+      BT::InputPort<bool>("apply_filters", true, "Apply voxel/passthrough filters"),
+      BT::OutputPort<int>("num_points", "Number of points captured"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    goal.timeout_sec = getInput<double>("timeout_sec").value_or(5.0);
+    goal.apply_filters = getInput<bool>("apply_filters").value_or(true);
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  {
+    if (result.result->success) {
+      setOutput("num_points", result.result->num_points);
+      RCLCPP_INFO(logger(), "CapturePointCloud: %d points", result.result->num_points);
+      return BT::NodeStatus::SUCCESS;
+    }
+    return BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SetDigitalIO BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SetDigitalIONode
+  : public BT::RosActionNode<robot_skills_msgs::action::SetDigitalIO>
+{
+public:
+  using SetDigitalIO = robot_skills_msgs::action::SetDigitalIO;
+
+  SetDigitalIONode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<SetDigitalIO>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<std::string>("pin_name", "Logical pin name"),
+      BT::InputPort<bool>("value", true, "True=HIGH, False=LOW"),
+      BT::InputPort<bool>("read_only", false, "If true, just read the pin"),
+      BT::OutputPort<bool>("current_value", "Pin state after operation"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    auto pin = getInput<std::string>("pin_name");
+    if (!pin) { RCLCPP_ERROR(logger(), "SetDigitalIO: missing pin_name"); return false; }
+    goal.pin_name = pin.value();
+    goal.value = getInput<bool>("value").value_or(true);
+    goal.read_only = getInput<bool>("read_only").value_or(false);
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  {
+    setOutput("current_value", result.result->current_value);
+    return result.result->success ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CheckCollision BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CheckCollisionNode
+  : public BT::RosActionNode<robot_skills_msgs::action::CheckCollision>
+{
+public:
+  using CheckCollision = robot_skills_msgs::action::CheckCollision;
+
+  CheckCollisionNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<CheckCollision>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<std::vector<double>>("joint_positions", "Joints to check (empty = current)"),
+      BT::OutputPort<bool>("in_collision", "True if in collision"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    auto joints = getInput<std::vector<double>>("joint_positions");
+    if (joints) goal.joint_positions = joints.value();
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  {
+    setOutput("in_collision", result.result->in_collision);
+    // SUCCESS means the check completed (not that it's collision-free)
+    // Use the output port to branch in the BT
+    return result.result->success ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UpdatePlanningScene BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class UpdatePlanningSceneNode
+  : public BT::RosActionNode<robot_skills_msgs::action::UpdatePlanningScene>
+{
+public:
+  using UpdatePlanningScene = robot_skills_msgs::action::UpdatePlanningScene;
+
+  UpdatePlanningSceneNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<UpdatePlanningScene>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<std::string>("object_id", "Unique ID for the collision object"),
+      BT::InputPort<std::string>("operation", "add", "add, remove, or clear_all"),
+      BT::InputPort<geometry_msgs::msg::PoseStamped>("pose", "Object pose (for add)"),
+      BT::InputPort<std::string>("shape_type", "box", "box, cylinder, or sphere"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    auto id = getInput<std::string>("object_id");
+    if (!id) { RCLCPP_ERROR(logger(), "UpdatePlanningScene: missing object_id"); return false; }
+    goal.object_id = id.value();
+    goal.operation = getInput<std::string>("operation").value_or("add");
+    auto pose = getInput<geometry_msgs::msg::PoseStamped>("pose");
+    if (pose) goal.pose = pose.value();
+    goal.shape_type = getInput<std::string>("shape_type").value_or("box");
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  { return result.result->success ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE; }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RobotEnable BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class RobotEnableNode
+  : public BT::RosActionNode<robot_skills_msgs::action::RobotEnable>
+{
+public:
+  using RobotEnable = robot_skills_msgs::action::RobotEnable;
+
+  RobotEnableNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<RobotEnable>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<bool>("enable", true, "true=enable (servo on), false=disable"),
+      BT::OutputPort<bool>("is_enabled", "Robot state after operation"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    goal.enable = getInput<bool>("enable").value_or(true);
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  {
+    setOutput("is_enabled", result.result->is_enabled);
+    return result.result->success ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RecordRosbag BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class RecordRosbagNode
+  : public BT::RosActionNode<robot_skills_msgs::action::RecordRosbag>
+{
+public:
+  using RecordRosbag = robot_skills_msgs::action::RecordRosbag;
+
+  RecordRosbagNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<RecordRosbag>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<std::string>("output_path", "/tmp/recording.bag", "Bag file path"),
+      BT::InputPort<double>("duration_sec", 5.0, "Recording duration (0=until cancelled)"),
+      BT::OutputPort<std::string>("bag_path", "Actual recorded bag path"),
+      BT::OutputPort<int>("num_messages", "Total messages recorded"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    goal.output_path = getInput<std::string>("output_path").value_or("/tmp/recording.bag");
+    goal.duration_sec = getInput<double>("duration_sec").value_or(5.0);
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  {
+    if (result.result->success) {
+      setOutput("bag_path", result.result->bag_path);
+      setOutput("num_messages", static_cast<int>(result.result->num_messages));
+      return BT::NodeStatus::SUCCESS;
+    }
+    return BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
 };
 
 }  // namespace robot_bt_nodes

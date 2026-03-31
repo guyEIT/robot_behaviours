@@ -16,6 +16,7 @@ find_package(action_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   # Messages
   "msg/DetectedObject.msg"
+  "msg/LogEvent.msg"
   "msg/SkillDescription.msg"
   "msg/TaskState.msg"
   "msg/TaskStep.msg"
@@ -27,8 +28,16 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   # Actions
   "action/MoveToCartesianPose.action"
   "action/MoveToNamedConfig.action"
+  "action/MoveToJointConfig.action"
+  "action/MoveCartesianLinear.action"
   "action/GripperControl.action"
   "action/DetectObject.action"
+  "action/CapturePointCloud.action"
+  "action/SetDigitalIO.action"
+  "action/CheckCollision.action"
+  "action/UpdatePlanningScene.action"
+  "action/RobotEnable.action"
+  "action/RecordRosbag.action"
   "action/ExecuteBehaviorTree.action"
   DEPENDENCIES
     builtin_interfaces
