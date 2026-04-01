@@ -1,8 +1,10 @@
 import ROSLIB from "roslib";
 
+const ROSBRIDGE_PORT =
+  (window as any).ENV_CONFIG?.ROSBRIDGE_PORT || "9090";
 const ROSBRIDGE_URL =
   (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_ROSBRIDGE_URL) ||
-  `ws://${window.location.hostname}:9090`;
+  `ws://${window.location.hostname}:${ROSBRIDGE_PORT}`;
 
 let ros: ROSLIB.Ros | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;

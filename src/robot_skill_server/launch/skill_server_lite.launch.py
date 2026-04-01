@@ -48,11 +48,23 @@ def generate_launch_description():
         default_value="true",
         description="Launch web dashboard (replaces rosboard + groot2)",
     )
+    rosbridge_port_arg = DeclareLaunchArgument(
+        "rosbridge_port",
+        default_value=os.environ.get("ROSBRIDGE_PORT", "9090"),
+        description="rosbridge WebSocket port",
+    )
+    dashboard_port_arg = DeclareLaunchArgument(
+        "dashboard_port",
+        default_value=os.environ.get("DASHBOARD_PORT", "8080"),
+        description="Dashboard HTTP port",
+    )
 
     log_level = LaunchConfiguration("log_level")
     groot_port = LaunchConfiguration("groot_port")
     use_rosboard = LaunchConfiguration("use_rosboard")
     use_dashboard = LaunchConfiguration("use_dashboard")
+    rosbridge_port = LaunchConfiguration("rosbridge_port")
+    dashboard_port = LaunchConfiguration("dashboard_port")
 
     # ── Mock params ──────────────────────────────────────────────────────────
     mock_params = PathJoinSubstitution([
@@ -256,6 +268,10 @@ def generate_launch_description():
                 FindPackageShare("robot_dashboard"), "launch", "dashboard.launch.py"
             ])
         ),
+        launch_arguments={
+            "rosbridge_port": rosbridge_port,
+            "dashboard_port": dashboard_port,
+        }.items(),
         condition=IfCondition(use_dashboard),
     )
 
@@ -266,8 +282,8 @@ def generate_launch_description():
             "╔══════════════════════════════════════════════════════════════╗\n"
             "║  LITE SIM MODE - Mock skill atoms (no MoveIt2/ros2_control) ║\n"
             "║                                                              ║\n"
-            "║  Web Dashboard:     http://localhost:8080                    ║\n"
-            "║  rosbridge WS:     ws://localhost:9090                       ║\n"
+            "║  Web Dashboard:     http://localhost:", dashboard_port, "                    ║\n"
+            "║  rosbridge WS:     ws://localhost:", rosbridge_port, "                       ║\n"
             "║  Groot2 ZMQ port:  ", groot_port, "                                ║\n"
             "║                                                              ║\n"
             "║  Connect Groot2 on host:  pixi run groot2                    ║\n"
@@ -280,6 +296,8 @@ def generate_launch_description():
         groot_port_arg,
         use_rosboard_arg,
         use_dashboard_arg,
+        rosbridge_port_arg,
+        dashboard_port_arg,
         # Static transforms + robot model
         static_tf,
         robot_state_publisher,

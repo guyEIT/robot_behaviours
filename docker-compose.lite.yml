@@ -31,6 +31,8 @@ services:
       - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
       - RCUTILS_COLORIZED_OUTPUT=1
       - ROBOT_HARDWARE_MODE=lite
+      - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+      - ROSBRIDGE_PORT=${ROSBRIDGE_PORT:-9090}
 
     volumes:
       # Mount source for development — edit on host, rebuild in container

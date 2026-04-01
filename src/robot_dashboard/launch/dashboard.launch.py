@@ -21,18 +21,24 @@ def generate_launch_description():
     config_file = os.path.join(pkg_share, "config", "rosbridge_params.yaml")
 
     rosbridge_port_arg = DeclareLaunchArgument(
-        "rosbridge_port", default_value="9090", description="rosbridge WebSocket port"
+        "rosbridge_port",
+        default_value=os.environ.get("ROSBRIDGE_PORT", "9090"),
+        description="rosbridge WebSocket port",
     )
     dashboard_port_arg = DeclareLaunchArgument(
-        "dashboard_port", default_value="8080", description="Dashboard HTTP port"
+        "dashboard_port",
+        default_value=os.environ.get("DASHBOARD_PORT", "8080"),
+        description="Dashboard HTTP port",
     )
+
+    rosbridge_port = LaunchConfiguration("rosbridge_port")
 
     rosbridge_node = Node(
         package="rosbridge_server",
         executable="rosbridge_websocket",
         name="rosbridge_websocket",
         output="screen",
-        parameters=[config_file],
+        parameters=[config_file, {"port": rosbridge_port}],
     )
 
     # rosapi is required for roslibjs getTopics/getServices calls
@@ -40,6 +46,20 @@ def generate_launch_description():
         package="rosapi",
         executable="rosapi_node",
         name="rosapi",
+        output="screen",
+    )
+
+    # Write runtime config so the frontend knows the rosbridge port
+    env_config = ExecuteProcess(
+        cmd=[
+            "bash", "-c",
+            [
+                'echo "window.ENV_CONFIG = { ROSBRIDGE_PORT: \\"',
+                rosbridge_port,
+                '\\" };" > ',
+                os.path.join(www_dir, "env-config.js"),
+            ],
+        ],
         output="screen",
     )
 
@@ -59,13 +79,14 @@ def generate_launch_description():
         msg=[
             "\n"
             "  Robot Dashboard:  http://localhost:", dashboard_port, "\n"
-            "  rosbridge WS:    ws://localhost:9090\n"
+            "  rosbridge WS:    ws://localhost:", rosbridge_port, "\n"
         ]
     )
 
     return LaunchDescription([
         rosbridge_port_arg,
         dashboard_port_arg,
+        env_config,
         rosbridge_node,
         rosapi_node,
         static_server,

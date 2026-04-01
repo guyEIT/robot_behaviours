@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 8080,
+    port: parseInt(process.env.VITE_DASHBOARD_PORT || "8080", 10),
     host: true,
   },
 });
