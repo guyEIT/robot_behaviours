@@ -2,12 +2,15 @@
  * @brief BehaviorTree.CPP v4 plugin registration for all robot BT nodes.
  *
  * This shared library is loaded at runtime by the BT executor.
- * Node class definitions are in robot_bt_nodes/bt_skill_nodes.hpp.
+ * Node class definitions live in:
+ *   - robot_bt_nodes/bt_skill_nodes.hpp   (ROS2 action-based skill nodes)
+ *   - robot_bt_nodes/bt_utility_nodes.hpp (synchronous utility nodes)
  *
  * All nodes are automatically visible in Groot2.
  */
 
 #include "robot_bt_nodes/bt_skill_nodes.hpp"
+#include "robot_bt_nodes/bt_utility_nodes.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Plugin registration - BT_REGISTER_NODES is the BT.CPP entry point
@@ -19,6 +22,7 @@
 // these params via the factory's shared blackboard.
 BT_REGISTER_NODES(factory)
 {
+  // ── Action-based skill nodes (need RosNodeParams) ─────────────────────────
   BT::RosNodeParams default_params;
   factory.registerNodeType<robot_bt_nodes::MoveToNamedConfigNode>(
     "MoveToNamedConfig", default_params);
@@ -28,4 +32,17 @@ BT_REGISTER_NODES(factory)
     "GripperControl", default_params);
   factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
     "DetectObject", default_params);
+
+  // ── Synchronous utility nodes (no action server) ──────────────────────────
+  factory.registerNodeType<robot_bt_nodes::EmergencyStop>("EmergencyStop");
+  factory.registerNodeType<robot_bt_nodes::SetVelocityOverride>("SetVelocityOverride");
+  factory.registerNodeType<robot_bt_nodes::LookupTransform>("LookupTransform");
+  factory.registerNodeType<robot_bt_nodes::PublishStaticTF>("PublishStaticTF");
+  factory.registerNodeType<robot_bt_nodes::GetCurrentPose>("GetCurrentPose");
+  factory.registerNodeType<robot_bt_nodes::LogEvent>("LogEvent");
+  factory.registerNodeType<robot_bt_nodes::WaitForDuration>("WaitForDuration");
+  factory.registerNodeType<robot_bt_nodes::TransformPose>("TransformPose");
+  factory.registerNodeType<robot_bt_nodes::CheckGraspSuccess>("CheckGraspSuccess");
+  factory.registerNodeType<robot_bt_nodes::SetPose>("SetPose");
+  factory.registerNodeType<robot_bt_nodes::ComputePreGraspPose>("ComputePreGraspPose");
 }
