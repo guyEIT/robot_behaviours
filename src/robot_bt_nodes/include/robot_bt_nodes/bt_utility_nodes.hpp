@@ -17,11 +17,14 @@
 
 #include <chrono>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <thread>
 
 #include "behaviortree_cpp/bt_factory.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "robot_skills_msgs/msg/log_event.hpp"
 
 namespace robot_bt_nodes
 {
@@ -149,6 +152,8 @@ public:
 };
 
 // ── LogEvent: publish a structured event for traceability ────────────────────
+// Publishes to /skill_server/log_events and to stdout.
+// Use tags to categorise: "human" for operator-facing, "engineer" for debug.
 class LogEvent : public BT::SyncActionNode
 {
 public:
@@ -161,6 +166,8 @@ public:
       BT::InputPort<std::string>("event_name", "Event name"),
       BT::InputPort<std::string>("severity", "info", "info, warn, or error"),
       BT::InputPort<std::string>("message", "", "Human-readable description"),
+      BT::InputPort<std::string>("tags", "", "Semicolon-delimited tags (e.g. human;safety)"),
+      BT::InputPort<std::string>("task_id", "", "Associated task ID"),
     };
   }
 
@@ -169,9 +176,40 @@ public:
     auto event = getInput<std::string>("event_name").value_or("unknown");
     auto sev = getInput<std::string>("severity").value_or("info");
     auto msg = getInput<std::string>("message").value_or("");
+    auto tags_str = getInput<std::string>("tags").value_or("");
+    auto task_id = getInput<std::string>("task_id").value_or("");
+
     std::cout << "[EVENT:" << sev << "] " << event << " - " << msg << std::endl;
+
+    try {
+      if (!pub_) {
+        auto ros_node = config().blackboard->get<rclcpp::Node::SharedPtr>("ros_node");
+        pub_ = ros_node->create_publisher<robot_skills_msgs::msg::LogEvent>(
+          "/skill_server/log_events", 10);
+      }
+      robot_skills_msgs::msg::LogEvent log_msg;
+      log_msg.stamp = rclcpp::Clock().now();
+      log_msg.event_name = event;
+      log_msg.severity = sev;
+      log_msg.message = msg;
+      log_msg.task_id = task_id;
+      log_msg.skill_name = name();
+      if (!tags_str.empty()) {
+        std::istringstream iss(tags_str);
+        std::string token;
+        while (std::getline(iss, token, ';')) {
+          if (!token.empty()) log_msg.tags.push_back(token);
+        }
+      }
+      pub_->publish(log_msg);
+    } catch (...) {
+      // ros_node may not be on blackboard (unit tests) — skip
+    }
     return BT::NodeStatus::SUCCESS;
   }
+
+private:
+  rclcpp::Publisher<robot_skills_msgs::msg::LogEvent>::SharedPtr pub_;
 };
 
 // ── WaitForDuration: pause execution for a fixed time ────────────────────────

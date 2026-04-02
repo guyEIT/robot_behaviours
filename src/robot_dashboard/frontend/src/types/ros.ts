@@ -154,6 +154,41 @@ export interface ExecuteBehaviorTreeGoal {
   tick_rate_hz: number;
 }
 
+/** Matches robot_skills_msgs/msg/HumanPrompt */
+export interface HumanPrompt {
+  stamp: RosTime;
+  prompt_id: string;
+  prompt_type: "notification" | "warning" | "confirm" | "input" | "task" | "dismiss";
+  title: string;
+  message: string;
+  severity: "info" | "warning" | "error" | "critical";
+  input_type: "text" | "number" | "choice";
+  choices: string[];
+  default_value: string;
+  timeout_sec: number;
+  task_id: string;
+  bt_node_name: string;
+}
+
+/** Matches robot_skills_msgs/msg/HumanResponse */
+export interface HumanResponse {
+  stamp: RosTime;
+  prompt_id: string;
+  accepted: boolean;
+  value: string;
+}
+
+/** Matches robot_skills_msgs/msg/LogEvent */
+export interface SkillLogEvent {
+  stamp: RosTime;
+  event_name: string;
+  severity: string;
+  message: string;
+  task_id: string;
+  skill_name: string;
+  tags: string[];
+}
+
 /** GetSkillDescriptions service */
 export interface GetSkillDescriptionsRequest {
   filter_categories: string[];

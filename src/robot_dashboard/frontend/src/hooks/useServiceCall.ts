@@ -1,10 +1,12 @@
 import { useCallback, useRef, useState } from "react";
 import ROSLIB from "roslib";
+import { toast } from "sonner";
 import { getRos } from "../lib/rosbridge-client";
 
 /**
  * Hook for calling a ROS2 service via rosbridge.
  * Returns { call, loading, error }.
+ * Automatically shows a toast on service call failure.
  */
 export function useServiceCall<Req, Res>(
   serviceName: string,
@@ -38,6 +40,10 @@ export function useServiceCall<Req, Res>(
           (err: string) => {
             setLoading(false);
             setError(err);
+            toast.error("Service call failed", {
+              description: `${serviceName}: ${err}`,
+              duration: 6000,
+            });
             reject(new Error(err));
           }
         );

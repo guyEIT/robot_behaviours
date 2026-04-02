@@ -34,8 +34,10 @@
 // Robot BT node class definitions
 #include "robot_bt_nodes/bt_skill_nodes.hpp"
 #include "robot_bt_nodes/bt_utility_nodes.hpp"
+#include "robot_bt_nodes/bt_human_interaction_nodes.hpp"
 
 #include "robot_skills_msgs/msg/task_state.hpp"
+#include "robot_skills_msgs/msg/log_event.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
 namespace
@@ -148,6 +150,13 @@ int main(int argc, char ** argv)
   factory.registerNodeType<robot_bt_nodes::GetCurrentPose>("GetCurrentPose");
   factory.registerNodeType<robot_bt_nodes::LogEvent>("LogEvent");
 
+  // Human interaction nodes
+  factory.registerNodeType<robot_bt_nodes::HumanNotification>("HumanNotification");
+  factory.registerNodeType<robot_bt_nodes::HumanWarning>("HumanWarning");
+  factory.registerNodeType<robot_bt_nodes::HumanConfirm>("HumanConfirm");
+  factory.registerNodeType<robot_bt_nodes::HumanInput>("HumanInput");
+  factory.registerNodeType<robot_bt_nodes::HumanTask>("HumanTask");
+
   // ── Load the tree XML ─────────────────────────────────────────────────────
   std::string tree_xml;
   try {
@@ -166,6 +175,9 @@ int main(int argc, char ** argv)
     rclcpp::shutdown();
     return 2;
   }
+
+  // Store the ROS2 node on the blackboard for human interaction nodes
+  tree.rootBlackboard()->set("ros_node", node);
 
   RCLCPP_INFO(node->get_logger(), "Tree loaded successfully");
 
@@ -186,6 +198,34 @@ int main(int argc, char ** argv)
   // ── Status publisher for progress tracking ───────────────────────────────
   auto status_pub = node->create_publisher<robot_skills_msgs::msg::TaskState>(
     "/skill_server/bt_runner_status/" + cfg.task_id, 10);
+
+  // ── Human-readable log publisher ──────────────────────────────────────────
+  auto log_pub = node->create_publisher<robot_skills_msgs::msg::LogEvent>(
+    "/skill_server/log_events", 10);
+
+  // Convert snake_case BT node names to readable form: "go_to_observe" -> "Go to observe"
+  auto humanise = [](const std::string & s) -> std::string {
+    if (s.empty()) return s;
+    std::string out = s;
+    for (auto & c : out) { if (c == '_') c = ' '; }
+    out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+    return out;
+  };
+
+  auto publish_human_log = [&](const std::string & event,
+                               const std::string & message,
+                               const std::string & severity = "info",
+                               const std::string & skill = "") {
+    robot_skills_msgs::msg::LogEvent log_msg;
+    log_msg.stamp = node->now();
+    log_msg.event_name = event;
+    log_msg.message = message;
+    log_msg.severity = severity;
+    log_msg.task_id = cfg.task_id;
+    log_msg.skill_name = skill;
+    log_msg.tags = {"human"};
+    log_pub->publish(log_msg);
+  };
 
   // ── Spin the tree ─────────────────────────────────────────────────────────
   const auto tick_interval = std::chrono::duration<double>(1.0 / cfg.tick_rate_hz);
@@ -212,6 +252,9 @@ int main(int argc, char ** argv)
   // after a sequence moves past them, so we must track cumulatively)
   std::set<std::string> ever_completed, ever_failed;
   std::string last_running_node;
+  std::string prev_running_node;  // for transition detection
+  size_t prev_completed_count = 0;
+  size_t prev_failed_count = 0;
 
   while (rclcpp::ok() && status == BT::NodeStatus::RUNNING) {
     status = tree.tickExactlyOnce();
@@ -235,6 +278,25 @@ int main(int argc, char ** argv)
 
     if (!running_node_name.empty()) {
       last_running_node = running_node_name;
+    }
+
+    // ── Human log: skill transitions (not every tick) ───────────────────
+    if (!running_node_name.empty() && running_node_name != prev_running_node) {
+      publish_human_log("skill_started",
+        "Running: " + humanise(running_node_name), "debug", running_node_name);
+      prev_running_node = running_node_name;
+    }
+    if (ever_completed.size() > prev_completed_count) {
+      if (!prev_running_node.empty() && ever_completed.count(prev_running_node)) {
+        publish_human_log("skill_completed",
+          "Completed: " + humanise(prev_running_node), "info", prev_running_node);
+      }
+      prev_completed_count = ever_completed.size();
+    }
+    if (ever_failed.size() > prev_failed_count) {
+      publish_human_log("skill_failed",
+        "Failed: " + humanise(last_running_node), "error", last_running_node);
+      prev_failed_count = ever_failed.size();
     }
 
     // Publish progress
@@ -273,6 +335,23 @@ int main(int argc, char ** argv)
     final_msg.completed_skills.assign(ever_completed.begin(), ever_completed.end());
     final_msg.failed_skills.assign(ever_failed.begin(), ever_failed.end());
     final_msg.updated_at = node->now();
+
+    // Populate error fields on failure
+    if (status != BT::NodeStatus::SUCCESS && !ever_failed.empty()) {
+      // The last node that was running when the tree failed is the cause
+      final_msg.error_skill = last_running_node;
+      final_msg.error_message = "'" + humanise(last_running_node) + "' failed";
+      // If there are multiple failures, list them
+      if (ever_failed.size() > 1) {
+        std::string all_failed;
+        for (const auto & f : ever_failed) {
+          if (!all_failed.empty()) all_failed += ", ";
+          all_failed += f;
+        }
+        final_msg.error_message += " (failed nodes: " + all_failed + ")";
+      }
+    }
+
     status_pub->publish(final_msg);
     // Small delay to ensure the message is sent before shutdown
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

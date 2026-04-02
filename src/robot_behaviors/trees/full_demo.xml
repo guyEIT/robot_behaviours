@@ -1,0 +1,333 @@
+<!--
+  FullDemo behavior tree
+
+  Exercises a wide range of skills in a realistic workflow:
+    1. Robot enable + safety checks
+    2. Scene setup (planning scene, digital I/O)
+    3. Sensor survey (point cloud capture)
+    4. Pick operation (detect, approach, grasp, verify, lift)
+    5. Transport with collision check
+    6. Place operation
+    7. Cleanup and return home
+
+  Action-based skills used:
+    - RobotEnable, MoveToNamedConfig, MoveToCartesianPose, MoveToJointConfig,
+      MoveCartesianLinear, GripperControl, DetectObject, CapturePointCloud,
+      SetDigitalIO, CheckCollision, UpdatePlanningScene, RecordRosbag
+
+  Utility nodes used:
+    - SetPose, ComputePreGraspPose, TransformPose, LookupTransform,
+      GetCurrentPose, SetVelocityOverride, LogEvent, WaitForDuration,
+      CheckGraspSuccess
+
+  All blackboard data is produced internally — no external inputs needed.
+-->
+<root BTCPP_format="4" main_tree_to_execute="FullDemo">
+
+  <BehaviorTree ID="FullDemo">
+    <Sequence name="full_demo_main">
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           Phase 1: Startup — enable robot, set velocity, begin recording
+           ═══════════════════════════════════════════════════════════════════ -->
+      <SubTree ID="Startup" name="startup"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           Phase 2: Scene setup — add collision object, configure I/O
+           ═══════════════════════════════════════════════════════════════════ -->
+      <SubTree ID="SetupScene" name="setup_scene"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           Phase 3: Survey — capture point cloud from observation pose
+           ═══════════════════════════════════════════════════════════════════ -->
+      <SubTree ID="Survey" name="survey"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           Phase 4: Pick — detect, approach, grasp with retry
+           ═══════════════════════════════════════════════════════════════════ -->
+      <RetryUntilSuccessful name="pick_with_retry" num_attempts="2">
+        <SubTree ID="Pick" name="pick_object"
+                 detected_pose="{pick_pose}"/>
+      </RetryUntilSuccessful>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           Phase 5: Transport — collision-safe move to place zone
+           ═══════════════════════════════════════════════════════════════════ -->
+      <SubTree ID="Transport" name="transport"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           Phase 6: Place — descend, release, retreat
+           ═══════════════════════════════════════════════════════════════════ -->
+      <SubTree ID="Place" name="place_object"/>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           Phase 7: Cleanup — remove collision objects, return home
+           ═══════════════════════════════════════════════════════════════════ -->
+      <SubTree ID="Cleanup" name="cleanup"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       Startup: enable robot, set global velocity, start rosbag recording
+       ───────────────────────────────────────────────────────────────────── -->
+  <BehaviorTree ID="Startup">
+    <Sequence name="startup_seq">
+      <LogEvent name="log_start"
+                event_name="demo_start"
+                severity="info"
+                message="Full demo starting"/>
+
+      <RobotEnable name="enable_robot"
+                   enable="true"/>
+
+      <SetVelocityOverride name="set_global_velocity"
+                           scaling="0.5"
+                           velocity_override="{velocity_override}"/>
+
+      <RecordRosbag name="start_recording"
+                    output_path="/tmp/demo_recording"
+                    duration_sec="300.0"/>
+
+      <MoveToNamedConfig name="go_home_initial"
+                         config_name="home"
+                         velocity_scaling="0.4"/>
+
+      <LogEvent name="log_startup_done"
+                event_name="startup_complete"
+                severity="info"
+                message="Robot enabled and homed"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       SetupScene: add table collision object, configure digital I/O
+       ───────────────────────────────────────────────────────────────────── -->
+  <BehaviorTree ID="SetupScene">
+    <Sequence name="setup_scene_seq">
+      <!-- Add a table collision object to the planning scene -->
+      <SetPose name="set_table_pose"
+               x="0.4" y="0.0" z="-0.01"
+               frame_id="world"
+               pose="{table_pose}"/>
+
+      <UpdatePlanningScene name="add_table"
+                           object_id="table"
+                           operation="add"
+                           pose="{table_pose}"
+                           shape_type="box"/>
+
+      <!-- Turn on workspace light via digital I/O -->
+      <SetDigitalIO name="lights_on"
+                    pin_name="workspace_light"
+                    value="true"/>
+
+      <LogEvent name="log_scene_ready"
+                event_name="scene_setup"
+                severity="info"
+                message="Planning scene and I/O configured"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       Survey: move to observe, capture point cloud, get current pose
+       ───────────────────────────────────────────────────────────────────── -->
+  <BehaviorTree ID="Survey">
+    <Sequence name="survey_seq">
+      <MoveToNamedConfig name="go_observe"
+                         config_name="observe"
+                         velocity_scaling="0.5"/>
+
+      <GetCurrentPose name="read_eef_pose"
+                      frame_id="world"
+                      pose="{observe_eef_pose}"/>
+
+      <CapturePointCloud name="capture_cloud"
+                         timeout_sec="5.0"
+                         apply_filters="true"/>
+
+      <WaitForDuration name="settle"
+                       seconds="0.5"/>
+
+      <LogEvent name="log_survey_done"
+                event_name="survey_complete"
+                severity="info"
+                message="Point cloud captured from observation pose"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       Pick: detect object, compute approach, grasp, verify, lift
+       ───────────────────────────────────────────────────────────────────── -->
+  <BehaviorTree ID="Pick">
+    <Sequence name="pick_seq">
+      <!-- Detect -->
+      <DetectObject name="find_object"
+                    object_class="seed"
+                    confidence_threshold="0.7"
+                    max_detections="5"
+                    timeout_sec="8.0"
+                    require_pose="true"
+                    best_object_pose="{detected_pose}"/>
+
+      <!-- Transform detected pose into world frame -->
+      <TransformPose name="pose_to_world"
+                     input_pose="{detected_pose}"
+                     target_frame="world"
+                     output_pose="{pick_pose_world}"/>
+
+      <!-- Compute pregrasp (above object) -->
+      <ComputePreGraspPose name="calc_pregrasp"
+                           input_pose="{pick_pose_world}"
+                           z_offset_m="0.06"
+                           output_pose="{pregrasp_pose}"/>
+
+      <!-- Open gripper -->
+      <GripperControl name="open_gripper"
+                      command="open"/>
+
+      <!-- Approach: fast move to pregrasp -->
+      <MoveToCartesianPose name="go_pregrasp"
+                           target_pose="{pregrasp_pose}"
+                           velocity_scaling="0.4"/>
+
+      <!-- Descend: slow linear move to object -->
+      <MoveCartesianLinear name="descend_linear"
+                           target_pose="{pick_pose_world}"
+                           velocity_scaling="0.05"
+                           step_size="0.002"/>
+
+      <!-- Grasp with force control -->
+      <GripperControl name="grasp_object"
+                      command="close"
+                      force_limit="15.0"
+                      object_grasped="{object_grasped}"
+                      final_position="{grasp_position}"/>
+
+      <!-- Verify grasp using the utility node -->
+      <CheckGraspSuccess name="verify_grasp"
+                         object_grasped="{object_grasped}"
+                         final_position="{grasp_position}"
+                         min_grasp_width="0.001"/>
+
+      <!-- Lift: return to pregrasp height -->
+      <MoveToCartesianPose name="lift_object"
+                           target_pose="{pregrasp_pose}"
+                           velocity_scaling="0.15"/>
+
+      <LogEvent name="log_pick_done"
+                event_name="pick_success"
+                severity="info"
+                message="Object grasped and lifted"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       Transport: collision check, then move to place zone via joint config
+       ───────────────────────────────────────────────────────────────────── -->
+  <BehaviorTree ID="Transport">
+    <Sequence name="transport_seq">
+      <!-- Verify no collision at current config -->
+      <CheckCollision name="check_collision_before_transport"/>
+
+      <!-- Look up current TF for logging -->
+      <LookupTransform name="read_base_to_hand"
+                       source_frame="world"
+                       target_frame="panda_hand"
+                       pose="{hand_pose_before_transport}"/>
+
+      <!-- Move to ready config (safe transport posture) -->
+      <MoveToNamedConfig name="go_ready"
+                         config_name="ready"
+                         velocity_scaling="0.3"/>
+
+      <!-- Move to place zone via joint config -->
+      <MoveToJointConfig name="go_place_zone"
+                         joint_positions="0.0;-0.5;0.0;-2.0;0.0;1.5;0.7"
+                         velocity_scaling="0.3"/>
+
+      <LogEvent name="log_transport_done"
+                event_name="transport_complete"
+                severity="info"
+                message="Object transported to place zone"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       Place: descend to target, release, retreat
+       ───────────────────────────────────────────────────────────────────── -->
+  <BehaviorTree ID="Place">
+    <Sequence name="place_seq">
+      <!-- Define place target -->
+      <SetPose name="set_place_pose"
+               x="0.4" y="0.2" z="0.05"
+               frame_id="world"
+               pose="{place_pose}"/>
+
+      <!-- Compute pre-place approach -->
+      <ComputePreGraspPose name="calc_pre_place"
+                           input_pose="{place_pose}"
+                           z_offset_m="0.08"
+                           output_pose="{pre_place_pose}"/>
+
+      <!-- Move above place target -->
+      <MoveToCartesianPose name="go_pre_place"
+                           target_pose="{pre_place_pose}"
+                           velocity_scaling="0.3"/>
+
+      <!-- Slow descend to place surface -->
+      <MoveCartesianLinear name="descend_to_place"
+                           target_pose="{place_pose}"
+                           velocity_scaling="0.05"
+                           step_size="0.002"/>
+
+      <!-- Release object -->
+      <GripperControl name="release_object"
+                      command="open"/>
+
+      <WaitForDuration name="settle_after_release"
+                       seconds="0.3"/>
+
+      <!-- Retreat upward -->
+      <MoveToCartesianPose name="retreat_from_place"
+                           target_pose="{pre_place_pose}"
+                           velocity_scaling="0.3"/>
+
+      <LogEvent name="log_place_done"
+                event_name="place_success"
+                severity="info"
+                message="Object placed and retreated"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ─────────────────────────────────────────────────────────────────────
+       Cleanup: remove collision objects, turn off I/O, return home
+       ───────────────────────────────────────────────────────────────────── -->
+  <BehaviorTree ID="Cleanup">
+    <Sequence name="cleanup_seq">
+      <!-- Remove table from planning scene -->
+      <UpdatePlanningScene name="remove_table"
+                           object_id="table"
+                           operation="remove"/>
+
+      <!-- Turn off workspace light -->
+      <SetDigitalIO name="lights_off"
+                    pin_name="workspace_light"
+                    value="false"/>
+
+      <!-- Return home safely -->
+      <GripperControl name="open_gripper_final"
+                      command="open"/>
+
+      <MoveToNamedConfig name="go_home_final"
+                         config_name="home"
+                         velocity_scaling="0.3"/>
+
+      <LogEvent name="log_demo_complete"
+                event_name="demo_complete"
+                severity="info"
+                message="Full demo completed successfully"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

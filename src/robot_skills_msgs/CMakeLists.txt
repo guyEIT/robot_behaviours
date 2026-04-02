@@ -20,6 +20,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SkillDescription.msg"
   "msg/TaskState.msg"
   "msg/TaskStep.msg"
+  "msg/HumanPrompt.msg"
+  "msg/HumanResponse.msg"
   # Services
   "srv/GetSkillDescriptions.srv"
   "srv/ComposeTask.srv"

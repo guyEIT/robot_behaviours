@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ROSLIB from "roslib";
+import { toast } from "sonner";
 import { getRos } from "../lib/rosbridge-client";
 
 interface ActionState<F> {
@@ -114,6 +115,10 @@ export function useActionClient<G, F, R>(
               const errMsg =
                 message.values?.message || "Action failed";
               setState({ status: "failed", feedback: null, error: errMsg });
+              toast.error("Action failed", {
+                description: `${actionName}: ${errMsg}`,
+                duration: 6000,
+              });
               reject(new Error(errMsg));
             }
           }

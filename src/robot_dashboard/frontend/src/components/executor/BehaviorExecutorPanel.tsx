@@ -109,6 +109,129 @@ const PRESET_TREES = [
   </BehaviorTree>
 </root>`,
   },
+  {
+    name: "FullDemo",
+    label: "Full Demo",
+    description: "Comprehensive demo: enable, scene setup, survey, pick, transport, place, cleanup — exercises all skills",
+    xml: `<root BTCPP_format="4" main_tree_to_execute="FullDemo">
+  <BehaviorTree ID="FullDemo">
+    <Sequence name="full_demo_main">
+      <SubTree ID="Startup" name="startup"/>
+      <SubTree ID="SetupScene" name="setup_scene"/>
+      <SubTree ID="Survey" name="survey"/>
+      <RetryUntilSuccessful name="pick_with_retry" num_attempts="2">
+        <SubTree ID="Pick" name="pick_object" detected_pose="{pick_pose}"/>
+      </RetryUntilSuccessful>
+      <SubTree ID="Transport" name="transport"/>
+      <SubTree ID="Place" name="place_object"/>
+      <SubTree ID="Cleanup" name="cleanup"/>
+    </Sequence>
+  </BehaviorTree>
+  <BehaviorTree ID="Startup">
+    <Sequence name="startup_seq">
+      <LogEvent name="log_start" event_name="demo_start" severity="info" message="Full demo starting"/>
+      <RobotEnable name="enable_robot" enable="true"/>
+      <SetVelocityOverride name="set_global_velocity" scaling="0.5" velocity_override="{velocity_override}"/>
+      <RecordRosbag name="start_recording" output_path="/tmp/demo_recording" duration_sec="300.0"/>
+      <MoveToNamedConfig name="go_home_initial" config_name="home" velocity_scaling="0.4"/>
+      <LogEvent name="log_startup_done" event_name="startup_complete" severity="info" message="Robot enabled and homed"/>
+    </Sequence>
+  </BehaviorTree>
+  <BehaviorTree ID="SetupScene">
+    <Sequence name="setup_scene_seq">
+      <SetPose name="set_table_pose" x="0.4" y="0.0" z="-0.01" frame_id="world" pose="{table_pose}"/>
+      <UpdatePlanningScene name="add_table" object_id="table" operation="add" pose="{table_pose}" shape_type="box"/>
+      <SetDigitalIO name="lights_on" pin_name="workspace_light" value="true"/>
+      <LogEvent name="log_scene_ready" event_name="scene_setup" severity="info" message="Planning scene and I/O configured"/>
+    </Sequence>
+  </BehaviorTree>
+  <BehaviorTree ID="Survey">
+    <Sequence name="survey_seq">
+      <MoveToNamedConfig name="go_observe" config_name="observe" velocity_scaling="0.5"/>
+      <GetCurrentPose name="read_eef_pose" frame_id="world" pose="{observe_eef_pose}"/>
+      <CapturePointCloud name="capture_cloud" timeout_sec="5.0" apply_filters="true"/>
+      <WaitForDuration name="settle" seconds="0.5"/>
+      <LogEvent name="log_survey_done" event_name="survey_complete" severity="info" message="Point cloud captured from observation pose"/>
+    </Sequence>
+  </BehaviorTree>
+  <BehaviorTree ID="Pick">
+    <Sequence name="pick_seq">
+      <DetectObject name="find_object" object_class="seed" confidence_threshold="0.7" max_detections="5" timeout_sec="8.0" require_pose="true" best_object_pose="{detected_pose}"/>
+      <TransformPose name="pose_to_world" input_pose="{detected_pose}" target_frame="world" output_pose="{pick_pose_world}"/>
+      <ComputePreGraspPose name="calc_pregrasp" input_pose="{pick_pose_world}" z_offset_m="0.06" output_pose="{pregrasp_pose}"/>
+      <GripperControl name="open_gripper" command="open"/>
+      <MoveToCartesianPose name="go_pregrasp" target_pose="{pregrasp_pose}" velocity_scaling="0.4"/>
+      <MoveCartesianLinear name="descend_linear" target_pose="{pick_pose_world}" velocity_scaling="0.05" step_size="0.002"/>
+      <GripperControl name="grasp_object" command="close" force_limit="15.0" object_grasped="{object_grasped}" final_position="{grasp_position}"/>
+      <CheckGraspSuccess name="verify_grasp" object_grasped="{object_grasped}" final_position="{grasp_position}" min_grasp_width="0.001"/>
+      <MoveToCartesianPose name="lift_object" target_pose="{pregrasp_pose}" velocity_scaling="0.15"/>
+      <LogEvent name="log_pick_done" event_name="pick_success" severity="info" message="Object grasped and lifted"/>
+    </Sequence>
+  </BehaviorTree>
+  <BehaviorTree ID="Transport">
+    <Sequence name="transport_seq">
+      <CheckCollision name="check_collision_before_transport"/>
+      <LookupTransform name="read_base_to_hand" source_frame="world" target_frame="panda_hand" pose="{hand_pose_before_transport}"/>
+      <MoveToNamedConfig name="go_ready" config_name="ready" velocity_scaling="0.3"/>
+      <MoveToJointConfig name="go_place_zone" joint_positions="0.0;-0.5;0.0;-2.0;0.0;1.5;0.7" velocity_scaling="0.3"/>
+      <LogEvent name="log_transport_done" event_name="transport_complete" severity="info" message="Object transported to place zone"/>
+    </Sequence>
+  </BehaviorTree>
+  <BehaviorTree ID="Place">
+    <Sequence name="place_seq">
+      <SetPose name="set_place_pose" x="0.4" y="0.2" z="0.05" frame_id="world" pose="{place_pose}"/>
+      <ComputePreGraspPose name="calc_pre_place" input_pose="{place_pose}" z_offset_m="0.08" output_pose="{pre_place_pose}"/>
+      <MoveToCartesianPose name="go_pre_place" target_pose="{pre_place_pose}" velocity_scaling="0.3"/>
+      <MoveCartesianLinear name="descend_to_place" target_pose="{place_pose}" velocity_scaling="0.05" step_size="0.002"/>
+      <GripperControl name="release_object" command="open"/>
+      <WaitForDuration name="settle_after_release" seconds="0.3"/>
+      <MoveToCartesianPose name="retreat_from_place" target_pose="{pre_place_pose}" velocity_scaling="0.3"/>
+      <LogEvent name="log_place_done" event_name="place_success" severity="info" message="Object placed and retreated"/>
+    </Sequence>
+  </BehaviorTree>
+  <BehaviorTree ID="Cleanup">
+    <Sequence name="cleanup_seq">
+      <UpdatePlanningScene name="remove_table" object_id="table" operation="remove"/>
+      <SetDigitalIO name="lights_off" pin_name="workspace_light" value="false"/>
+      <GripperControl name="open_gripper_final" command="open"/>
+      <MoveToNamedConfig name="go_home_final" config_name="home" velocity_scaling="0.3"/>
+      <LogEvent name="log_demo_complete" event_name="demo_complete" severity="info" message="Full demo completed successfully"/>
+    </Sequence>
+  </BehaviorTree>
+</root>`,
+  },
+  {
+    name: "HumanInteractionDemo",
+    label: "Human Interaction Demo",
+    description: "Notification, warning, confirm, input, and task assignment — exercises all human interaction nodes",
+    xml: `<root BTCPP_format="4" main_tree_to_execute="HumanInteractionDemo">
+  <BehaviorTree ID="HumanInteractionDemo">
+    <Sequence name="demo_main">
+      <HumanNotification name="notify_start" title="Demo Starting" message="Human interaction demo is beginning. You will be asked to confirm, provide input, and complete a task."/>
+      <WaitForDuration name="brief_pause" seconds="1.0"/>
+      <HumanWarning name="warn_example" title="Workspace Active" message="Robot will be moving in the workspace. Stay clear of the work area." severity="warning"/>
+      <WaitForDuration name="pause_after_warning" seconds="1.0"/>
+      <HumanConfirm name="confirm_proceed" title="Ready to Proceed?" message="The robot will begin a pick operation. Is the workspace clear and safe?" timeout_sec="120" confirmed="{area_clear}"/>
+      <HumanNotification name="notify_confirmed" title="Confirmed" message="Operator confirmed workspace is clear. Proceeding."/>
+      <HumanInput name="select_target" title="Select Target Location" message="Where should the robot place the object?" input_type="choice" choices="Station A;Station B;Station C" timeout_sec="120" value="{target_station}"/>
+      <HumanNotification name="notify_selection" title="Target Selected" message="Operator selected a target station. Proceeding to pick."/>
+      <LogEvent name="log_moving_observe" event_name="robot_move" message="Robot moving to observation position" severity="info" tags="human"/>
+      <MoveToNamedConfig name="go_observe" config_name="observe" velocity_scaling="0.5"/>
+      <LogEvent name="log_picking" event_name="robot_action" message="Robot performing pick operation" severity="info" tags="human"/>
+      <MoveToNamedConfig name="go_home_after_pick" config_name="home" velocity_scaling="0.3"/>
+      <LogEvent name="log_pick_done" event_name="robot_action" message="Robot returned home with object" severity="info" tags="human"/>
+      <Fallback name="inspection_with_recovery">
+        <HumanTask name="inspect_placement" title="Inspect Placement" message="Please visually inspect the placement area and confirm the object is correctly positioned. Press Done when verified or Failed if repositioning is needed." timeout_sec="300" completed="{inspection_ok}" notes="{inspection_notes}"/>
+        <Sequence name="handle_inspection_failure">
+          <HumanWarning name="warn_inspection_failed" title="Inspection Failed" message="Operator reported placement issue. Manual intervention may be needed." severity="error"/>
+          <HumanConfirm name="confirm_continue_anyway" title="Continue Anyway?" message="The inspection failed. Do you want to continue the demo, or reject to abort?" timeout_sec="120" confirmed="{continue_after_fail}"/>
+        </Sequence>
+      </Fallback>
+      <HumanNotification name="notify_complete" title="Demo Complete" message="All human interaction nodes exercised successfully."/>
+    </Sequence>
+  </BehaviorTree>
+</root>`,
+  },
 ] as const;
 
 interface StepEntry {

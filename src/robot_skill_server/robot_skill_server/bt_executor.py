@@ -41,7 +41,7 @@ from diagnostic_msgs.msg import DiagnosticStatus
 from std_msgs.msg import String
 
 from robot_skills_msgs.action import ExecuteBehaviorTree
-from robot_skills_msgs.msg import TaskState
+from robot_skills_msgs.msg import TaskState, LogEvent
 
 
 class BtExecutor(Node):
@@ -85,6 +85,10 @@ class BtExecutor(Node):
             String, "/skill_server/active_bt_xml", latched_qos
         )
 
+        self._log_event_pub = self.create_publisher(
+            LogEvent, "/skill_server/log_events", 10
+        )
+
         self._current_task_id: Optional[str] = None
         self._cancel_requested = threading.Event()
         self._task_started_at = None
@@ -125,6 +129,13 @@ class BtExecutor(Node):
 
         self.get_logger().info(
             f"Executing BT '{goal.tree_name}' (id={task_id})"
+        )
+
+        self._publish_human_log(
+            "task_started",
+            f"Task '{goal.tree_name}' started (triggered via dashboard)",
+            severity="info",
+            task_id=task_id,
         )
 
         # Publish active BT XML for the web dashboard
@@ -211,10 +222,17 @@ class BtExecutor(Node):
                             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
                             proc.wait()
                         self.destroy_subscription(status_sub)
+                        elapsed = time.time() - start_time
                         result.success = False
                         result.final_status = "HALTED"
                         result.message = "Task cancelled by request"
-                        result.total_execution_time_sec = time.time() - start_time
+                        result.total_execution_time_sec = elapsed
+                        self._publish_human_log(
+                            "task_cancelled",
+                            f"Task '{goal.tree_name}' cancelled by operator after {elapsed:.1f}s",
+                            severity="warn",
+                            task_id=task_id,
+                        )
                         goal_handle.canceled(result)
                         return result
 
@@ -313,13 +331,26 @@ class BtExecutor(Node):
                 final_runner.elapsed_sec = elapsed_total
                 final_runner.progress = 1.0 if final_status == "SUCCESS" else final_runner.progress
                 final_runner.updated_at = self.get_clock().now().to_msg()
+                # Ensure error fields are populated on failure
+                if final_status in ("FAILURE", "ERROR"):
+                    if not final_runner.error_skill and final_runner.failed_skills:
+                        final_runner.error_skill = final_runner.failed_skills[-1]
+                    if not final_runner.error_skill and current_node_ref[0]:
+                        final_runner.error_skill = current_node_ref[0]
+                    if not final_runner.error_message:
+                        failed = ", ".join(final_runner.failed_skills) if final_runner.failed_skills else (final_runner.error_skill or "unknown")
+                        final_runner.error_message = f"Task failed at: {failed}"
                 self._task_state_pub.publish(final_runner)
             else:
+                error_node = current_node_ref[0] if final_status in ("FAILURE", "ERROR") else ""
+                error_msg = f"Task failed at: {error_node}" if error_node else ""
                 self._publish_task_state(
                     task_id=task_id,
                     task_name=goal.tree_name,
                     status=final_status,
-                    current_node="",
+                    current_node=error_node,
+                    error_message=error_msg if final_status in ("FAILURE", "ERROR") else "",
+                    error_skill=error_node if final_status in ("FAILURE", "ERROR") else "",
                 )
 
             result.success = final_status == "SUCCESS"
@@ -334,12 +365,44 @@ class BtExecutor(Node):
             self._last_task_result = final_status
 
             self.get_logger().info(result.message)
+
+            # Human log for task outcome
+            if final_status == "SUCCESS":
+                completed = final_runner.completed_skills if final_runner else []
+                self._publish_human_log(
+                    "task_completed",
+                    f"Task '{goal.tree_name}' completed successfully in {elapsed_total:.1f}s"
+                    + (f" ({len(completed)} skills)" if completed else ""),
+                    severity="info",
+                    task_id=task_id,
+                )
+            elif final_status in ("FAILURE", "ERROR"):
+                error_skill = ""
+                error_msg = ""
+                if final_runner:
+                    error_skill = final_runner.error_skill
+                    error_msg = final_runner.error_message
+                self._publish_human_log(
+                    "task_failed",
+                    f"Task '{goal.tree_name}' failed after {elapsed_total:.1f}s"
+                    + (f" at '{error_skill}'" if error_skill else "")
+                    + (f": {error_msg}" if error_msg else ""),
+                    severity="error",
+                    task_id=task_id,
+                    skill_name=error_skill,
+                )
             goal_handle.succeed(result)
             return result
 
         except Exception as e:
             # Publish error state if _execute_bt crashes unexpectedly
             self.get_logger().error(f"BT execution crashed: {e}")
+            self._publish_human_log(
+                "task_error",
+                f"Task '{goal.tree_name}' crashed: {e}",
+                severity="error",
+                task_id=task_id,
+            )
             elapsed_total = time.time() - start_time
             self._publish_task_state(
                 task_id=task_id,
@@ -409,3 +472,23 @@ class BtExecutor(Node):
         msg.error_message = error_message
         msg.error_skill = error_skill
         self._task_state_pub.publish(msg)
+
+    def _publish_human_log(
+        self,
+        event_name: str,
+        message: str,
+        severity: str = "info",
+        task_id: str = "",
+        skill_name: str = "",
+        tags: list[str] | None = None,
+    ):
+        """Publish a LogEvent to /skill_server/log_events for the human log stream."""
+        log_msg = LogEvent()
+        log_msg.stamp = self.get_clock().now().to_msg()
+        log_msg.event_name = event_name
+        log_msg.severity = severity
+        log_msg.message = message
+        log_msg.task_id = task_id
+        log_msg.skill_name = skill_name
+        log_msg.tags = tags or ["human"]
+        self._log_event_pub.publish(log_msg)

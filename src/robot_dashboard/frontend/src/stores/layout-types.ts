@@ -9,7 +9,9 @@ export type PanelId =
   | "plotter"
   | "services"
   | "logs"
-  | "diagnostics";
+  | "diagnostics"
+  | "intervention"
+  | "human-prompts";
 
 export interface LayoutLeaf {
   type: "leaf";

@@ -35,7 +35,9 @@ public:
     auto result = std::make_shared<Action::Result>();
     const auto & goal = goal_handle->get_goal();
     int msg_rate = this->get_parameter("mock_messages_per_sec").as_int();
-    double duration = goal->duration_sec > 0 ? goal->duration_sec : 3.0;
+    double requested_duration = goal->duration_sec > 0 ? goal->duration_sec : 3.0;
+    // In mock mode, cap to 3s regardless of requested duration
+    double duration = std::min(requested_duration, 3.0);
 
     RCLCPP_INFO(this->get_logger(), "[MOCK] Recording rosbag for %.1fs to %s",
       duration, goal->output_path.c_str());

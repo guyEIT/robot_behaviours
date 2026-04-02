@@ -11,6 +11,7 @@
 
 #include "robot_bt_nodes/bt_skill_nodes.hpp"
 #include "robot_bt_nodes/bt_utility_nodes.hpp"
+#include "robot_bt_nodes/bt_human_interaction_nodes.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Plugin registration - BT_REGISTER_NODES is the BT.CPP entry point
@@ -45,4 +46,11 @@ BT_REGISTER_NODES(factory)
   factory.registerNodeType<robot_bt_nodes::CheckGraspSuccess>("CheckGraspSuccess");
   factory.registerNodeType<robot_bt_nodes::SetPose>("SetPose");
   factory.registerNodeType<robot_bt_nodes::ComputePreGraspPose>("ComputePreGraspPose");
+
+  // ── Human interaction nodes ───────────────────────────────────────────────
+  factory.registerNodeType<robot_bt_nodes::HumanNotification>("HumanNotification");
+  factory.registerNodeType<robot_bt_nodes::HumanWarning>("HumanWarning");
+  factory.registerNodeType<robot_bt_nodes::HumanConfirm>("HumanConfirm");
+  factory.registerNodeType<robot_bt_nodes::HumanInput>("HumanInput");
+  factory.registerNodeType<robot_bt_nodes::HumanTask>("HumanTask");
 }

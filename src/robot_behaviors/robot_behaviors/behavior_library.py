@@ -71,6 +71,37 @@ BEHAVIOR_CATALOG = {
         "postconditions": ["object_placed_at_target", "robot_at_home"],
         "xml_file": "pick_and_place.xml",
     },
+    "full_demo": {
+        "name": "full_demo",
+        "display_name": "Full Demo",
+        "description": (
+            "Comprehensive demo exercising all skills: robot enable, scene setup, "
+            "point cloud capture, pick with retry, collision-safe transport, "
+            "place, and cleanup. No external inputs needed."
+        ),
+        "category": "demo",
+        "tags": [
+            "demo", "pick", "place", "perception", "planning_scene",
+            "collision", "digital_io", "rosbag", "full",
+        ],
+        "preconditions": ["robot_initialized"],
+        "postconditions": ["robot_at_home", "gripper_open"],
+        "xml_file": "full_demo.xml",
+    },
+    "human_interaction_demo": {
+        "name": "human_interaction_demo",
+        "display_name": "Human Interaction Demo",
+        "description": (
+            "Demonstrates all human interaction nodes: notification, warning, "
+            "confirm (blocks for operator), input (blocks for value), and "
+            "task assignment (blocks until operator reports done)."
+        ),
+        "category": "demo",
+        "tags": ["demo", "human", "notification", "confirm", "input", "task"],
+        "preconditions": ["robot_initialized"],
+        "postconditions": ["robot_at_home"],
+        "xml_file": "human_interaction_demo.xml",
+    },
 }
 
 

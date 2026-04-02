@@ -1,0 +1,115 @@
+<!--
+  HumanInteractionDemo behavior tree
+
+  Demonstrates all five human interaction skill nodes:
+    1. HumanNotification (async) — info message, tree continues
+    2. HumanWarning (async) — severity-based alert, tree continues
+    3. HumanConfirm (sync) — blocks until operator confirms
+    4. HumanInput (sync) — blocks until operator provides a value
+    5. HumanTask (sync) — assigns physical task, blocks until done
+
+  No external inputs needed. All prompts are self-contained.
+-->
+<root BTCPP_format="4" main_tree_to_execute="HumanInteractionDemo">
+
+  <BehaviorTree ID="HumanInteractionDemo">
+    <Sequence name="demo_main">
+
+      <!-- Phase 1: Async notifications (tree does not pause) -->
+      <HumanNotification name="notify_start"
+                         title="Demo Starting"
+                         message="Human interaction demo is beginning. You will be asked to confirm, provide input, and complete a task."/>
+
+      <WaitForDuration name="brief_pause" seconds="1.0"/>
+
+      <HumanWarning name="warn_example"
+                    title="Workspace Active"
+                    message="Robot will be moving in the workspace. Stay clear of the work area."
+                    severity="warning"/>
+
+      <WaitForDuration name="pause_after_warning" seconds="1.0"/>
+
+      <!-- Phase 2: Blocking confirmation -->
+      <HumanConfirm name="confirm_proceed"
+                    title="Ready to Proceed?"
+                    message="The robot will begin a pick operation. Is the workspace clear and safe?"
+                    timeout_sec="120"
+                    confirmed="{area_clear}"/>
+
+      <HumanNotification name="notify_confirmed"
+                         title="Confirmed"
+                         message="Operator confirmed workspace is clear. Proceeding."/>
+
+      <!-- Phase 3: Blocking input -->
+      <HumanInput name="select_target"
+                  title="Select Target Location"
+                  message="Where should the robot place the object?"
+                  input_type="choice"
+                  choices="Station A;Station B;Station C"
+                  timeout_sec="120"
+                  value="{target_station}"/>
+
+      <HumanNotification name="notify_selection"
+                         title="Target Selected"
+                         message="Operator selected a target station. Proceeding to pick."/>
+
+      <!-- Phase 4: Simulate pick (move home as placeholder) -->
+      <LogEvent name="log_moving_observe"
+               event_name="robot_move"
+               message="Robot moving to observation position"
+               severity="info"
+               tags="human"/>
+
+      <MoveToNamedConfig name="go_observe"
+                         config_name="observe"
+                         velocity_scaling="0.5"/>
+
+      <LogEvent name="log_picking"
+               event_name="robot_action"
+               message="Robot performing pick operation"
+               severity="info"
+               tags="human"/>
+
+      <MoveToNamedConfig name="go_home_after_pick"
+                         config_name="home"
+                         velocity_scaling="0.3"/>
+
+      <LogEvent name="log_pick_done"
+               event_name="robot_action"
+               message="Robot returned home with object"
+               severity="info"
+               tags="human"/>
+
+      <!-- Phase 5: Assign human task with outcome handling -->
+      <Fallback name="inspection_with_recovery">
+        <HumanTask name="inspect_placement"
+                   title="Inspect Placement"
+                   message="Please visually inspect the placement area and confirm the object is correctly positioned. Press Done when verified or Failed if repositioning is needed."
+                   timeout_sec="300"
+                   completed="{inspection_ok}"
+                   notes="{inspection_notes}"/>
+
+        <!-- If operator pressed Failed: warn and ask for re-confirm -->
+        <Sequence name="handle_inspection_failure">
+          <HumanWarning name="warn_inspection_failed"
+                        title="Inspection Failed"
+                        message="Operator reported placement issue. Manual intervention may be needed."
+                        severity="error"/>
+
+          <HumanConfirm name="confirm_continue_anyway"
+                        title="Continue Anyway?"
+                        message="The inspection failed. Do you want to continue the demo, or reject to abort?"
+                        timeout_sec="120"
+                        confirmed="{continue_after_fail}"/>
+        </Sequence>
+      </Fallback>
+
+      <!-- Phase 6: Final notification -->
+      <HumanNotification name="notify_complete"
+                         title="Demo Complete"
+                         message="All human interaction nodes exercised successfully."/>
+
+    </Sequence>
+  </BehaviorTree>
+
+</root>

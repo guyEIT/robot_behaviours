@@ -10,6 +10,8 @@ import {
   PhoneCall,
   Gauge,
   HeartPulse,
+  ShieldAlert,
+  MessageSquareMore,
 } from "lucide-react";
 import type { PanelId } from "../../stores/layout-types";
 
@@ -24,6 +26,8 @@ import TopicPlotter from "../plotter/TopicPlotter";
 import ServiceCallerPanel from "../service-caller/ServiceCallerPanel";
 import JointStateViewer from "../joint-viewer/JointStateViewer";
 import DiagnosticsPanel from "../diagnostics/DiagnosticsPanel";
+import InterventionPanel from "../intervention/InterventionPanel";
+import HumanPromptPanel from "../human-prompts/HumanPromptPanel";
 
 export interface PanelInfo {
   id: PanelId;
@@ -45,6 +49,8 @@ export const PANELS: PanelInfo[] = [
   { id: "services", label: "Services", icon: <PhoneCall className="w-3.5 h-3.5" />, group: "tools", component: <ServiceCallerPanel /> },
   { id: "logs", label: "Logs", icon: <ScrollText className="w-3.5 h-3.5" />, group: "monitor", component: <LogPanel /> },
   { id: "diagnostics", label: "Diagnostics", icon: <HeartPulse className="w-3.5 h-3.5" />, group: "monitor", component: <DiagnosticsPanel /> },
+  { id: "intervention", label: "Intervene", icon: <ShieldAlert className="w-3.5 h-3.5" />, group: "behavior", component: <InterventionPanel /> },
+  { id: "human-prompts", label: "Human", icon: <MessageSquareMore className="w-3.5 h-3.5" />, group: "behavior", component: <HumanPromptPanel /> },
 ];
 
 export const PANEL_MAP = Object.fromEntries(PANELS.map((p) => [p.id, p])) as Record<PanelId, PanelInfo>;
