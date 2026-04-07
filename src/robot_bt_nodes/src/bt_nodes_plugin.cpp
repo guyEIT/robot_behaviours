@@ -29,10 +29,28 @@ BT_REGISTER_NODES(factory)
     "MoveToNamedConfig", default_params);
   factory.registerNodeType<robot_bt_nodes::MoveToCartesianPoseNode>(
     "MoveToCartesianPose", default_params);
+  factory.registerNodeType<robot_bt_nodes::MoveToJointConfigNode>(
+    "MoveToJointConfig", default_params);
+  factory.registerNodeType<robot_bt_nodes::MoveCartesianLinearNode>(
+    "MoveCartesianLinear", default_params);
   factory.registerNodeType<robot_bt_nodes::GripperControlNode>(
     "GripperControl", default_params);
   factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
     "DetectObject", default_params);
+  factory.registerNodeType<robot_bt_nodes::CapturePointCloudNode>(
+    "CapturePointCloud", default_params);
+  factory.registerNodeType<robot_bt_nodes::SetDigitalIONode>(
+    "SetDigitalIO", default_params);
+  factory.registerNodeType<robot_bt_nodes::CheckCollisionNode>(
+    "CheckCollision", default_params);
+  factory.registerNodeType<robot_bt_nodes::UpdatePlanningSceneNode>(
+    "UpdatePlanningScene", default_params);
+  factory.registerNodeType<robot_bt_nodes::RobotEnableNode>(
+    "RobotEnable", default_params);
+  factory.registerNodeType<robot_bt_nodes::RecordRosbagNode>(
+    "RecordRosbag", default_params);
+  factory.registerNodeType<robot_bt_nodes::CheckSystemReadyNode>(
+    "CheckSystemReady", default_params);
 
   // ── Synchronous utility nodes (no action server) ──────────────────────────
   factory.registerNodeType<robot_bt_nodes::EmergencyStop>("EmergencyStop");

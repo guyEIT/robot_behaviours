@@ -88,6 +88,17 @@ rclcpp_components_register_node(detect_object_skill
   PLUGIN "robot_skill_atoms::DetectObjectSkill"
   EXECUTABLE detect_object_skill_node)
 
+# ── CheckSystemReady skill ───────────────────────────────────────────────────
+add_library(check_system_ready_skill SHARED
+  src/check_system_ready_skill.cpp)
+target_include_directories(check_system_ready_skill PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(check_system_ready_skill ${SKILL_DEPS})
+rclcpp_components_register_node(check_system_ready_skill
+  PLUGIN "robot_skill_atoms::CheckSystemReadySkill"
+  EXECUTABLE check_system_ready_skill_node)
+
 # ── Main component manager node ──────────────────────────────────────────────
 add_executable(skills_node src/skills_node.cpp)
 ament_target_dependencies(skills_node rclcpp rclcpp_components)
@@ -101,6 +112,7 @@ install(TARGETS
   move_to_cartesian_pose_skill
   gripper_control_skill
   detect_object_skill
+  check_system_ready_skill
   skills_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -122,6 +134,7 @@ ament_export_libraries(
   move_to_cartesian_pose_skill
   gripper_control_skill
   detect_object_skill
+  check_system_ready_skill
 )
 ament_export_dependencies(${SKILL_DEPS})
 ament_package()

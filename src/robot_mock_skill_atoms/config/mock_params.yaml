@@ -71,6 +71,11 @@ mock_record_rosbag_skill:
   ros__parameters:
     mock_messages_per_sec: 100
 
+mock_check_system_ready_skill:
+  ros__parameters:
+    check_delay: 0.3
+    simulate_failure: false
+
 mock_joint_state_publisher:
   ros__parameters:
     publish_rate: 50.0

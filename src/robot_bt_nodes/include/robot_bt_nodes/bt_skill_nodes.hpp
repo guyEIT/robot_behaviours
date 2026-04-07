@@ -27,6 +27,7 @@
 #include "robot_skills_msgs/action/update_planning_scene.hpp"
 #include "robot_skills_msgs/action/robot_enable.hpp"
 #include "robot_skills_msgs/action/record_rosbag.hpp"
+#include "robot_skills_msgs/action/check_system_ready.hpp"
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
@@ -676,6 +677,70 @@ public:
   }
 
   BT::NodeStatus onFailure(BT::ActionNodeErrorCode) override { return BT::NodeStatus::FAILURE; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CheckSystemReady BT node
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CheckSystemReadyNode
+  : public BT::RosActionNode<robot_skills_msgs::action::CheckSystemReady>
+{
+public:
+  using CheckSystemReady = robot_skills_msgs::action::CheckSystemReady;
+
+  CheckSystemReadyNode(const std::string & name, const BT::NodeConfig & config,
+    const BT::RosNodeParams & params)
+  : BT::RosActionNode<CheckSystemReady>(name, config, params) {}
+
+  static BT::PortsList providedPorts()
+  {
+    return {
+      BT::InputPort<std::vector<std::string>>("required_systems",
+        "Systems to check (empty = all defaults)"),
+      BT::InputPort<double>("timeout_sec", 5.0,
+        "Max wait per system in seconds"),
+      BT::OutputPort<std::vector<std::string>>("available_systems",
+        "Systems that responded"),
+      BT::OutputPort<std::vector<std::string>>("unavailable_systems",
+        "Systems that did not respond"),
+    };
+  }
+
+  bool setGoal(Goal & goal) override
+  {
+    auto systems = getInput<std::vector<std::string>>("required_systems");
+    if (systems) goal.required_systems = systems.value();
+    goal.timeout_sec = getInput<double>("timeout_sec").value_or(5.0);
+    return true;
+  }
+
+  BT::NodeStatus onResultReceived(const WrappedResult & result) override
+  {
+    setOutput("available_systems", result.result->available_systems);
+    setOutput("unavailable_systems", result.result->unavailable_systems);
+
+    if (result.result->success) {
+      RCLCPP_INFO(logger(), "CheckSystemReady: %s", result.result->message.c_str());
+      return BT::NodeStatus::SUCCESS;
+    }
+    RCLCPP_WARN(logger(), "CheckSystemReady: %s", result.result->message.c_str());
+    return BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFailure(BT::ActionNodeErrorCode error) override
+  {
+    RCLCPP_ERROR(logger(), "CheckSystemReady action error (connection/timeout): %d",
+      static_cast<int>(error));
+    return BT::NodeStatus::FAILURE;
+  }
+
+  BT::NodeStatus onFeedback(const std::shared_ptr<const Feedback> feedback) override
+  {
+    RCLCPP_DEBUG(logger(), "CheckSystemReady: %.0f%% - checking %s",
+      feedback->progress * 100.0, feedback->current_check.c_str());
+    return BT::NodeStatus::RUNNING;
+  }
 };
 
 }  // namespace robot_bt_nodes

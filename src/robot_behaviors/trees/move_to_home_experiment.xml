@@ -1,0 +1,29 @@
+<!--
+  MoveToHome with experiment wrapper.
+
+  Demonstrates using experiment_wrapper.xml:
+    1. Prompts operator for experiment name and description
+    2. Starts rosbag recording
+    3. Runs MoveToHome (open gripper + move to home config)
+    4. Stops recording and notifies operator
+
+  The main tree is ExperimentTask (from the wrapper),
+  and TaskBody contains the actual work.
+-->
+<root BTCPP_format="4" main_tree_to_execute="ExperimentTask">
+
+  <include path="experiment_wrapper.xml"/>
+
+  <BehaviorTree ID="TaskBody">
+    <Sequence name="move_to_home">
+      <GripperControl name="open_gripper"
+                      command="open"/>
+
+      <MoveToNamedConfig name="go_home"
+                         config_name="home"
+                         velocity_scaling="0.3"
+                         acceleration_scaling="0.3"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

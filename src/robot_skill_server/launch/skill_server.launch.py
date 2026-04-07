@@ -99,26 +99,80 @@ def generate_launch_description():
         ],
     )
 
+    # ── Shared parameters for motion skill atoms ───────────────────────────────
+    motion_params = {
+        "default_planning_group": "arm",
+        "default_velocity_scaling": 0.3,
+        # Workspace bounds (500mm reach robot)
+        "workspace_min_x": -0.6,
+        "workspace_max_x": 0.6,
+        "workspace_min_y": -0.6,
+        "workspace_max_y": 0.6,
+        "workspace_min_z": -0.05,
+        "workspace_max_z": 0.7,
+    }
+
     # ── Skill Atoms (C++ action servers) ─────────────────────────────────────
-    skill_atoms_node = Node(
+    # Each skill runs as its own node so it can self-register with SkillRegistry
+    # and advertise its own action server.
+    move_to_named_config_node = Node(
         package="robot_skill_atoms",
-        executable="skills_node",
-        name="skill_atoms",
+        executable="move_to_named_config_skill_node",
+        name="move_to_named_config_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[{
+            **motion_params,
+            "allowed_named_configs": ["home", "ready", "stow", "observe"],
+        }],
+    )
+
+    move_to_cartesian_pose_node = Node(
+        package="robot_skill_atoms",
+        executable="move_to_cartesian_pose_skill_node",
+        name="move_to_cartesian_pose_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[motion_params],
+    )
+
+    gripper_control_node = Node(
+        package="robot_skill_atoms",
+        executable="gripper_control_skill_node",
+        name="gripper_control_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[{
+            "gripper_action_server": "/gripper_controller/gripper_cmd",
+        }],
+    )
+
+    detect_object_node = Node(
+        package="robot_skill_atoms",
+        executable="detect_object_skill_node",
+        name="detect_object_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+    )
+
+    # ── CheckSystemReady skill (runs alongside other skill atoms) ─────────────
+    check_system_ready_node = Node(
+        package="robot_skill_atoms",
+        executable="check_system_ready_skill_node",
+        name="check_system_ready_skill",
         output="screen",
         arguments=["--ros-args", "--log-level", log_level],
         parameters=[
             {
-                "default_planning_group": "arm",
-                "default_velocity_scaling": 0.3,
-                "allowed_named_configs": ["home", "ready", "stow", "observe"],
-                "gripper_action_server": "/gripper_controller/gripper_cmd",
-                # Workspace bounds for Meca500 (500mm reach)
-                "workspace_min_x": -0.6,
-                "workspace_max_x": 0.6,
-                "workspace_min_y": -0.6,
-                "workspace_max_y": 0.6,
-                "workspace_min_z": -0.05,
-                "workspace_max_z": 0.7,
+                "default_systems": [
+                    "move_group", "joint_states",
+                    "arm_controller", "gripper_controller",
+                ],
+                "move_group_action": "/move_action",
+                "arm_controller_action": "/arm_controller/follow_joint_trajectory",
+                "gripper_controller_action": "/gripper_controller/gripper_cmd",
+                "joint_states_topic": "/joint_states",
+                "camera_topic": "/camera/color/image_raw",
             }
         ],
     )
@@ -225,7 +279,12 @@ def generate_launch_description():
         use_realsense_arg,
         # Nodes
         skill_server_node,
-        skill_atoms_node,
+        # Skill atoms (individual action servers)
+        move_to_named_config_node,
+        move_to_cartesian_pose_node,
+        gripper_control_node,
+        detect_object_node,
+        check_system_ready_node,
         diagnostic_aggregator_node,
         moveit_reminder,
         realsense_node,

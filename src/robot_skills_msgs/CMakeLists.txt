@@ -40,6 +40,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/UpdatePlanningScene.action"
   "action/RobotEnable.action"
   "action/RecordRosbag.action"
+  "action/CheckSystemReady.action"
   "action/ExecuteBehaviorTree.action"
   DEPENDENCIES
     builtin_interfaces

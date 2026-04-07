@@ -147,6 +147,15 @@ rclcpp_components_register_node(mock_record_rosbag
   PLUGIN "robot_mock_skill_atoms::MockRecordRosbag"
   EXECUTABLE mock_record_rosbag_node)
 
+# ── Mock CheckSystemReady skill ──────────────────────────────────────────────
+add_library(mock_check_system_ready SHARED src/mock_check_system_ready.cpp)
+target_include_directories(mock_check_system_ready PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(mock_check_system_ready ${MOCK_DEPS})
+rclcpp_components_register_node(mock_check_system_ready
+  PLUGIN "robot_mock_skill_atoms::MockCheckSystemReady"
+  EXECUTABLE mock_check_system_ready_node)
+
 # ── Mock Joint State Publisher ───────────────────────────────────────────────
 add_library(mock_joint_state_publisher SHARED
   src/mock_joint_state_publisher.cpp)
@@ -179,6 +188,7 @@ install(TARGETS
   mock_update_planning_scene
   mock_robot_enable
   mock_record_rosbag
+  mock_check_system_ready
   mock_joint_state_publisher
   mock_skills_node
   ARCHIVE DESTINATION lib
@@ -213,6 +223,7 @@ ament_export_libraries(
   mock_update_planning_scene
   mock_robot_enable
   mock_record_rosbag
+  mock_check_system_ready
   mock_joint_state_publisher
 )
 ament_export_dependencies(${MOCK_DEPS})

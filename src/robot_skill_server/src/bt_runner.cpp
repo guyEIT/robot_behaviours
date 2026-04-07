@@ -18,7 +18,6 @@
 
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <memory>
 #include <set>
@@ -39,6 +38,7 @@
 #include "robot_skills_msgs/msg/task_state.hpp"
 #include "robot_skills_msgs/msg/log_event.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "ament_index_cpp/get_package_share_directory.hpp"
 
 namespace
 {
@@ -65,16 +65,6 @@ RunnerConfig parseArgs(int argc, char ** argv)
   return cfg;
 }
 
-std::string readFile(const std::string & path)
-{
-  std::ifstream file(path);
-  if (!file.is_open()) {
-    throw std::runtime_error("Cannot open tree file: " + path);
-  }
-  std::ostringstream ss;
-  ss << file.rdbuf();
-  return ss.str();
-}
 
 }  // namespace
 
@@ -136,6 +126,8 @@ int main(int argc, char ** argv)
     "RobotEnable", make_params("/skill_atoms/robot_enable"));
   factory.registerNodeType<robot_bt_nodes::RecordRosbagNode>(
     "RecordRosbag", make_params("/skill_atoms/record_rosbag"));
+  factory.registerNodeType<robot_bt_nodes::CheckSystemReadyNode>(
+    "CheckSystemReady", make_params("/skill_atoms/check_system_ready"));
 
   // Synchronous utility nodes (no action server needed)
   factory.registerNodeType<robot_bt_nodes::ComputePreGraspPose>("ComputePreGraspPose");
@@ -157,21 +149,42 @@ int main(int argc, char ** argv)
   factory.registerNodeType<robot_bt_nodes::HumanInput>("HumanInput");
   factory.registerNodeType<robot_bt_nodes::HumanTask>("HumanTask");
 
-  // ── Load the tree XML ─────────────────────────────────────────────────────
-  std::string tree_xml;
+  // ── Pre-register shared behavior trees for <include> / <SubTree> ─────────
+  // Load all .xml files from robot_behaviors/trees/ so that any tree can
+  // reference shared subtrees (e.g. experiment_wrapper.xml) via <include>.
   try {
-    tree_xml = readFile(cfg.tree_file);
+    auto behaviors_dir = ament_index_cpp::get_package_share_directory("robot_behaviors");
+    auto trees_dir = std::filesystem::path(behaviors_dir) / "trees";
+    if (std::filesystem::is_directory(trees_dir)) {
+      for (const auto & entry : std::filesystem::directory_iterator(trees_dir)) {
+        if (entry.path().extension() == ".xml") {
+          try {
+            factory.registerBehaviorTreeFromFile(entry.path().string());
+            RCLCPP_DEBUG(node->get_logger(), "Pre-registered tree: %s",
+              entry.path().filename().c_str());
+          } catch (const std::exception & e) {
+            // Some trees may define main_tree_to_execute and conflict; skip
+            RCLCPP_DEBUG(node->get_logger(), "Skipped pre-registering %s: %s",
+              entry.path().filename().c_str(), e.what());
+          }
+        }
+      }
+    }
   } catch (const std::exception & e) {
-    RCLCPP_ERROR(node->get_logger(), "Failed to read tree file: %s", e.what());
-    rclcpp::shutdown();
-    return 2;
+    RCLCPP_WARN(node->get_logger(),
+      "Could not pre-register behavior trees: %s", e.what());
   }
 
+  // ── Load the tree XML ─────────────────────────────────────────────────────
+  // Pre-registered subtrees (above) are available for <SubTree ID="..."/>
+  // references. createTreeFromFile also resolves <include> relative to the
+  // file's directory.
   BT::Tree tree;
   try {
-    tree = factory.createTreeFromText(tree_xml);
+    tree = factory.createTreeFromFile(cfg.tree_file);
   } catch (const std::exception & e) {
-    RCLCPP_ERROR(node->get_logger(), "Failed to parse BT XML: %s", e.what());
+    RCLCPP_ERROR(node->get_logger(), "Failed to load BT from '%s': %s",
+      cfg.tree_file.c_str(), e.what());
     rclcpp::shutdown();
     return 2;
   }

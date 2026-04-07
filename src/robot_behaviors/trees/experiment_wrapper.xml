@@ -1,0 +1,82 @@
+<!--
+  ExperimentWrapper — wraps any task with experiment labelling and rosbag recording.
+
+  Prompts the operator for an experiment name and description via the dashboard,
+  then runs rosbag recording in parallel with the task body. When the task
+  completes (success or failure), recording is automatically stopped.
+
+  Usage — task trees include this file and define a "TaskBody" subtree:
+
+    <root BTCPP_format="4" main_tree_to_execute="ExperimentTask">
+      <include path="experiment_wrapper.xml"/>
+
+      <BehaviorTree ID="TaskBody">
+        <Sequence>
+          <CheckSystemReady timeout_sec="5.0"/>
+          <RobotEnable enable="true"/>
+          <MoveToNamedConfig config_name="home"/>
+          ... your task ...
+        </Sequence>
+      </BehaviorTree>
+    </root>
+
+  Blackboard variables produced:
+    {experiment_name}        — name entered by operator
+    {experiment_description} — description entered by operator
+-->
+<root BTCPP_format="4">
+
+  <BehaviorTree ID="ExperimentTask">
+    <Sequence name="experiment_wrapper_seq">
+
+      <!-- ── Phase 1: Collect experiment metadata from operator ────────── -->
+      <HumanInput name="get_experiment_name"
+                  title="Experiment Name"
+                  message="Enter a name for this experiment run:"
+                  input_type="text"
+                  default_value=""
+                  value="{experiment_name}"/>
+
+      <HumanInput name="get_experiment_description"
+                  title="Experiment Description"
+                  message="Describe the experiment (optional):"
+                  input_type="text"
+                  default_value=""
+                  value="{experiment_description}"/>
+
+      <LogEvent name="log_experiment_start"
+                event_name="experiment_start"
+                severity="info"
+                message="Starting experiment: {experiment_name}"/>
+
+      <!-- ── Phase 2: Run recording in parallel with the task ──────────
+           Parallel(success_count=1, failure_count=1):
+             - RecordRosbag stays RUNNING (duration=0 = indefinite)
+             - TaskBody runs the actual task
+             - When TaskBody finishes (success OR failure), Parallel halts
+               RecordRosbag, which cancels the action and stops recording.
+           ─────────────────────────────────────────────────────────────── -->
+      <Parallel success_count="1" failure_count="1">
+
+        <RecordRosbag name="experiment_recording"
+                      output_path="/tmp/experiments/{experiment_name}"
+                      duration_sec="0.0"/>
+
+        <SubTree ID="TaskBody" _autoremap="true"/>
+
+      </Parallel>
+
+      <!-- ── Phase 3: Notify completion (only runs if task succeeded) ── -->
+      <LogEvent name="log_experiment_end"
+                event_name="experiment_end"
+                severity="info"
+                message="Experiment '{experiment_name}' completed successfully"/>
+
+      <HumanNotification name="notify_experiment_complete"
+                         title="Experiment Complete"
+                         message="'{experiment_name}' finished. Bag saved to /tmp/experiments/{experiment_name}"/>
+
+    </Sequence>
+  </BehaviorTree>
+
+</root>

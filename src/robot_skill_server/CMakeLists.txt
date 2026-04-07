@@ -15,6 +15,7 @@ find_package(behaviortree_ros2 REQUIRED)
 find_package(robot_skills_msgs REQUIRED)
 find_package(robot_bt_nodes REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 # ── Python package ────────────────────────────────────────────────────────────
 ament_python_install_package(robot_skill_server)
@@ -37,6 +38,7 @@ ament_target_dependencies(bt_runner
   robot_skills_msgs
   robot_bt_nodes
   geometry_msgs
+  ament_index_cpp
 )
 
 install(TARGETS bt_runner

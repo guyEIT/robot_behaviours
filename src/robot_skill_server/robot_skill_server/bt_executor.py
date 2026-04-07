@@ -149,12 +149,20 @@ class BtExecutor(Node):
             current_node="",
         )
 
-        # Write BT XML to a temp file for the C++ runner
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".xml", delete=False, prefix=f"bt_{task_id}_"
-        ) as f:
+        # Write BT XML to a temp file in the behaviors trees directory so that
+        # <include path="..."/> directives resolve correctly (relative to the
+        # tree file's directory). Falls back to /tmp if the package isn't found.
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            trees_dir = os.path.join(
+                get_package_share_directory("robot_behaviors"), "trees"
+            )
+        except Exception:
+            trees_dir = tempfile.gettempdir()
+
+        xml_path = os.path.join(trees_dir, f"bt_{task_id}.xml")
+        with open(xml_path, "w") as f:
             f.write(goal.tree_xml)
-            xml_path = f.name
 
         try:
             start_time = time.time()

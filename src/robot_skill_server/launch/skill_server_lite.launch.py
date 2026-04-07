@@ -198,6 +198,15 @@ def generate_launch_description():
         parameters=[mock_params],
     )
 
+    mock_check_system_ready = Node(
+        package="robot_mock_skill_atoms",
+        executable="mock_check_system_ready_node",
+        name="mock_check_system_ready_skill",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[mock_params],
+    )
+
     # ── Mock Joint State Publisher ───────────────────────────────────────────
     mock_joint_state_pub = Node(
         package="robot_mock_skill_atoms",
@@ -316,6 +325,7 @@ def generate_launch_description():
         mock_update_planning_scene,
         mock_robot_enable,
         mock_record_rosbag,
+        mock_check_system_ready,
         # Orchestrator
         skill_server_node,
         # Monitoring

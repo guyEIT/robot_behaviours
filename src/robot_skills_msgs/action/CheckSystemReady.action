@@ -1,0 +1,16 @@
+# Goal: Check that required robot subsystems are available
+string[] required_systems           # Systems to check (empty = check all known)
+                                    # Known systems: move_group, joint_states,
+                                    #   arm_controller, gripper_controller, camera
+float64 timeout_sec 5.0             # Max wait per system (seconds)
+---
+# Result
+bool success                        # True if ALL required systems are available
+string message
+string[] available_systems           # Systems that responded within timeout
+string[] unavailable_systems         # Systems that did NOT respond
+---
+# Feedback
+string status_message
+string current_check                # System currently being probed
+float32 progress                    # 0.0 to 1.0
