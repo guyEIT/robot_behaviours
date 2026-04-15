@@ -12,7 +12,9 @@ FROM ros:jazzy-ros-base
 ARG DEBIAN_FRONTEND=noninteractive
 
 # ── Install only what the orchestration pipeline needs ────────────────────────
-RUN apt-get update && apt-get install -y \
+# Upgrade first: the base image's FastCDR may be older than the message
+# packages pulled from the ROS2 repo, causing ABI mismatches at runtime.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     # Behavior Trees
     ros-jazzy-behaviortree-cpp \
     # TF2 (for static transform publisher)

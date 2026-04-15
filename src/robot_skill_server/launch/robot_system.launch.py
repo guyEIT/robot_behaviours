@@ -4,7 +4,7 @@ Robot Skills Framework — Multi-Robot System Launch.
 Reads src/robot_skill_server/config/robots.yaml and:
   - Launches skill atoms for every robot with `local: true` (runs on this PC)
   - Starts the central skill server (registry, composer, BT executor)
-  - Passes the full robot list to bt_runner so per-robot BT node types are registered
+  - Starts the C++ TreeExecutionServer for BT execution
   - Starts the robot dashboard
 
 Remote robots (local: false) run skill_atoms_remote.launch.py on their own PCs
@@ -64,28 +64,30 @@ def _setup_nodes(context, *args, **kwargs):
     if not robots:
         raise RuntimeError(f"No robots defined in {robots_config_path}")
 
-    # "meca500:/meca500,franka:/franka" — passed to bt_runner so it registers
-    # BT node types for ALL robots, including remote ones
-    robot_configs_str = ",".join(
-        f"{rid}:{cfg['namespace']}" for rid, cfg in robots.items()
+    # ── C++ Tree Execution Server ───────────────────────────────────────────
+    tree_server_node = Node(
+        package="robot_skill_server",
+        executable="robot_tree_server",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[{
+            "action_name": "/skill_server/execute_tree",
+            "tick_frequency": 10,
+            "groot2_port": int(groot_port),
+            "plugins": ["robot_bt_nodes/bt_plugins"],
+            "behavior_trees": ["robot_behaviors/trees"],
+            "ros_plugins_timeout": 10000,
+        }],
     )
 
-    bt_runner_exec = os.path.join(
-        get_package_share_directory("robot_skill_server"),
-        "..", "..", "lib", "robot_skill_server", "bt_runner"
-    )
-
-    # ── Skill Server ─────────────────────────────────────────────────────────
+    # ── Skill Server (Python orchestrator) ───────────────────────────────────
     skill_server_node = Node(
         package="robot_skill_server",
         executable="skill_server_node",
         output="screen",
         arguments=["--ros-args", "--log-level", log_level],
         parameters=[{
-            "groot_zmq_port": int(groot_port),
-            "tick_rate_hz": 10.0,
-            "bt_runner_executable": bt_runner_exec,
-            "robot_configs": robot_configs_str,
+            "execute_tree_action_name": "/skill_server/execute_tree",
         }],
     )
 
@@ -97,7 +99,7 @@ def _setup_nodes(context, *args, **kwargs):
         ),
     )
 
-    all_nodes = [skill_server_node, dashboard_launch]
+    all_nodes = [tree_server_node, skill_server_node, dashboard_launch]
 
     # ── Skill atoms for local robots ─────────────────────────────────────────
     local_robot_ids = []

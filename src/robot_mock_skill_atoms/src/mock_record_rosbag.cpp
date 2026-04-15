@@ -34,38 +34,22 @@ public:
   {
     auto result = std::make_shared<Action::Result>();
     const auto & goal = goal_handle->get_goal();
-    int msg_rate = this->get_parameter("mock_messages_per_sec").as_int();
-    double requested_duration = goal->duration_sec > 0 ? goal->duration_sec : 3.0;
-    // In mock mode, cap to 3s regardless of requested duration
-    double duration = std::min(requested_duration, 3.0);
+    double duration = goal->duration_sec > 0 ? goal->duration_sec : 60.0;
 
-    RCLCPP_INFO(this->get_logger(), "[MOCK] Recording rosbag for %.1fs to %s",
+    RCLCPP_INFO(this->get_logger(),
+      "[MOCK] Recording started: %.0fs to %s (returns immediately)",
       duration, goal->output_path.c_str());
 
-    auto feedback = std::make_shared<Action::Feedback>();
-    int steps = 10;
-    for (int i = 1; i <= steps; ++i) {
-      if (goal_handle->is_canceling()) {
-        result->success = true;
-        result->message = "[MOCK] Recording stopped by cancel";
-        result->recorded_duration_sec = duration * i / steps;
-        result->num_messages = static_cast<int64_t>(result->recorded_duration_sec * msg_rate);
-        result->bag_path = goal->output_path;
-        return result;
-      }
-      feedback->elapsed_sec = duration * i / steps;
-      feedback->messages_so_far = static_cast<int64_t>(feedback->elapsed_sec * msg_rate);
-      feedback->status_message = "Recording...";
-      goal_handle->publish_feedback(feedback);
-      std::this_thread::sleep_for(std::chrono::duration<double>(duration / steps));
-    }
+    // Recording is a background task — return immediately to unblock the tree.
+    // A short delay simulates the startup overhead.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     result->success = true;
     result->bag_path = goal->output_path;
     result->recorded_duration_sec = duration;
-    result->num_messages = static_cast<int64_t>(duration * msg_rate);
-    result->message = "[MOCK] Recorded " + std::to_string(result->num_messages) + " messages";
-    RCLCPP_INFO(this->get_logger(), "%s", result->message.c_str());
+    result->num_messages = static_cast<int64_t>(
+      duration * this->get_parameter("mock_messages_per_sec").as_int());
+    result->message = "[MOCK] Recording started";
     return result;
   }
 };

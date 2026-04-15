@@ -4,9 +4,8 @@
  * @brief BehaviorTree.CPP v4 node definitions for all robot skills.
  *
  * Each node wraps a ROS2 action server via BT::RosActionNode<ActionT>.
- * Shared header used by both:
- *   - bt_nodes_plugin.cpp (plugin library)
- *   - bt_runner.cpp (standalone executable)
+ * Registered as a plugin via bt_nodes_plugin.cpp, loaded at runtime by
+ * TreeExecutionServer.
  */
 
 #include <memory>

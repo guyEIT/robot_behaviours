@@ -27,8 +27,8 @@ interface WorldPose {
  * Mapping from TF frame name to STL mesh path (served from /meshes/).
  * Frames without an entry render as axes + spheres.
  */
-const LINK_MESHES: Record<string, { stl: string; rpy?: [number, number, number] }> = {
-  // Meca500 (real)
+const LINK_MESHES: Record<string, { stl: string; rpy?: [number, number, number]; scale?: number }> = {
+  // Meca500 arm
   meca_base_link:    { stl: "/meshes/meca500/meca_500_r3_base.stl" },
   meca_axis_1_link:  { stl: "/meshes/meca500/meca_500_r3_j1.stl" },
   meca_axis_2_link:  { stl: "/meshes/meca500/meca_500_r3_j2.stl" },
@@ -36,6 +36,10 @@ const LINK_MESHES: Record<string, { stl: string; rpy?: [number, number, number] 
   meca_axis_4_link:  { stl: "/meshes/meca500/meca_500_r3_j4.stl" },
   meca_axis_5_link:  { stl: "/meshes/meca500/meca_500_r3_j5.stl" },
   meca_axis_6_link:  { stl: "/meshes/meca500/meca_500_r3_j6.stl" },
+  // Schunk MEGp25e gripper
+  meca_gripper_link:    { stl: "/meshes/meca500/schunk_megp25e_body.stl",   rpy: [1.5708, 0, 0], scale: 0.001 },
+  meca_gripper_finger1: { stl: "/meshes/meca500/schunk_megp25e_finger.stl", scale: 0.001 },
+  meca_gripper_finger2: { stl: "/meshes/meca500/schunk_megp25e_finger.stl", scale: 0.001 },
 };
 
 /**
@@ -88,18 +92,33 @@ function computeWorldPoses(frames: Map<string, FrameData>): Map<string, WorldPos
 }
 
 /**
- * Static transforms from the URDF's fixed joints. These are published on
- * /tf_static with TRANSIENT_LOCAL durability, but rosbridge often misses
- * them due to subscription timing. Seed them here as fallback.
- * Includes both Panda (sim) and Meca500 (real) — whichever robot is
- * publishing /tf will override these with live data.
- */
-/**
- * No hardcoded static frames — the TF tree is built entirely from
- * /tf and /tf_static messages, which works for any robot.
+ * Seed static transforms for fixed joints that rosbridge often misses
+ * (/tf_static uses TRANSIENT_LOCAL durability — late-joining websocket
+ * subscribers may never receive them). Live /tf_static data overrides
+ * these when it arrives.
  */
 function buildInitialFrames(): Map<string, FrameData> {
-  return new Map<string, FrameData>();
+  const now = Date.now();
+  const frames = new Map<string, FrameData>();
+
+  // Meca500 gripper fixed joints (from meca500.xacro)
+  frames.set("meca_gripper_link", {
+    parent: "meca_axis_6_link",
+    child: "meca_gripper_link",
+    translation: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: 0, w: 1 },
+    lastUpdate: now,
+  });
+  frames.set("gripper_tip_link", {
+    parent: "meca_gripper_link",
+    child: "gripper_tip_link",
+    // origin xyz="0.04 0 -0.017" rpy="-1.5708 0 0"
+    translation: { x: 0.04, y: 0, z: -0.017 },
+    rotation: { x: -0.7071068, y: 0, z: 0, w: 0.7071068 },
+    lastUpdate: now,
+  });
+
+  return frames;
 }
 
 export default function TfFrameViewer() {
@@ -195,6 +214,13 @@ export default function TfFrameViewer() {
             )}
           </group>
 
+          {/* Meca table (collision object, not in TF — rendered at fixed pose from table.yaml) */}
+          {showMeshes && (
+            <group position={[0, 0.08, -0.23]} quaternion={[0.5, 0.5, 0.5, 0.5]}>
+              <TableMesh url="/meshes/meca500/mecatable.stl" scale={0.001} />
+            </group>
+          )}
+
           {/* Render each frame */}
           {frameList.map((frame) => {
             const pose = worldPoses.get(frame.child);
@@ -209,6 +235,7 @@ export default function TfFrameViewer() {
                 showLabel={showLabels}
                 meshStl={showMeshes && meshInfo ? meshInfo.stl : undefined}
                 meshRpy={meshInfo?.rpy}
+                meshScale={meshInfo?.scale}
               />
             );
           })}
@@ -312,7 +339,7 @@ const stlCache = new Map<string, THREE.BufferGeometry>();
 const stlLoader = new STLLoader();
 
 /** Load and cache an STL mesh from the server */
-function StlMesh({ url, rpy }: { url: string; rpy?: [number, number, number] }) {
+function StlMesh({ url, rpy, scale }: { url: string; rpy?: [number, number, number]; scale?: number }) {
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(
     () => stlCache.get(url) ?? null
   );
@@ -336,13 +363,52 @@ function StlMesh({ url, rpy }: { url: string; rpy?: [number, number, number] }) 
   if (!geometry) return null;
 
   const euler = rpy ? new THREE.Euler(rpy[0], rpy[1], rpy[2], "XYZ") : undefined;
+  const meshScale = scale ? [scale, scale, scale] as [number, number, number] : undefined;
 
   return (
-    <mesh geometry={geometry} rotation={euler}>
+    <mesh geometry={geometry} rotation={euler} scale={meshScale}>
       <meshStandardMaterial
         color="#8899bb"
         roughness={0.5}
         metalness={0.3}
+      />
+    </mesh>
+  );
+}
+
+/** Static environment mesh (e.g. table) with double-sided material */
+function TableMesh({ url, scale }: { url: string; scale?: number }) {
+  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(
+    () => stlCache.get(url) ?? null
+  );
+
+  useEffect(() => {
+    if (stlCache.has(url)) {
+      setGeometry(stlCache.get(url)!);
+      return;
+    }
+    stlLoader.load(
+      url,
+      (geo) => {
+        geo.computeVertexNormals();
+        stlCache.set(url, geo);
+        setGeometry(geo);
+      },
+      undefined,
+      (err) => console.warn("Failed to load STL:", url, err)
+    );
+  }, [url]);
+
+  if (!geometry) return null;
+  const meshScale = scale ? [scale, scale, scale] as [number, number, number] : undefined;
+
+  return (
+    <mesh geometry={geometry} scale={meshScale}>
+      <meshStandardMaterial
+        color="#556677"
+        roughness={0.7}
+        metalness={0.1}
+        side={THREE.DoubleSide}
       />
     </mesh>
   );
@@ -356,6 +422,7 @@ function FrameAxes({
   showLabel,
   meshStl,
   meshRpy,
+  meshScale,
 }: {
   name: string;
   position: THREE.Vector3;
@@ -363,6 +430,7 @@ function FrameAxes({
   showLabel: boolean;
   meshStl?: string;
   meshRpy?: [number, number, number];
+  meshScale?: number;
 }) {
   const axisLen = 0.04;
   const pos: [number, number, number] = [position.x, position.y, position.z];
@@ -382,7 +450,7 @@ function FrameAxes({
         <meshStandardMaterial color="#a5b4fc" />
       </mesh>
       {/* STL mesh */}
-      {meshStl && <StlMesh url={meshStl} rpy={meshRpy} />}
+      {meshStl && <StlMesh url={meshStl} rpy={meshRpy} scale={meshScale} />}
       {/* Label */}
       {showLabel && (
         <Text

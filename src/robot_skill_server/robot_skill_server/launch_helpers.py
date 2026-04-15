@@ -76,8 +76,8 @@ def build_robot_atom_nodes(robot_id: str, robot_cfg: dict, log_level, ns: str) -
              {"controllers_to_activate": [
                  arm_controller_action.rsplit("/", 1)[-1]
                  if "/" in arm_controller_action
-                 else "joint_trajectory_controller"
-             ]}),
+                 else "joint_trajectory_controller",
+             ] + (["gripper_controller"] if has_gripper else [])}),
         atom("capture_point_cloud_skill_node", "capture_point_cloud_skill",
              {"default_camera_topic": "/camera/depth/color/points"}),
         atom("set_digital_io_skill_node",  "set_digital_io_skill"),
@@ -110,7 +110,11 @@ def build_robot_atom_nodes(robot_id: str, robot_cfg: dict, log_level, ns: str) -
     if has_gripper:
         nodes.append(atom(
             "gripper_control_skill_node", "gripper_control_skill",
-            {"gripper_action_server": "/gripper_controller/gripper_cmd"},
+            {
+                "gripper_action_server": "/gripper_controller/gripper_cmd",
+                "open_position": 0.0055,
+                "default_force_limit": 10.0,
+            },
         ))
 
     return nodes

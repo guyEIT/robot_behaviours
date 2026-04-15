@@ -25,8 +25,7 @@
   <depend>action_msgs</depend>
   <depend>behaviortree_cpp</depend>
   <depend>behaviortree_ros2</depend>
-  <depend>robot_bt_nodes</depend>
-  <depend>ament_index_cpp</depend>
+  <depend>btcpp_ros2_interfaces</depend>
   <depend>diagnostic_updater</depend>
   <depend>diagnostic_msgs</depend>
 

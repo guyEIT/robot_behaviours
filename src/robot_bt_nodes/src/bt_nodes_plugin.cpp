@@ -1,58 +1,69 @@
 /**
  * @brief BehaviorTree.CPP v4 plugin registration for all robot BT nodes.
  *
- * This shared library is loaded at runtime by the BT executor.
- * Node class definitions live in:
- *   - robot_bt_nodes/bt_skill_nodes.hpp   (ROS2 action-based skill nodes)
- *   - robot_bt_nodes/bt_utility_nodes.hpp (synchronous utility nodes)
+ * This shared library is loaded at runtime by TreeExecutionServer via the
+ * `plugins` parameter. Uses BT_REGISTER_ROS_NODES so the executor provides
+ * proper BT::RosNodeParams (node handle, timeouts) to action-based nodes.
  *
- * All nodes are automatically visible in Groot2.
+ * Node class definitions live in:
+ *   - robot_bt_nodes/bt_skill_nodes.hpp          (ROS2 action-based skill nodes)
+ *   - robot_bt_nodes/bt_utility_nodes.hpp         (synchronous utility nodes)
+ *   - robot_bt_nodes/bt_human_interaction_nodes.hpp (human interaction nodes)
+ *
+ * Multi-robot support: nodes are registered once without robot-specific
+ * suffixes. Use the `server_name` input port in BT XML to target a specific
+ * robot's action server (e.g. server_name="/meca500/skill_atoms/...").
  */
 
 #include "robot_bt_nodes/bt_skill_nodes.hpp"
 #include "robot_bt_nodes/bt_utility_nodes.hpp"
 #include "robot_bt_nodes/bt_human_interaction_nodes.hpp"
 
+#include "behaviortree_ros2/plugins.hpp"
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Plugin registration - BT_REGISTER_NODES is the BT.CPP entry point
+// Plugin registration — BT_REGISTER_ROS_NODES provides RosNodeParams
 // ─────────────────────────────────────────────────────────────────────────────
 
-// This macro must be in global scope.
-// BT.ROS2 RosActionNodes need RosNodeParams (containing the ROS2 node handle)
-// at registration time. When loaded as a plugin, the executor must provide
-// these params via the factory's shared blackboard.
-BT_REGISTER_NODES(factory)
+BT_REGISTER_ROS_NODES(factory, params)
 {
-  // ── Action-based skill nodes (need RosNodeParams) ─────────────────────────
-  BT::RosNodeParams default_params;
-  factory.registerNodeType<robot_bt_nodes::MoveToNamedConfigNode>(
-    "MoveToNamedConfig", default_params);
-  factory.registerNodeType<robot_bt_nodes::MoveToCartesianPoseNode>(
-    "MoveToCartesianPose", default_params);
-  factory.registerNodeType<robot_bt_nodes::MoveToJointConfigNode>(
-    "MoveToJointConfig", default_params);
-  factory.registerNodeType<robot_bt_nodes::MoveCartesianLinearNode>(
-    "MoveCartesianLinear", default_params);
-  factory.registerNodeType<robot_bt_nodes::GripperControlNode>(
-    "GripperControl", default_params);
-  factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
-    "DetectObject", default_params);
-  factory.registerNodeType<robot_bt_nodes::CapturePointCloudNode>(
-    "CapturePointCloud", default_params);
-  factory.registerNodeType<robot_bt_nodes::SetDigitalIONode>(
-    "SetDigitalIO", default_params);
-  factory.registerNodeType<robot_bt_nodes::CheckCollisionNode>(
-    "CheckCollision", default_params);
-  factory.registerNodeType<robot_bt_nodes::UpdatePlanningSceneNode>(
-    "UpdatePlanningScene", default_params);
-  factory.registerNodeType<robot_bt_nodes::RobotEnableNode>(
-    "RobotEnable", default_params);
-  factory.registerNodeType<robot_bt_nodes::RecordRosbagNode>(
-    "RecordRosbag", default_params);
-  factory.registerNodeType<robot_bt_nodes::CheckSystemReadyNode>(
-    "CheckSystemReady", default_params);
+  // Helper: set default action server name for each node type.
+  // Multi-robot trees override this via the server_name input port in XML.
+  auto with_action = [&](const std::string& action_name) {
+    auto p = params;
+    p.default_port_value = "/skill_atoms" + action_name;
+    return p;
+  };
 
-  // ── Synchronous utility nodes (no action server) ──────────────────────────
+  // ── Action-based skill nodes ──────────────────────────────────────────────
+  factory.registerNodeType<robot_bt_nodes::MoveToNamedConfigNode>(
+    "MoveToNamedConfig", with_action("/move_to_named_config"));
+  factory.registerNodeType<robot_bt_nodes::MoveToCartesianPoseNode>(
+    "MoveToCartesianPose", with_action("/move_to_cartesian_pose"));
+  factory.registerNodeType<robot_bt_nodes::MoveToJointConfigNode>(
+    "MoveToJointConfig", with_action("/move_to_joint_config"));
+  factory.registerNodeType<robot_bt_nodes::MoveCartesianLinearNode>(
+    "MoveCartesianLinear", with_action("/move_cartesian_linear"));
+  factory.registerNodeType<robot_bt_nodes::GripperControlNode>(
+    "GripperControl", with_action("/gripper_control"));
+  factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
+    "DetectObject", with_action("/detect_object"));
+  factory.registerNodeType<robot_bt_nodes::CapturePointCloudNode>(
+    "CapturePointCloud", with_action("/capture_point_cloud"));
+  factory.registerNodeType<robot_bt_nodes::SetDigitalIONode>(
+    "SetDigitalIO", with_action("/set_digital_io"));
+  factory.registerNodeType<robot_bt_nodes::CheckCollisionNode>(
+    "CheckCollision", with_action("/check_collision"));
+  factory.registerNodeType<robot_bt_nodes::UpdatePlanningSceneNode>(
+    "UpdatePlanningScene", with_action("/update_planning_scene"));
+  factory.registerNodeType<robot_bt_nodes::RobotEnableNode>(
+    "RobotEnable", with_action("/robot_enable"));
+  factory.registerNodeType<robot_bt_nodes::RecordRosbagNode>(
+    "RecordRosbag", with_action("/record_rosbag"));
+  factory.registerNodeType<robot_bt_nodes::CheckSystemReadyNode>(
+    "CheckSystemReady", with_action("/check_system_ready"));
+
+  // ── Synchronous utility nodes (no action server, no params needed) ────────
   factory.registerNodeType<robot_bt_nodes::EmergencyStop>("EmergencyStop");
   factory.registerNodeType<robot_bt_nodes::SetVelocityOverride>("SetVelocityOverride");
   factory.registerNodeType<robot_bt_nodes::LookupTransform>("LookupTransform");

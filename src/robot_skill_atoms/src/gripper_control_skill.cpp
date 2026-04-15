@@ -1,7 +1,10 @@
 #include "robot_skill_atoms/skill_base.hpp"
 
+#include <atomic>
 #include <chrono>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 
@@ -41,13 +44,8 @@ public:
     this->declare_parameter("send_goal_timeout_s", 10.0);
     this->declare_parameter("result_timeout_s", 15.0);
 
-    // Create the gripper action client once and reuse across goals.
-    const std::string gripper_action =
-      this->get_parameter("gripper_action_server").as_string();
-    gripper_client_ = rclcpp_action::create_client<GripperCommand>(
-      shared_from_this(), gripper_action);
-    RCLCPP_INFO(this->get_logger(),
-      "Gripper client created for action server: %s", gripper_action.c_str());
+    // Action client is created lazily in executeGoal() because
+    // shared_from_this() is not available during construction.
   }
 
   robot_skills_msgs::msg::SkillDescription getDescription() override
@@ -148,10 +146,20 @@ public:
     auto result = std::make_shared<GripperControl::Result>();
     const auto & goal = goal_handle->get_goal();
 
+    // Lazy-create the action client (shared_from_this() not available in ctor)
+    if (!gripper_client_) {
+      const std::string gripper_action =
+        this->get_parameter("gripper_action_server").as_string();
+      gripper_client_ = rclcpp_action::create_client<GripperCommand>(
+        shared_from_this(), gripper_action);
+      RCLCPP_INFO(this->get_logger(),
+        "Gripper client created for action server: %s", gripper_action.c_str());
+    }
+
     RCLCPP_INFO(this->get_logger(), "Gripper command: '%s'", goal->command.c_str());
 
     auto feedback = std::make_shared<GripperControl::Feedback>();
-    feedback->current_position = -1.0;  // Unknown until controller responds
+    feedback->current_position = -1.0;
     goal_handle->publish_feedback(feedback);
 
     try {
@@ -165,7 +173,6 @@ public:
       } else if (goal->command == "close") {
         target_pos_m = closed_pos;
       } else {
-        // Normalize 0-1 to actual range
         target_pos_m = closed_pos + goal->position * (open_pos - closed_pos);
       }
 
@@ -173,13 +180,10 @@ public:
         ? goal->force_limit
         : this->get_parameter("default_force_limit").as_double();
 
-      // Send to gripper controller via ros2_control action
       const std::string gripper_action =
         this->get_parameter("gripper_action_server").as_string();
       const int action_timeout =
         static_cast<int>(this->get_parameter("action_server_timeout_s").as_double());
-      const int send_timeout =
-        static_cast<int>(this->get_parameter("send_goal_timeout_s").as_double());
       const int result_timeout =
         static_cast<int>(this->get_parameter("result_timeout_s").as_double());
 
@@ -200,52 +204,80 @@ public:
       gripper_goal.command.position = target_pos_m;
       gripper_goal.command.max_effort = force;
 
-      // Feedback: report current state
-      goal_handle->publish_feedback(feedback);
+      // Use callback-based SendGoalOptions so the launch executor processes
+      // everything — no spin_until_future_complete or async_get_result needed.
+      std::promise<bool> goal_accepted_promise;
+      auto goal_accepted_future = goal_accepted_promise.get_future();
 
-      auto future = gripper_client_->async_send_goal(gripper_goal);
-      if (rclcpp::spin_until_future_complete(
-            this->get_node_base_interface(), future,
-            std::chrono::seconds(send_timeout)) != rclcpp::FutureReturnCode::SUCCESS)
+      struct ControllerResult {
+        double position = 0.0;
+        bool stalled = false;
+        bool succeeded = false;
+      };
+      std::promise<ControllerResult> result_promise;
+      auto ctrl_result_future = result_promise.get_future();
+
+      auto send_goal_options =
+        rclcpp_action::Client<GripperCommand>::SendGoalOptions();
+
+      send_goal_options.goal_response_callback =
+        [this, &goal_accepted_promise](
+          const rclcpp_action::ClientGoalHandle<GripperCommand>::SharedPtr & gh)
+        {
+          goal_accepted_promise.set_value(gh != nullptr);
+        };
+
+      send_goal_options.result_callback =
+        [this, &result_promise](
+          const rclcpp_action::ClientGoalHandle<GripperCommand>::WrappedResult & wr)
+        {
+          ControllerResult cr;
+          cr.succeeded = (wr.code == rclcpp_action::ResultCode::SUCCEEDED);
+          cr.position = wr.result->position;
+          cr.stalled = wr.result->stalled;
+          result_promise.set_value(cr);
+        };
+
+      gripper_client_->async_send_goal(gripper_goal, send_goal_options);
+
+      // Wait for goal acceptance
+      if (goal_accepted_future.wait_for(std::chrono::seconds(action_timeout)) !=
+          std::future_status::ready || !goal_accepted_future.get())
       {
         result->success = false;
-        result->message = "Gripper goal timed out";
+        result->message = "Gripper goal rejected or timed out";
         RCLCPP_ERROR(this->get_logger(), "%s", result->message.c_str());
         return result;
       }
 
-      auto goal_handle_gripper = future.get();
-      if (!goal_handle_gripper) {
-        result->success = false;
-        result->message = "Gripper goal rejected";
-        RCLCPP_ERROR(this->get_logger(), "%s", result->message.c_str());
-        return result;
-      }
+      RCLCPP_INFO(this->get_logger(), "Gripper goal accepted, waiting for result...");
 
-      if (goal_handle->is_canceling()) {
-        gripper_client_->async_cancel_goal(goal_handle_gripper);
-        result->success = false;
-        result->message = "Gripper command cancelled during execution";
-        return result;
-      }
-
-      // Feedback: waiting for result
-      goal_handle->publish_feedback(feedback);
-
-      auto result_future = gripper_client_->async_get_result(goal_handle_gripper);
-      if (rclcpp::spin_until_future_complete(
-            this->get_node_base_interface(), result_future,
-            std::chrono::seconds(result_timeout)) != rclcpp::FutureReturnCode::SUCCESS)
+      // Wait for controller result
       {
-        result->success = false;
-        result->message = "Gripper result timed out";
-        RCLCPP_ERROR(this->get_logger(), "%s", result->message.c_str());
-        return result;
+        const auto deadline = std::chrono::steady_clock::now() +
+          std::chrono::seconds(result_timeout);
+        while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+          if (goal_handle->is_canceling()) {
+            result->success = false;
+            result->message = "Gripper command cancelled during execution";
+            return result;
+          }
+          if (ctrl_result_future.wait_for(std::chrono::milliseconds(50)) ==
+              std::future_status::ready) { break; }
+        }
+        if (ctrl_result_future.wait_for(std::chrono::seconds(0)) !=
+            std::future_status::ready)
+        {
+          result->success = false;
+          result->message = "Gripper result timed out";
+          RCLCPP_ERROR(this->get_logger(), "%s", result->message.c_str());
+          return result;
+        }
       }
 
-      const auto & gripper_result = result_future.get();
-      result->final_position = gripper_result.result->position;
-      result->object_grasped = gripper_result.result->stalled && goal->command == "close";
+      auto ctrl_result = ctrl_result_future.get();
+      result->final_position = ctrl_result.position;
+      result->object_grasped = ctrl_result.stalled && goal->command == "close";
       result->success = true;
       result->message = result->object_grasped
         ? "Gripper closed - object grasped (stall detected)"

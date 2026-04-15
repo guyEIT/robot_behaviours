@@ -64,7 +64,7 @@
                            velocity_scaling="0.08"/>
       <GripperControl name="grasp"
                       command="close"
-                      force_limit="15.0"
+                      force_limit="8.0"
                       object_grasped="{object_grasped}"/>
       <ScriptCondition name="verify_grasp"
                        code="object_grasped == true"/>

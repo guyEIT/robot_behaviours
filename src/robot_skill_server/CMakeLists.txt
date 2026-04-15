@@ -12,10 +12,6 @@ find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(behaviortree_cpp REQUIRED)
 find_package(behaviortree_ros2 REQUIRED)
-find_package(robot_skills_msgs REQUIRED)
-find_package(robot_bt_nodes REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(ament_index_cpp REQUIRED)
 
 # ── Python package ────────────────────────────────────────────────────────────
 ament_python_install_package(robot_skill_server)
@@ -26,22 +22,17 @@ install(PROGRAMS
   RENAME skill_server_node
 )
 
-# ── C++ bt_runner executable ──────────────────────────────────────────────────
-add_executable(bt_runner src/bt_runner.cpp)
-target_include_directories(bt_runner PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
-ament_target_dependencies(bt_runner
+# ── C++ tree execution server ─────────────────────────────────────────────────
+# Minimal subclass of BT::TreeExecutionServer from BehaviorTree.ROS2.
+# BT node plugins are loaded at runtime via the `plugins` parameter.
+add_executable(robot_tree_server src/robot_tree_server.cpp)
+ament_target_dependencies(robot_tree_server
   rclcpp
   behaviortree_cpp
   behaviortree_ros2
-  robot_skills_msgs
-  robot_bt_nodes
-  geometry_msgs
-  ament_index_cpp
 )
 
-install(TARGETS bt_runner
+install(TARGETS robot_tree_server
   DESTINATION lib/${PROJECT_NAME}
 )
 

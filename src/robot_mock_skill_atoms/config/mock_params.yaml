@@ -23,9 +23,9 @@ mock_move_to_cartesian_pose_skill:
 mock_gripper_control_skill:
   ros__parameters:
     gripper_control_delay: 0.5
-    open_position: 0.085
+    open_position: 0.0055
     closed_position: 0.0
-    default_force_limit: 50.0
+    default_force_limit: 10.0
     simulate_grasp: true
 
 mock_detect_object_skill:

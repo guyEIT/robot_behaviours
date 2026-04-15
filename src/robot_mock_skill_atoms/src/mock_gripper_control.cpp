@@ -167,8 +167,12 @@ public:
     feedback->current_position = target_pos;
     goal_handle->publish_feedback(feedback);
 
-    result->final_position = target_pos;
     result->object_grasped = (goal->command == "close") && simulate_grasp;
+    // When simulating a grasp, the fingers stop partway closed (object between them)
+    if (result->object_grasped) {
+      target_pos = open_pos * 0.25;  // 25% open — something is gripped
+    }
+    result->final_position = target_pos;
     result->success = true;
     result->message = result->object_grasped
       ? "[MOCK] Gripper closed - object grasped (simulated)"

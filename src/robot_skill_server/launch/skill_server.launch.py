@@ -43,8 +43,8 @@ ROBOT_PRESETS = {
         "velocity_scaling": 0.1,
         "arm_controller_action": "/joint_trajectory_controller/follow_joint_trajectory",
         "allowed_named_configs": ["home"],
-        "has_gripper": False,
-        "check_systems": ["move_group", "joint_states", "joint_trajectory_controller"],
+        "has_gripper": True,
+        "check_systems": ["move_group", "joint_states", "joint_trajectory_controller", "gripper_controller"],
     },
     "sim": {
         "planning_group": "arm",
@@ -71,22 +71,31 @@ def _setup_nodes(context, *args, **kwargs):
 
     preset = ROBOT_PRESETS[hw_mode]
 
+    # ── Core: C++ Tree Execution Server ────────────────────────────────
+    tree_server_node = Node(
+        package="robot_skill_server",
+        executable="robot_tree_server",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[{
+            "action_name": "/skill_server/execute_tree",
+            "tick_frequency": 10,
+            "groot2_port": groot_port,
+            "plugins": ["robot_bt_nodes/bt_plugins"],
+            "behavior_trees": ["robot_behaviors/trees"],
+            "ros_plugins_timeout": 10000,
+        }],
+    )
+
     # ── Core: Skill Server (Python orchestrator) ──────────────────────────
     skill_server_node = Node(
         package="robot_skill_server",
         executable="skill_server_node",
         output="screen",
         arguments=["--ros-args", "--log-level", log_level],
-        parameters=[
-            {
-                "groot_zmq_port": groot_port,
-                "tick_rate_hz": 10.0,
-                "bt_runner_executable": PathJoinSubstitution([
-                    FindPackageShare("robot_skill_server"), "..", "..",
-                    "lib", "robot_skill_server", "bt_runner"
-                ]),
-            }
-        ],
+        parameters=[{
+            "execute_tree_action_name": "/skill_server/execute_tree",
+        }],
     )
 
     # ── Shared parameters for motion skill atoms ─────────────────────────
@@ -177,7 +186,7 @@ def _setup_nodes(context, *args, **kwargs):
         output="screen",
         arguments=["--ros-args", "--log-level", log_level],
         parameters=[{
-            "controllers_to_activate": ["joint_trajectory_controller"],
+            "controllers_to_activate": ["joint_trajectory_controller", "gripper_controller"],
         }],
     )
 
@@ -277,6 +286,7 @@ def _setup_nodes(context, *args, **kwargs):
     )
 
     nodes = [
+        tree_server_node,
         skill_server_node,
         move_to_named_config_node,
         move_to_cartesian_pose_node,
@@ -364,6 +374,8 @@ def _setup_nodes(context, *args, **kwargs):
             arguments=["--ros-args", "--log-level", log_level],
             parameters=[{
                 "gripper_action_server": "/gripper_controller/gripper_cmd",
+                "open_position": 0.0055,
+                "default_force_limit": 10.0,
             }],
         )
         nodes.append(gripper_control_node)

@@ -4,7 +4,9 @@ FROM osrf/ros:jazzy-desktop-full
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install core ROS2 packages and robot tooling
-RUN apt-get update && apt-get install -y \
+# Upgrade first: the base image's FastCDR may be older than the message
+# packages pulled from the ROS2 repo, causing ABI mismatches at runtime.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     # Behavior Trees
     ros-jazzy-behaviortree-cpp \
     # MoveIt2

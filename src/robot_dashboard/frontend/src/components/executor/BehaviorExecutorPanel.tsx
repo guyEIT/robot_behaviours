@@ -61,7 +61,7 @@ const PRESET_TREES = [
       <GripperControl name="open_for_grasp" command="open"/>
       <MoveToCartesianPose name="move_to_pregrasp" target_pose="{pregrasp_pose}" velocity_scaling="0.4" acceleration_scaling="0.3"/>
       <MoveToCartesianPose name="descend_to_seed" target_pose="{seed_pose}" velocity_scaling="0.1" acceleration_scaling="0.1"/>
-      <GripperControl name="close_for_grasp" command="close" force_limit="15.0" object_grasped="{object_grasped}" final_position="{grasp_final_position}"/>
+      <GripperControl name="close_for_grasp" command="close" force_limit="8.0" object_grasped="{object_grasped}" final_position="{grasp_final_position}"/>
       <ScriptCondition name="check_grasp_success" code="object_grasped == true"/>
       <MoveToCartesianPose name="retreat_after_grasp" target_pose="{pregrasp_pose}" velocity_scaling="0.2" acceleration_scaling="0.2"/>
       <SubTree ID="MoveToHome" name="go_home_with_seed"/>
@@ -97,7 +97,7 @@ const PRESET_TREES = [
       <GripperControl name="open_gripper" command="open"/>
       <MoveToCartesianPose name="go_to_pregrasp" target_pose="{pregrasp_pose}" velocity_scaling="0.4"/>
       <MoveToCartesianPose name="descend" target_pose="{detected_pose}" velocity_scaling="0.08"/>
-      <GripperControl name="grasp" command="close" force_limit="15.0" object_grasped="{object_grasped}"/>
+      <GripperControl name="grasp" command="close" force_limit="8.0" object_grasped="{object_grasped}"/>
       <ScriptCondition name="verify_grasp" code="object_grasped == true"/>
       <MoveToCartesianPose name="lift" target_pose="{pregrasp_pose}" velocity_scaling="0.2"/>
     </Sequence>
@@ -172,7 +172,7 @@ const PRESET_TREES = [
       <GripperControl name="open_gripper" command="open"/>
       <MoveToCartesianPose name="go_pregrasp" target_pose="{pregrasp_pose}" velocity_scaling="0.4"/>
       <MoveCartesianLinear name="descend_linear" target_pose="{pick_pose_world}" velocity_scaling="0.05" step_size="0.002"/>
-      <GripperControl name="grasp_object" command="close" force_limit="15.0" object_grasped="{object_grasped}" final_position="{grasp_position}"/>
+      <GripperControl name="grasp_object" command="close" force_limit="8.0" object_grasped="{object_grasped}" final_position="{grasp_position}"/>
       <CheckGraspSuccess name="verify_grasp" object_grasped="{object_grasped}" final_position="{grasp_position}" min_grasp_width="0.001"/>
       <MoveToCartesianPose name="lift_object" target_pose="{pregrasp_pose}" velocity_scaling="0.15"/>
       <LogEvent name="log_pick_done" event_name="pick_success" severity="info" message="Object grasped and lifted"/>

@@ -75,7 +75,7 @@
       <!-- ── Phase 7: Close gripper with force control ──────────────────── -->
       <GripperControl name="close_for_grasp"
                       command="close"
-                      force_limit="15.0"
+                      force_limit="8.0"
                       object_grasped="{object_grasped}"
                       final_position="{grasp_final_position}"/>
 

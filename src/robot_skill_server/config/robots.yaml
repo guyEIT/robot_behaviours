@@ -22,9 +22,9 @@ robots:
     velocity_scaling: 0.1
     arm_controller_action: "/joint_trajectory_controller/follow_joint_trajectory"
     allowed_named_configs: ["home"]
-    has_gripper: false
+    has_gripper: true
     local: true
-    check_systems: ["move_group", "joint_states", "joint_trajectory_controller"]
+    check_systems: ["move_group", "joint_states", "joint_trajectory_controller", "gripper_controller"]
     workspace:
       min_x: -0.6
       max_x: 0.6

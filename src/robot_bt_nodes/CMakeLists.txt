@@ -35,12 +35,18 @@ target_include_directories(robot_bt_nodes PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(robot_bt_nodes ${DEPS})
+target_compile_definitions(robot_bt_nodes PRIVATE BT_PLUGIN_EXPORT)
 
 # ── Install ───────────────────────────────────────────────────────────────────
+# Install to lib/ for ament linking, and also to share/ for TreeExecutionServer
+# plugin discovery (RegisterPlugins looks in share/<pkg>/<subfolder>).
 install(TARGETS robot_bt_nodes
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+install(TARGETS robot_bt_nodes
+  LIBRARY DESTINATION share/${PROJECT_NAME}/bt_plugins
 )
 
 install(DIRECTORY include/
