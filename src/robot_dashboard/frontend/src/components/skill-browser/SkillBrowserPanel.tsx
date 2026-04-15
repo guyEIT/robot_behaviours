@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useSkillStore } from "../../stores/skill-store";
+import { useRobotSelectorStore } from "../../stores/robot-selector-store";
 import CategoryFilter from "./CategoryFilter";
 import SkillCard from "./SkillCard";
 import SkillDetailDrawer from "./SkillDetailDrawer";
@@ -8,12 +9,16 @@ import type { SkillDescription } from "../../types/ros";
 
 export default function SkillBrowserPanel() {
   const { skills, loading, error } = useSkillStore();
+  const selectedRobotId = useRobotSelectorStore((s) => s.selectedRobotId);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [selectedSkill, setSelectedSkill] = useState<SkillDescription | null>(null);
 
   const filtered = useMemo(() => {
     return skills.filter((s) => {
+      // Filter by active robot when one is selected
+      if (selectedRobotId && s.robot_id && s.robot_id !== selectedRobotId)
+        return false;
       if (selectedCategories.size > 0 && !selectedCategories.has(s.category))
         return false;
       if (search) {
@@ -27,7 +32,7 @@ export default function SkillBrowserPanel() {
       }
       return true;
     });
-  }, [skills, selectedCategories, search]);
+  }, [skills, selectedRobotId, selectedCategories, search]);
 
   return (
     <div className="flex flex-col h-full">

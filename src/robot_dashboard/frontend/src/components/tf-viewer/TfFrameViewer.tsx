@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, Line, Text } from "@react-three/drei";
 import { useTopicSubscription } from "../../hooks/useTopicSubscription";
 import type { TFMessage } from "../../types/ros";
+import { useRobotSelectorStore } from "../../stores/robot-selector-store";
 import { Box, Eye, EyeOff, List, Bone } from "lucide-react";
 import clsx from "clsx";
 import * as THREE from "three";
@@ -22,19 +23,19 @@ interface WorldPose {
   quaternion: THREE.Quaternion;
 }
 
-/** Mapping from TF frame name to STL mesh info */
+/**
+ * Mapping from TF frame name to STL mesh path (served from /meshes/).
+ * Frames without an entry render as axes + spheres.
+ */
 const LINK_MESHES: Record<string, { stl: string; rpy?: [number, number, number] }> = {
-  panda_link0: { stl: "link0.stl" },
-  panda_link1: { stl: "link1.stl" },
-  panda_link2: { stl: "link2.stl" },
-  panda_link3: { stl: "link3.stl" },
-  panda_link4: { stl: "link4.stl" },
-  panda_link5: { stl: "link5.stl" },
-  panda_link6: { stl: "link6.stl" },
-  panda_link7: { stl: "link7.stl" },
-  panda_hand: { stl: "hand.stl" },
-  panda_leftfinger: { stl: "finger.stl" },
-  panda_rightfinger: { stl: "finger.stl", rpy: [0, 0, Math.PI] },
+  // Meca500 (real)
+  meca_base_link:    { stl: "/meshes/meca500/meca_500_r3_base.stl" },
+  meca_axis_1_link:  { stl: "/meshes/meca500/meca_500_r3_j1.stl" },
+  meca_axis_2_link:  { stl: "/meshes/meca500/meca_500_r3_j2.stl" },
+  meca_axis_3_link:  { stl: "/meshes/meca500/meca_500_r3_j3.stl" },
+  meca_axis_4_link:  { stl: "/meshes/meca500/meca_500_r3_j4.stl" },
+  meca_axis_5_link:  { stl: "/meshes/meca500/meca_500_r3_j5.stl" },
+  meca_axis_6_link:  { stl: "/meshes/meca500/meca_500_r3_j6.stl" },
 };
 
 /**
@@ -90,32 +91,15 @@ function computeWorldPoses(frames: Map<string, FrameData>): Map<string, WorldPos
  * Static transforms from the URDF's fixed joints. These are published on
  * /tf_static with TRANSIENT_LOCAL durability, but rosbridge often misses
  * them due to subscription timing. Seed them here as fallback.
+ * Includes both Panda (sim) and Meca500 (real) — whichever robot is
+ * publishing /tf will override these with live data.
  */
-const STATIC_FRAMES: FrameData[] = [
-  {
-    parent: "world", child: "panda_link0",
-    translation: { x: 0, y: 0, z: 0 },
-    rotation: { x: 0, y: 0, z: 0, w: 1 },
-    lastUpdate: 0,
-  },
-  {
-    parent: "panda_link7", child: "panda_link8",
-    translation: { x: 0, y: 0, z: 0.107 },
-    rotation: { x: 0, y: 0, z: 0, w: 1 },
-    lastUpdate: 0,
-  },
-  {
-    parent: "panda_link8", child: "panda_hand",
-    translation: { x: 0, y: 0, z: 0 },
-    rotation: { x: 0, y: 0, z: -0.3826834, w: 0.9238795 },
-    lastUpdate: 0,
-  },
-];
-
+/**
+ * No hardcoded static frames — the TF tree is built entirely from
+ * /tf and /tf_static messages, which works for any robot.
+ */
 function buildInitialFrames(): Map<string, FrameData> {
-  const m = new Map<string, FrameData>();
-  for (const f of STATIC_FRAMES) m.set(f.child, f);
-  return m;
+  return new Map<string, FrameData>();
 }
 
 export default function TfFrameViewer() {
@@ -123,6 +107,21 @@ export default function TfFrameViewer() {
   const [showLabels, setShowLabels] = useState(true);
   const [showTree, setShowTree] = useState(true);
   const [showMeshes, setShowMeshes] = useState(true);
+
+  const selectedRobotId = useRobotSelectorStore((s) => s.selectedRobotId);
+
+  // When the selected robot changes, clear the stale TF tree so we don't
+  // show ghost frames from the previous robot.
+  useEffect(() => {
+    setFrames(buildInitialFrames());
+  }, [selectedRobotId]);
+
+  // TF topics: try robot-namespaced first (e.g. /<robot>/tf when MoveIt2 is
+  // namespaced), fall back to root /tf (single-robot / root-namespace MoveIt2).
+  // Currently MoveIt2 runs at root namespace, so we always use /tf.
+  // When MoveIt2 instances are namespaced per robot, switch the topic here.
+  const tfTopic = "/tf";
+  const tfStaticTopic = "/tf_static";
 
   const handleTf = useCallback((msg: TFMessage) => {
     setFrames((prev) => {
@@ -141,8 +140,8 @@ export default function TfFrameViewer() {
     });
   }, []);
 
-  useTopicSubscription<TFMessage>("/tf", "tf2_msgs/msg/TFMessage", handleTf, 100);
-  useTopicSubscription<TFMessage>("/tf_static", "tf2_msgs/msg/TFMessage", handleTf, 1000);
+  useTopicSubscription<TFMessage>(tfTopic, "tf2_msgs/msg/TFMessage", handleTf, 100);
+  useTopicSubscription<TFMessage>(tfStaticTopic, "tf2_msgs/msg/TFMessage", handleTf, 1000);
 
   const frameList = useMemo(() => Array.from(frames.values()), [frames]);
   const worldPoses = useMemo(() => computeWorldPoses(frames), [frames]);
@@ -383,7 +382,7 @@ function FrameAxes({
         <meshStandardMaterial color="#a5b4fc" />
       </mesh>
       {/* STL mesh */}
-      {meshStl && <StlMesh url={`/meshes/panda/${meshStl}`} rpy={meshRpy} />}
+      {meshStl && <StlMesh url={meshStl} rpy={meshRpy} />}
       {/* Label */}
       {showLabel && (
         <Text

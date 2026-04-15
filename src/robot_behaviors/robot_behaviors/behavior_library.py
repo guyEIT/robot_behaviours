@@ -27,13 +27,27 @@ BEHAVIOR_CATALOG = {
         "display_name": "Move to Home",
         "description": (
             "Safely return the robot to the home configuration. "
-            "Opens gripper first, then moves arm to home position."
+            "Opens gripper first, then moves arm to home position. "
+            "Requires a gripper — use move_to_home_no_gripper for robots without one."
+        ),
+        "category": "utility",
+        "tags": ["home", "safety", "reset", "gripper"],
+        "preconditions": ["robot_initialized"],
+        "postconditions": ["robot_at_home", "gripper_open"],
+        "xml_file": "move_to_home.xml",
+    },
+    "move_to_home_no_gripper": {
+        "name": "move_to_home_no_gripper",
+        "display_name": "Move to Home (no gripper)",
+        "description": (
+            "Return the robot to the home configuration. "
+            "For robots without a gripper (e.g. Meca500)."
         ),
         "category": "utility",
         "tags": ["home", "safety", "reset"],
         "preconditions": ["robot_initialized"],
-        "postconditions": ["robot_at_home", "gripper_open"],
-        "xml_file": "move_to_home.xml",
+        "postconditions": ["robot_at_home"],
+        "xml_file": "move_to_home_no_gripper.xml",
     },
     "seed_collection": {
         "name": "seed_collection",

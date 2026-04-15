@@ -3,6 +3,7 @@ import { useServiceCall } from "./useServiceCall";
 import { useTopicSubscription } from "./useTopicSubscription";
 import { useSkillStore } from "../stores/skill-store";
 import { useConnectionStore } from "../stores/connection-store";
+import { useRobotSelectorStore } from "../stores/robot-selector-store";
 import type {
   GetSkillDescriptionsRequest,
   GetSkillDescriptionsResponse,
@@ -13,6 +14,7 @@ import type {
 export function useSkillRegistry() {
   const connected = useConnectionStore((s) => s.connected);
   const { setSkills, setLoading, setError } = useSkillStore();
+  const setAvailableRobots = useRobotSelectorStore((s) => s.setAvailableRobots);
 
   const { call } = useServiceCall<
     GetSkillDescriptionsRequest,
@@ -36,6 +38,11 @@ export function useSkillRegistry() {
       .then((res) => {
         if (res.success) {
           setSkills(res.skills);
+          // Derive available robot IDs from registered skills
+          const robots = [...new Set(
+            res.skills.map((s: SkillDescription) => s.robot_id).filter(Boolean)
+          )].sort();
+          setAvailableRobots(robots);
         } else {
           setError(res.message);
         }
@@ -54,7 +61,13 @@ export function useSkillRegistry() {
         include_pddl: true,
       })
         .then((res) => {
-          if (res.success) setSkills(res.skills);
+          if (res.success) {
+            setSkills(res.skills);
+            const robots = [...new Set(
+              res.skills.map((s: SkillDescription) => s.robot_id).filter(Boolean)
+            )].sort();
+            setAvailableRobots(robots);
+          }
         })
         .catch(() => {});
     },

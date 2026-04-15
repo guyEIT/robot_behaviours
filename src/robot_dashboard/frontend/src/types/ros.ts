@@ -26,6 +26,7 @@ export interface SkillDescription {
   display_name: string;
   description: string;
   version: string;
+  robot_id: string;
   category: string;
   tags: string[];
   preconditions: string[];

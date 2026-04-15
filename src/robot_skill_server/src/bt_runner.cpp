@@ -43,12 +43,36 @@
 namespace
 {
 
+struct RobotConfig
+{
+  std::string name;   // e.g. "meca500"
+  std::string ns;     // e.g. "/meca500"
+};
+
+// Parse "meca500:/meca500,franka:/franka" into a list of RobotConfig entries.
+std::vector<RobotConfig> parseRobotConfigs(const std::string & configs_str)
+{
+  std::vector<RobotConfig> result;
+  if (configs_str.empty()) return result;
+  std::istringstream stream(configs_str);
+  std::string token;
+  while (std::getline(stream, token, ',')) {
+    const auto colon = token.find(':');
+    if (colon != std::string::npos) {
+      result.push_back({token.substr(0, colon), token.substr(colon + 1)});
+    }
+  }
+  return result;
+}
+
 struct RunnerConfig
 {
   std::string tree_file;
   double tick_rate_hz = 10.0;
   int groot_port = 0;  // 0 = disabled
   std::string task_id;
+  // Comma-separated "name:namespace" pairs, e.g. "meca500:/meca500,franka:/franka"
+  std::string robot_configs_str;
 };
 
 RunnerConfig parseArgs(int argc, char ** argv)
@@ -61,6 +85,7 @@ RunnerConfig parseArgs(int argc, char ** argv)
     else if (arg == "--tick-rate") { cfg.tick_rate_hz = std::stod(val); ++i; }
     else if (arg == "--groot-port") { cfg.groot_port = std::stoi(val); ++i; }
     else if (arg == "--task-id") { cfg.task_id = val; ++i; }
+    else if (arg == "--robot-configs") { cfg.robot_configs_str = val; ++i; }
   }
   return cfg;
 }
@@ -76,9 +101,14 @@ int main(int argc, char ** argv)
 
   if (cfg.tree_file.empty()) {
     std::cerr << "Usage: bt_runner --tree-file <path.xml> "
-              << "[--tick-rate <hz>] [--groot-port <port>] [--task-id <id>]\n";
+              << "[--tick-rate <hz>] [--groot-port <port>] [--task-id <id>] "
+              << "[--robot-configs name:ns,...]\n"
+              << "  --robot-configs  comma-separated name:namespace pairs, "
+              << "e.g. 'meca500:/meca500,franka:/franka'\n";
     return 2;
   }
+
+  const auto robot_configs = parseRobotConfigs(cfg.robot_configs_str);
 
   auto node = std::make_shared<rclcpp::Node>(
     "bt_runner_" + (cfg.task_id.empty() ? "default" : cfg.task_id));
@@ -101,33 +131,55 @@ int main(int argc, char ** argv)
     return p;
   };
 
-  // Action-based skill nodes
-  factory.registerNodeType<robot_bt_nodes::MoveToNamedConfigNode>(
-    "MoveToNamedConfig", make_params("/skill_atoms/move_to_named_config"));
-  factory.registerNodeType<robot_bt_nodes::MoveToCartesianPoseNode>(
-    "MoveToCartesianPose", make_params("/skill_atoms/move_to_cartesian_pose"));
-  factory.registerNodeType<robot_bt_nodes::MoveToJointConfigNode>(
-    "MoveToJointConfig", make_params("/skill_atoms/move_to_joint_config"));
-  factory.registerNodeType<robot_bt_nodes::MoveCartesianLinearNode>(
-    "MoveCartesianLinear", make_params("/skill_atoms/move_cartesian_linear"));
-  factory.registerNodeType<robot_bt_nodes::GripperControlNode>(
-    "GripperControl", make_params("/skill_atoms/gripper_control"));
-  factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
-    "DetectObject", make_params("/skill_atoms/detect_object"));
-  factory.registerNodeType<robot_bt_nodes::CapturePointCloudNode>(
-    "CapturePointCloud", make_params("/skill_atoms/capture_point_cloud"));
-  factory.registerNodeType<robot_bt_nodes::SetDigitalIONode>(
-    "SetDigitalIO", make_params("/skill_atoms/set_digital_io"));
-  factory.registerNodeType<robot_bt_nodes::CheckCollisionNode>(
-    "CheckCollision", make_params("/skill_atoms/check_collision"));
-  factory.registerNodeType<robot_bt_nodes::UpdatePlanningSceneNode>(
-    "UpdatePlanningScene", make_params("/skill_atoms/update_planning_scene"));
-  factory.registerNodeType<robot_bt_nodes::RobotEnableNode>(
-    "RobotEnable", make_params("/skill_atoms/robot_enable"));
-  factory.registerNodeType<robot_bt_nodes::RecordRosbagNode>(
-    "RecordRosbag", make_params("/skill_atoms/record_rosbag"));
-  factory.registerNodeType<robot_bt_nodes::CheckSystemReadyNode>(
-    "CheckSystemReady", make_params("/skill_atoms/check_system_ready"));
+  // Action-based skill nodes registered per robot.
+  // For each configured robot, register a full set of BT action node types
+  // with names like "MoveToNamedConfig_meca500", "MoveToNamedConfig_franka", etc.
+  // This allows individual BT steps to target a specific robot.
+  //
+  // If no robots are configured (legacy/single-robot), fall back to registering
+  // the original unqualified names so existing trees continue to work.
+  auto register_robot_nodes = [&](const std::string & suffix, const std::string & ns) {
+    factory.registerNodeType<robot_bt_nodes::MoveToNamedConfigNode>(
+      "MoveToNamedConfig" + suffix, make_params(ns + "/skill_atoms/move_to_named_config"));
+    factory.registerNodeType<robot_bt_nodes::MoveToCartesianPoseNode>(
+      "MoveToCartesianPose" + suffix, make_params(ns + "/skill_atoms/move_to_cartesian_pose"));
+    factory.registerNodeType<robot_bt_nodes::MoveToJointConfigNode>(
+      "MoveToJointConfig" + suffix, make_params(ns + "/skill_atoms/move_to_joint_config"));
+    factory.registerNodeType<robot_bt_nodes::MoveCartesianLinearNode>(
+      "MoveCartesianLinear" + suffix, make_params(ns + "/skill_atoms/move_cartesian_linear"));
+    factory.registerNodeType<robot_bt_nodes::GripperControlNode>(
+      "GripperControl" + suffix, make_params(ns + "/skill_atoms/gripper_control"));
+    factory.registerNodeType<robot_bt_nodes::DetectObjectNode>(
+      "DetectObject" + suffix, make_params(ns + "/skill_atoms/detect_object"));
+    factory.registerNodeType<robot_bt_nodes::CapturePointCloudNode>(
+      "CapturePointCloud" + suffix, make_params(ns + "/skill_atoms/capture_point_cloud"));
+    factory.registerNodeType<robot_bt_nodes::SetDigitalIONode>(
+      "SetDigitalIO" + suffix, make_params(ns + "/skill_atoms/set_digital_io"));
+    factory.registerNodeType<robot_bt_nodes::CheckCollisionNode>(
+      "CheckCollision" + suffix, make_params(ns + "/skill_atoms/check_collision"));
+    factory.registerNodeType<robot_bt_nodes::UpdatePlanningSceneNode>(
+      "UpdatePlanningScene" + suffix, make_params(ns + "/skill_atoms/update_planning_scene"));
+    factory.registerNodeType<robot_bt_nodes::RobotEnableNode>(
+      "RobotEnable" + suffix, make_params(ns + "/skill_atoms/robot_enable"));
+    factory.registerNodeType<robot_bt_nodes::RecordRosbagNode>(
+      "RecordRosbag" + suffix, make_params(ns + "/skill_atoms/record_rosbag"));
+    factory.registerNodeType<robot_bt_nodes::CheckSystemReadyNode>(
+      "CheckSystemReady" + suffix, make_params(ns + "/skill_atoms/check_system_ready"));
+  };
+
+  if (robot_configs.empty()) {
+    // Legacy single-robot mode: register without suffix using root namespace
+    RCLCPP_WARN(node->get_logger(),
+      "No --robot-configs provided; using legacy unnamespaced action servers");
+    register_robot_nodes("", "");
+  } else {
+    for (const auto & robot : robot_configs) {
+      RCLCPP_INFO(node->get_logger(),
+        "Registering BT nodes for robot '%s' (namespace '%s')",
+        robot.name.c_str(), robot.ns.c_str());
+      register_robot_nodes("_" + robot.name, robot.ns);
+    }
+  }
 
   // Synchronous utility nodes (no action server needed)
   factory.registerNodeType<robot_bt_nodes::ComputePreGraspPose>("ComputePreGraspPose");

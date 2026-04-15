@@ -43,6 +43,8 @@ RUN apt-get update && apt-get install -y \
     # Diagnostics & Monitoring
     ros-jazzy-diagnostic-updater \
     ros-jazzy-diagnostic-aggregator \
+    # rosbridge (WebSocket bridge for web dashboard)
+    ros-jazzy-rosbridge-suite \
     # Utilities
     git wget curl build-essential ccache \
     vim nano tmux tree \
@@ -77,6 +79,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fuse libfuse2t64 \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Patch rosbridge QoS: default to RELIABLE so /tf works ────────────────────
+RUN find /opt/ros/jazzy -path '*/rosbridge_library/internal/subscribers.py' \
+      -exec sed -i 's/reliability=ReliabilityPolicy.BEST_EFFORT/reliability=ReliabilityPolicy.RELIABLE/' {} \; \
+    && find /opt/ros/jazzy -path '*/rosbridge_library/capabilities/send_action_goal.py' \
+      -exec sed -i '/client_handler.run()/a\\n        import time; time.sleep(0.1)' {} \;
+
 # Setup ccache for faster rebuilds
 ENV PATH="/usr/lib/ccache:$PATH"
 ENV CCACHE_DIR=/home/ros/.ccache
@@ -105,6 +113,16 @@ RUN rosdep update --rosdistro jazzy
 
 # ── Copy source and build at image build time ─────────────────────────────────
 COPY --chown=ros:ros src/ /home/ws/src/
+
+# ── Install Node.js 22 for dashboard build ───────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Build web dashboard frontend ─────────────────────────────────────────────
+RUN cd /home/ws/src/robot_dashboard/frontend \
+    && npm ci --ignore-scripts \
+    && npx vite build
 
 WORKDIR /home/ws
 USER ros

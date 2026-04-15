@@ -106,6 +106,21 @@ class SkillRegistry(Node):
             "Waiting for skill atoms to register on /skill_server/register_skill"
         )
 
+    # ── Helpers for multi-robot keying ────────────────────────────────────────
+
+    @staticmethod
+    def _skill_key(desc: "SkillDescription") -> str:
+        """Return the registry key for a skill description.
+
+        Atom skills from multiple robots can share the same skill name (e.g.
+        both Meca500 and Franka expose "move_to_named_config"). We differentiate
+        them by prefixing with robot_id: "meca500:move_to_named_config".
+        Skills without a robot_id (compound/unnamespaced) are keyed by name only.
+        """
+        if desc.robot_id:
+            return f"{desc.robot_id}:{desc.name}"
+        return desc.name
+
     # ── Service handlers ─────────────────────────────────────────────────────
 
     def _handle_register_skill(
@@ -118,13 +133,14 @@ class SkillRegistry(Node):
         now = self.get_clock().now().to_msg()
         desc.created_at = now
         desc.updated_at = now
+        key = self._skill_key(desc)
         with self._lock:
-            existing = self._skills.get(desc.name)
-            self._skills[desc.name] = desc
-            self._skill_last_seen[desc.name] = time.monotonic()
-            self._stale_skills.discard(desc.name)
+            existing = self._skills.get(key)
+            self._skills[key] = desc
+            self._skill_last_seen[key] = time.monotonic()
+            self._stale_skills.discard(key)
             message = (
-                f"Registered skill atom: '{desc.name}' "
+                f"Registered skill atom: '{key}' "
                 f"[{desc.category}] -> {desc.action_server_name}"
             )
             if existing is None:
@@ -133,7 +149,7 @@ class SkillRegistry(Node):
                 self.get_logger().debug(message)
         self._publish_skill_list()
         response.success = True
-        response.message = f"Skill '{desc.name}' registered"
+        response.message = f"Skill '{key}' registered"
         return response
 
     def _handle_get_skill_descriptions(
@@ -213,10 +229,11 @@ class SkillRegistry(Node):
         desc.created_at = now
         desc.updated_at = now
 
+        key = self._skill_key(desc)
         with self._lock:
-            self._skills[desc.name] = desc
+            self._skills[key] = desc
             self.get_logger().info(
-                f"Registered compound skill: '{desc.name}' "
+                f"Registered compound skill: '{key}' "
                 f"(components: {desc.component_skills})"
             )
 
@@ -299,6 +316,7 @@ class SkillRegistry(Node):
                     "category": s.category,
                     "is_compound": s.is_compound,
                     "action_server": s.action_server_name,
+                    "robot_id": s.robot_id,
                 }
                 for s in self._skills.values()
             ]
@@ -389,12 +407,25 @@ class SkillRegistry(Node):
             )
             self._publish_skill_list()
 
-    def get_skill(self, name: str) -> Optional[SkillDescription]:
-        """Get a skill description by name (for internal use by other components)."""
+    def get_skill(self, name: str, robot_id: str = "") -> Optional[SkillDescription]:
+        """Get a skill description by name.
+
+        If robot_id is provided, looks up '{robot_id}:{name}' first, then falls
+        back to plain 'name' for backward compatibility with unnamespaced skills.
+        """
         with self._lock:
+            if robot_id:
+                result = self._skills.get(f"{robot_id}:{name}")
+                if result is not None:
+                    return result
             return self._skills.get(name)
 
     def get_all_skills(self) -> List[SkillDescription]:
         """Get all registered skills (for internal use)."""
         with self._lock:
             return list(self._skills.values())
+
+    def get_robots(self) -> List[str]:
+        """Return sorted list of distinct robot_ids that have registered skills."""
+        with self._lock:
+            return sorted({s.robot_id for s in self._skills.values() if s.robot_id})

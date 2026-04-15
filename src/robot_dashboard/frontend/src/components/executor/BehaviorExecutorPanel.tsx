@@ -28,9 +28,19 @@ const PRESET_TREES = [
   {
     name: "MoveToHome",
     label: "Move to Home",
-    description: "Open gripper and move arm to home configuration",
+    description: "Move arm to home configuration (no gripper, safe for Meca500)",
     xml: `<root BTCPP_format="4" main_tree_to_execute="MoveToHome">
   <BehaviorTree ID="MoveToHome">
+    <MoveToNamedConfig name="go_home" config_name="home" velocity_scaling="0.1" acceleration_scaling="0.1"/>
+  </BehaviorTree>
+</root>`,
+  },
+  {
+    name: "MoveToHomeGripper",
+    label: "Move to Home (with gripper)",
+    description: "Open gripper first, then move arm to home configuration",
+    xml: `<root BTCPP_format="4" main_tree_to_execute="MoveToHomeGripper">
+  <BehaviorTree ID="MoveToHomeGripper">
     <Sequence name="move_to_home">
       <GripperControl name="open_gripper" command="open"/>
       <MoveToNamedConfig name="go_home" config_name="home" velocity_scaling="0.3" acceleration_scaling="0.3"/>

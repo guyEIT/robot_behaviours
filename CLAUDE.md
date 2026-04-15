@@ -6,11 +6,20 @@ This is a ROS2 Jazzy workspace. All builds, tests, and ROS commands must run ins
 
 ### Starting the containers
 
+**Real robot** (Meca500 with MoveIt2 running on host):
 ```bash
 docker compose up -d
 ```
 
-This starts the sim container first (MoveIt2 + ros2_control), waits for `move_group` to be healthy, then starts the dev container.
+This starts the dev container which connects to the host's MoveIt2 instance via host networking. The skill server auto-configures for the Meca500 (planning group `meca500_arm`, controller `/joint_trajectory_controller`).
+
+**Simulation** (Panda mock hardware):
+```bash
+docker compose --profile sim up -d
+# or: ROBOT_HARDWARE_MODE=sim docker compose --profile sim up -d
+```
+
+This starts the sim container (MoveIt2 + ros2_control with Panda), waits for `move_group` to be healthy, then starts the dev container with sim-mode parameters.
 
 ### Running commands inside the container
 
@@ -55,7 +64,7 @@ pixi run lite-logs      # follow logs
 pixi run lite-shell     # shell into container
 ```
 
-Dashboard: http://localhost:8080 | rosbridge: ws://localhost:9090
+Dashboard: http://localhost:8081 | rosbridge: ws://localhost:9090
 
 After frontend changes (`vite build`), update the container symlinks:
 ```bash

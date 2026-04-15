@@ -29,6 +29,7 @@
   <depend>moveit_msgs</depend>
   <!-- ros2_control -->
   <depend>control_msgs</depend>
+  <depend>controller_manager_msgs</depend>
   <!-- Diagnostics -->
   <depend>diagnostic_updater</depend>
   <depend>diagnostic_msgs</depend>

@@ -27,7 +27,7 @@ def generate_launch_description():
     )
     dashboard_port_arg = DeclareLaunchArgument(
         "dashboard_port",
-        default_value=os.environ.get("DASHBOARD_PORT", "8080"),
+        default_value=os.environ.get("DASHBOARD_PORT", "8081"),
         description="Dashboard HTTP port",
     )
 

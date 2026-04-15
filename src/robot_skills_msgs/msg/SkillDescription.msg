@@ -5,6 +5,7 @@ string name                        # Unique identifier, e.g. "move_to_named_conf
 string display_name                # Human-readable, e.g. "Move to Named Configuration"
 string description                 # Natural language description for LLM agents
 string version                     # Semantic version, e.g. "1.0.0"
+string robot_id                    # Robot this skill belongs to, e.g. "meca500" or "franka"
 
 # Classification
 string category                    # "motion" | "perception" | "manipulation" | "utility" | "compound"

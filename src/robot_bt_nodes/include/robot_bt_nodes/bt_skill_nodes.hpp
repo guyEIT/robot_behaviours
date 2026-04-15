@@ -60,8 +60,8 @@ public:
         "Velocity scaling factor 0.01-1.0"),
       BT::InputPort<double>("acceleration_scaling", 0.3,
         "Acceleration scaling factor 0.01-1.0"),
-      BT::InputPort<std::string>("planning_group", "arm",
-        "MoveIt2 planning group name"),
+      BT::InputPort<std::string>("planning_group", "",
+        "MoveIt2 planning group name (empty = use skill atom default)"),
     };
   }
 
@@ -75,7 +75,7 @@ public:
     goal.config_name = config_name.value();
     goal.velocity_scaling = getInput<double>("velocity_scaling").value_or(0.3);
     goal.acceleration_scaling = getInput<double>("acceleration_scaling").value_or(0.3);
-    goal.planning_group = getInput<std::string>("planning_group").value_or("arm");
+    goal.planning_group = getInput<std::string>("planning_group").value_or("");
     return true;
   }
 
@@ -134,8 +134,8 @@ public:
         "Acceleration scaling factor 0.01-1.0"),
       BT::InputPort<bool>("plan_only", false,
         "If true, plan but do not execute"),
-      BT::InputPort<std::string>("planning_group", "arm",
-        "MoveIt2 planning group name"),
+      BT::InputPort<std::string>("planning_group", "",
+        "MoveIt2 planning group name (empty = use skill atom default)"),
       BT::OutputPort<geometry_msgs::msg::PoseStamped>("final_pose",
         "Actual pose reached after execution"),
     };
@@ -152,7 +152,7 @@ public:
     goal.velocity_scaling = getInput<double>("velocity_scaling").value_or(0.3);
     goal.acceleration_scaling = getInput<double>("acceleration_scaling").value_or(0.3);
     goal.plan_only = getInput<bool>("plan_only").value_or(false);
-    goal.planning_group = getInput<std::string>("planning_group").value_or("arm");
+    goal.planning_group = getInput<std::string>("planning_group").value_or("");
     return true;
   }
 

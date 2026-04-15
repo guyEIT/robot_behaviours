@@ -1,0 +1,20 @@
+<!--
+  MoveToHome (no gripper) behavior tree
+
+  Returns the robot to the home configuration.
+  For robots without a gripper (e.g. Meca500).
+
+  Usage:
+    - Direct execution: send as BT XML to /skill_server/execute_behavior_tree
+    - As SubTree: reference this tree ID from other trees
+-->
+<root BTCPP_format="4" main_tree_to_execute="MoveToHome">
+
+  <BehaviorTree ID="MoveToHome">
+    <MoveToNamedConfig name="go_home"
+                       config_name="home"
+                       velocity_scaling="0.1"
+                       acceleration_scaling="0.1"/>
+  </BehaviorTree>
+
+</root>

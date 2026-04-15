@@ -8,3 +8,4 @@ bool retry_on_failure              # Whether to retry if this step fails
 int32 max_retries                  # Max retry attempts (used if retry_on_failure=true)
 string condition_expression        # Optional: only execute if this condition is met
 string description                 # Human-readable step description
+string robot_id                    # Which robot executes this step, e.g. "meca500" or "franka"

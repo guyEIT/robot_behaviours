@@ -1,0 +1,56 @@
+# Docker Compose for the Franka robot PC.
+#
+# Run this on the Franka PC (not the Meca500/skill-server PC).
+#
+# Requirements:
+#   - Both PCs on the same LAN
+#   - Franka's MoveIt2 already running on this PC (via franka_ros2 / moveit)
+#   - Set SKILL_SERVER_HOST to the IP of the Meca500 PC (or leave empty if
+#     DDS multicast resolves it automatically on the same subnet)
+#
+# Usage:
+#   SKILL_SERVER_HOST=192.168.x.x docker compose -f docker-compose.franka.yml up -d
+#   docker compose -f docker-compose.franka.yml exec franka_atoms bash
+
+services:
+  franka_atoms:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    image: ros2-jazzy-robot-skills:latest
+    container_name: ros2_franka_skill_atoms
+
+    network_mode: host
+    ipc: host
+
+    stdin_open: true
+    tty: true
+
+    environment:
+      - DISPLAY=${DISPLAY:-:1}
+      - ROS_DOMAIN_ID=0
+      - ROS_LOCALHOST_ONLY=0
+      - ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+      - RCUTILS_COLORIZED_OUTPUT=1
+      # SKILL_SERVER_HOST is informational — DDS discovers the registry automatically
+      # on the same subnet. Set it if you need unicast peer configuration.
+      - SKILL_SERVER_HOST=${SKILL_SERVER_HOST:-}
+      # Override robots.yaml path if needed (default: installed package config)
+      - ROBOTS_CONFIG=${ROBOTS_CONFIG:-}
+
+    volumes:
+      - ./src:/home/ws/src:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ros2_ccache_franka:/home/ros/.ccache
+
+    user: ros
+
+    command: >
+      bash -c "
+        source /opt/ros/jazzy/setup.bash &&
+        source /home/ws/install/setup.bash 2>/dev/null &&
+        ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=franka
+      "
+
+volumes:
+  ros2_ccache_franka:

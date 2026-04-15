@@ -63,6 +63,30 @@ public:
     this->declare_parameter("skill_registry_service", "/skill_server/register_skill");
     this->declare_parameter("registration_timeout_sec", 5.0);
     this->declare_parameter("registration_refresh_sec", 30.0);
+
+    // Multi-robot: optional namespace prefix for action server and registry identity.
+    // robot_namespace: e.g. "/meca500" or "/franka" — prepended to all action server names.
+    // robot_id:        e.g. "meca500" or "franka"   — used in SkillDescription.robot_id.
+    //                  Derived from robot_namespace if left empty.
+    this->declare_parameter("robot_namespace", "");
+    this->declare_parameter("robot_id", "");
+
+    const auto ns = this->get_parameter("robot_namespace").as_string();
+    if (!ns.empty()) {
+      // "/meca500" + "/skill_atoms/move_to_named_config" -> "/meca500/skill_atoms/..."
+      action_name_ = ns + action_name_;
+    }
+
+    // Deferred initialization: shared_from_this() is not available in the
+    // constructor, so schedule initialize() on the next executor spin.
+    init_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(0),
+      [this]() {
+        if (!initialized_) {
+          initialized_ = true;
+          initialize();
+        }
+      });
   }
 
   /**
@@ -97,7 +121,7 @@ public:
     reg_refresh_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(static_cast<int>(refresh_sec * 1000.0)),
       [this]() {
-        if (registered_) {
+        if (reg_client_ && reg_client_->service_is_ready()) {
           sendRegistrationRequest();
         }
       });
@@ -178,19 +202,15 @@ protected:
     const std::string registry_service =
       this->get_parameter("skill_registry_service").as_string();
 
-    auto client = this->create_client<robot_skills_msgs::srv::RegisterSkill>(registry_service);
+    reg_client_ = this->create_client<robot_skills_msgs::srv::RegisterSkill>(registry_service);
 
-    if (!client->wait_for_service(std::chrono::seconds(
-          static_cast<int>(this->get_parameter("registration_timeout_sec").as_double()))))
-    {
-      RCLCPP_WARN(this->get_logger(),
-        "SkillRegistry service '%s' not available. Skill '%s' will not be registered. "
-        "Start robot_skill_server to enable skill discovery.",
+    if (!reg_client_->service_is_ready()) {
+      RCLCPP_INFO(this->get_logger(),
+        "SkillRegistry service '%s' not yet available for '%s', will retry on heartbeat.",
         registry_service.c_str(), this->get_name());
       return;
     }
 
-    reg_client_ = client;
     sendRegistrationRequest();
   }
 
@@ -200,25 +220,38 @@ protected:
     request->description = getDescription();
     request->description.action_server_name = action_name_;
 
-    auto future = reg_client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(
-          this->get_node_base_interface(), future,
-          std::chrono::seconds(3)) == rclcpp::FutureReturnCode::SUCCESS)
-    {
-      if (future.get()->success) {
-        if (!registered_) {
-          RCLCPP_INFO(this->get_logger(), "Skill '%s' registered successfully",
-            this->get_name());
-        } else {
-          RCLCPP_DEBUG(this->get_logger(), "Skill '%s' heartbeat refreshed",
-            this->get_name());
-        }
-        registered_ = true;
-      } else {
-        RCLCPP_WARN(this->get_logger(), "Skill '%s' registration failed: %s",
-          this->get_name(), future.get()->message.c_str());
+    // Populate robot_id: use explicit param, or derive from robot_namespace ("/meca500" -> "meca500")
+    std::string rid = this->get_parameter("robot_id").as_string();
+    if (rid.empty()) {
+      const auto ns = this->get_parameter("robot_namespace").as_string();
+      if (!ns.empty()) {
+        rid = (ns[0] == '/') ? ns.substr(1) : ns;
       }
     }
+    request->description.robot_id = rid;
+
+    reg_client_->async_send_request(request,
+      [this](rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedFuture future) {
+        try {
+          auto response = future.get();
+          if (response->success) {
+            if (!registered_) {
+              RCLCPP_INFO(this->get_logger(), "Skill '%s' registered successfully",
+                this->get_name());
+            } else {
+              RCLCPP_DEBUG(this->get_logger(), "Skill '%s' heartbeat refreshed",
+                this->get_name());
+            }
+            registered_ = true;
+          } else {
+            RCLCPP_WARN(this->get_logger(), "Skill '%s' registration failed: %s",
+              this->get_name(), response->message.c_str());
+          }
+        } catch (const std::exception & e) {
+          RCLCPP_WARN(this->get_logger(), "Skill '%s' registration error: %s",
+            this->get_name(), e.what());
+        }
+      });
   }
 
 private:
@@ -308,7 +341,9 @@ private:
   std::vector<TrackedThread> execution_threads_;
   rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedPtr reg_client_;
   rclcpp::TimerBase::SharedPtr reg_refresh_timer_;
+  rclcpp::TimerBase::SharedPtr init_timer_;
   bool registered_{false};
+  bool initialized_{false};
 };
 
 }  // namespace robot_skill_atoms

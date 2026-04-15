@@ -11,12 +11,21 @@ import {
 } from "recharts";
 import { useTopicSubscription } from "../../hooks/useTopicSubscription";
 import type { JointState } from "../../types/ros";
+import { useRobotSelectorStore } from "../../stores/robot-selector-store";
 import { Gauge, Activity } from "lucide-react";
 import clsx from "clsx";
 
 type ViewMode = "position" | "velocity" | "effort";
 
 const JOINT_COLORS: Record<string, string> = {
+  // Meca500 (real)
+  joint1: "#3b82f6",
+  joint2: "#22c55e",
+  joint3: "#ef4444",
+  joint4: "#f59e0b",
+  joint5: "#8b5cf6",
+  joint6: "#ec4899",
+  // Panda (sim)
   panda_joint1: "#3b82f6",
   panda_joint2: "#22c55e",
   panda_joint3: "#ef4444",
@@ -34,6 +43,11 @@ export default function JointStateViewer() {
   const [hz, setHz] = useState(0);
   const [lastTime, setLastTime] = useState(0);
 
+  const selectedRobotId = useRobotSelectorStore((s) => s.selectedRobotId);
+  const jointStatesTopic = selectedRobotId
+    ? `/${selectedRobotId}/joint_states`
+    : "/joint_states";
+
   const handleMsg = useCallback(
     (msg: JointState) => {
       setJointState(msg);
@@ -48,7 +62,7 @@ export default function JointStateViewer() {
   );
 
   useTopicSubscription<JointState>(
-    "/joint_states",
+    jointStatesTopic,
     "sensor_msgs/msg/JointState",
     handleMsg,
     50 // 20 Hz max
@@ -64,7 +78,7 @@ export default function JointStateViewer() {
           ? jointState.velocity
           : jointState.effort;
       return {
-        name: name.replace("panda_", "").replace("_joint", "J").replace("finger_joint", "FJ"),
+        name: name.replace("panda_", "").replace("_joint", "J").replace("finger_joint", "FJ").replace("joint", "J"),
         fullName: name,
         value: values[i] ?? 0,
         degrees:

@@ -61,6 +61,10 @@ class BtExecutor(Node):
         self.declare_parameter("groot_zmq_port", 1666)
         self.declare_parameter("bt_runner_executable", "bt_runner")
         self.declare_parameter("bt_shutdown_timeout_s", 3.0)
+        # Comma-separated "name:namespace" robot config pairs forwarded to bt_runner.
+        # e.g. "meca500:/meca500,franka:/franka"
+        # Set by the launch file from robots.yaml. Empty = legacy single-robot mode.
+        self.declare_parameter("robot_configs", "")
 
         callback_group = ReentrantCallbackGroup()
         self._callback_group = callback_group
@@ -171,6 +175,7 @@ class BtExecutor(Node):
             bt_runner_exec = self.get_parameter("bt_runner_executable").value
             tick_rate = self.get_parameter("tick_rate_hz").value
             groot_port = self.get_parameter("groot_zmq_port").value
+            robot_configs = self.get_parameter("robot_configs").value
 
             cmd = [
                 bt_runner_exec,
@@ -180,6 +185,8 @@ class BtExecutor(Node):
             ]
             if goal.enable_groot_monitor:
                 cmd += ["--groot-port", str(groot_port)]
+            if robot_configs:
+                cmd += ["--robot-configs", robot_configs]
 
             self.get_logger().info(f"Launching bt_runner: {' '.join(cmd)}")
             self.get_logger().debug(f"BT XML written to: {xml_path}")

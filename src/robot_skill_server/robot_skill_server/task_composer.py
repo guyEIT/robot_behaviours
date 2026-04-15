@@ -155,7 +155,9 @@ class TaskComposer(Node):
         container.set("name", task_name)
 
         for step in steps:
-            skill_desc = self._registry.get_skill(step.skill_name)
+            skill_desc = self._registry.get_skill(
+                step.skill_name, getattr(step, "robot_id", "") or ""
+            )
             if skill_desc is None:
                 warnings.append(
                     f"Skill '{step.skill_name}' not found in registry "
@@ -197,6 +199,14 @@ class TaskComposer(Node):
                 f"No explicit BT node type for '{step.skill_name}', "
                 f"using derived name '{node_type}'"
             )
+
+        # Append robot suffix so the BT runner connects to the right robot's action server.
+        # e.g. "MoveToNamedConfig" + "_meca500" -> "MoveToNamedConfig_meca500"
+        robot_id = getattr(step, "robot_id", "") or ""
+        if not robot_id and skill_desc:
+            robot_id = getattr(skill_desc, "robot_id", "") or ""
+        if robot_id:
+            node_type = f"{node_type}_{robot_id}"
 
         # Parse parameters JSON
         params = {}

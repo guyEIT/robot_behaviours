@@ -64,6 +64,15 @@ public:
     this->declare_parameter("registration_timeout_sec", 5.0);
     this->declare_parameter("registration_refresh_sec", 30.0);
 
+    // Multi-robot: optional namespace prefix (e.g. "/meca500") and robot identity.
+    this->declare_parameter("robot_namespace", "");
+    this->declare_parameter("robot_id", "");
+
+    const auto ns = this->get_parameter("robot_namespace").as_string();
+    if (!ns.empty()) {
+      action_name_ = ns + action_name_;
+    }
+
     // Deferred initialization: shared_from_this() is not available in the
     // constructor, so schedule initialize() on the next executor spin.
     auto timer = this->create_wall_timer(
@@ -228,6 +237,15 @@ protected:
     auto request = std::make_shared<robot_skills_msgs::srv::RegisterSkill::Request>();
     request->description = getDescription();
     request->description.action_server_name = action_name_;
+
+    std::string rid = this->get_parameter("robot_id").as_string();
+    if (rid.empty()) {
+      const auto ns = this->get_parameter("robot_namespace").as_string();
+      if (!ns.empty()) {
+        rid = (ns[0] == '/') ? ns.substr(1) : ns;
+      }
+    }
+    request->description.robot_id = rid;
 
     reg_client_->async_send_request(request,
       [this](rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedFuture future) {
