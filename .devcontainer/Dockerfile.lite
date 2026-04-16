@@ -34,9 +34,6 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     ros-jazzy-ament-cmake \
     ros-jazzy-ament-cmake-python \
     ros-jazzy-rosidl-default-generators \
-    # Required by behaviortree_ros2 build
-    ros-jazzy-generate-parameter-library \
-    libboost-dev \
     # rosbridge (WebSocket bridge for web dashboard)
     ros-jazzy-rosbridge-suite \
     # Robot meshes for web visualization
@@ -57,15 +54,6 @@ RUN find /opt/ros/jazzy -path '*/rosbridge_library/internal/subscribers.py' \
     && find /opt/ros/jazzy -path '*/rosbridge_library/capabilities/send_action_goal.py' \
       -exec sed -i '/client_handler.run()/a\\n        import time; time.sleep(0.1)' {} \;
 
-# ── behaviortree_ros2 (not released for Jazzy — build from source) ───────────
-RUN mkdir -p /opt/bt_ros2_ws/src \
-    && git clone --branch humble --depth 1 \
-       https://github.com/BehaviorTree/BehaviorTree.ROS2.git \
-       /opt/bt_ros2_ws/src/behaviortree_ros2 \
-    && bash -c "source /opt/ros/jazzy/setup.bash \
-       && cd /opt/bt_ros2_ws \
-       && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release" \
-    && rm -rf /opt/bt_ros2_ws/build /opt/bt_ros2_ws/log
 
 # ── Install rosboard for web monitoring ──────────────────────────────────────
 RUN pip3 install --break-system-packages --no-cache-dir \
@@ -80,13 +68,11 @@ COPY src/ /home/ws/src/
 
 # Build only lite-mode packages (no robot_skill_atoms — it needs MoveIt2)
 RUN bash -c "source /opt/ros/jazzy/setup.bash && \
-    source /opt/bt_ros2_ws/install/setup.bash && \
     colcon build --symlink-install \
       --packages-select \
         robot_skills_msgs \
         robot_sim_config \
         robot_mock_skill_atoms \
-        robot_bt_nodes \
         robot_skill_server \
         robot_behaviors \
         robot_dashboard"
@@ -102,6 +88,5 @@ RUN mkdir -p /home/ws/install/robot_dashboard/share/robot_dashboard/www/meshes/p
 # ── Default command ──────────────────────────────────────────────────────────
 CMD ["bash", "-c", \
      "source /opt/ros/jazzy/setup.bash && \
-      source /opt/bt_ros2_ws/install/setup.bash && \
       source /home/ws/install/setup.bash && \
       ros2 launch robot_skill_server skill_server_lite.launch.py"]

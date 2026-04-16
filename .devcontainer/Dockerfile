@@ -52,15 +52,6 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     vim nano tmux tree \
     && rm -rf /var/lib/apt/lists/*
 
-# behaviortree_ros2 is not released for Jazzy — build from source
-RUN mkdir -p /opt/bt_ros2_ws/src \
-    && git clone --branch 0.3.0 --depth 1 https://github.com/BehaviorTree/BehaviorTree.ROS2.git \
-       /opt/bt_ros2_ws/src/behaviortree_ros2 \
-    && bash -c "source /opt/ros/jazzy/setup.bash \
-       && cd /opt/bt_ros2_ws \
-       && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release" \
-    && echo "source /opt/bt_ros2_ws/install/setup.bash" >> /etc/bash.bashrc \
-    && rm -rf /opt/bt_ros2_ws/build /opt/bt_ros2_ws/log
 
 # Install Python packages for the orchestration layer
 RUN pip3 install --no-cache-dir --break-system-packages \
@@ -102,7 +93,6 @@ RUN mkdir -p /home/ws/src && chown -R ros:ros /home/ws
 
 # Shell setup for ros user
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/ros/.bashrc \
-    && echo "source /opt/bt_ros2_ws/install/setup.bash 2>/dev/null || true" >> /home/ros/.bashrc \
     && echo "source /home/ws/install/setup.bash 2>/dev/null || true" >> /home/ros/.bashrc \
     && echo "export ROS_DOMAIN_ID=0" >> /home/ros/.bashrc \
     && echo "export RCUTILS_COLORIZED_OUTPUT=1" >> /home/ros/.bashrc \
@@ -110,32 +100,39 @@ RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/ros/.bashrc \
     && echo "alias cbt='cd /home/ws && colcon build --symlink-install --packages-select'" >> /home/ros/.bashrc \
     && echo "alias ct='cd /home/ws && colcon test'" >> /home/ros/.bashrc
 
-# Initialize rosdep
-RUN rosdep update --rosdistro jazzy
-
-# ── Copy source and build at image build time ─────────────────────────────────
-COPY --chown=ros:ros src/ /home/ws/src/
-
 # ── Install Node.js 22 for dashboard build ───────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Build web dashboard frontend ─────────────────────────────────────────────
-RUN cd /home/ws/src/robot_dashboard/frontend \
-    && npm ci --ignore-scripts \
-    && npx vite build
+# Initialize rosdep
+RUN rosdep update --rosdistro jazzy
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Build layers — npm dependency install is the slow step (~30s) and only
+# changes when package.json does. Everything else rebuilds on source changes
+# but is fast (~30s total for vite + colcon).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Cached layer: npm dependencies (changes when package.json changes) ───────
+COPY src/robot_dashboard/frontend/package.json src/robot_dashboard/frontend/package-lock.json \
+     /home/ws/src/robot_dashboard/frontend/
+RUN cd /home/ws/src/robot_dashboard/frontend && npm ci --ignore-scripts
+
+# ── Source + builds (invalidated on any src/ change) ─────────────────────────
+COPY --chown=ros:ros src/ /home/ws/src/
+
+RUN cd /home/ws/src/robot_dashboard/frontend && npx vite build
 
 WORKDIR /home/ws
 USER ros
 
 RUN bash -c "source /opt/ros/jazzy/setup.bash && \
-    source /opt/bt_ros2_ws/install/setup.bash && \
     colcon build --symlink-install \
+      --packages-ignore robot_bt_nodes \
       --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 
 CMD ["bash", "-c", \
     "source /opt/ros/jazzy/setup.bash && \
-     source /opt/bt_ros2_ws/install/setup.bash && \
      source /home/ws/install/setup.bash && \
      ros2 launch robot_skill_server skill_server.launch.py"]

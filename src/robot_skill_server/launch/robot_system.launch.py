@@ -4,7 +4,7 @@ Robot Skills Framework — Multi-Robot System Launch.
 Reads src/robot_skill_server/config/robots.yaml and:
   - Launches skill atoms for every robot with `local: true` (runs on this PC)
   - Starts the central skill server (registry, composer, BT executor)
-  - Starts the C++ TreeExecutionServer for BT execution
+  - Starts the skill server (Python tree executor, skill registry, task composer)
   - Starts the robot dashboard
 
 Remote robots (local: false) run skill_atoms_remote.launch.py on their own PCs
@@ -64,31 +64,12 @@ def _setup_nodes(context, *args, **kwargs):
     if not robots:
         raise RuntimeError(f"No robots defined in {robots_config_path}")
 
-    # ── C++ Tree Execution Server ───────────────────────────────────────────
-    tree_server_node = Node(
-        package="robot_skill_server",
-        executable="robot_tree_server",
-        output="screen",
-        arguments=["--ros-args", "--log-level", log_level],
-        parameters=[{
-            "action_name": "/skill_server/execute_tree",
-            "tick_frequency": 10,
-            "groot2_port": int(groot_port),
-            "plugins": ["robot_bt_nodes/bt_plugins"],
-            "behavior_trees": ["robot_behaviors/trees"],
-            "ros_plugins_timeout": 10000,
-        }],
-    )
-
-    # ── Skill Server (Python orchestrator) ───────────────────────────────────
+    # ── Skill Server (Python orchestrator + tree executor) ──────────────────
     skill_server_node = Node(
         package="robot_skill_server",
         executable="skill_server_node",
         output="screen",
         arguments=["--ros-args", "--log-level", log_level],
-        parameters=[{
-            "execute_tree_action_name": "/skill_server/execute_tree",
-        }],
     )
 
     # ── Dashboard ─────────────────────────────────────────────────────────────
@@ -99,7 +80,7 @@ def _setup_nodes(context, *args, **kwargs):
         ),
     )
 
-    all_nodes = [tree_server_node, skill_server_node, dashboard_launch]
+    all_nodes = [skill_server_node, dashboard_launch]
 
     # ── Skill atoms for local robots ─────────────────────────────────────────
     local_robot_ids = []

@@ -7,7 +7,7 @@
     Python orchestrator for the Robot Skills Framework. Provides:
     - SkillRegistry: central catalog of all available skills (atoms + compounds)
     - TaskComposer: generates BehaviorTree XML from skill step lists
-    - BtExecutor: executes BT XML using BehaviorTree.CPP via subprocess/bindings
+    - BtExecutor: executes BT XML using pure Python tree executor with ROS2 actions
     - CompoundSkill persistence: agents can register new compound skills
     Agent-facing entry points: GetSkillDescriptions, ComposeTask,
     RegisterCompoundSkill, ExecuteBehaviorTree action.
@@ -23,9 +23,6 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>action_msgs</depend>
-  <depend>behaviortree_cpp</depend>
-  <depend>behaviortree_ros2</depend>
-  <depend>btcpp_ros2_interfaces</depend>
   <depend>diagnostic_updater</depend>
   <depend>diagnostic_msgs</depend>
 

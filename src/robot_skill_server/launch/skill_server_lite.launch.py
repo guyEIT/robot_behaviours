@@ -71,23 +71,7 @@ def generate_launch_description():
         FindPackageShare("robot_mock_skill_atoms"), "config", "mock_params.yaml"
     ])
 
-    # ── Core: C++ Tree Execution Server ────────────────────────────────────
-    tree_server_node = Node(
-        package="robot_skill_server",
-        executable="robot_tree_server",
-        output="screen",
-        arguments=["--ros-args", "--log-level", log_level],
-        parameters=[{
-            "action_name": "/skill_server/execute_tree",
-            "tick_frequency": 10,
-            "groot2_port": groot_port,
-            "plugins": ["robot_bt_nodes/bt_plugins"],
-            "behavior_trees": ["robot_behaviors/trees"],
-            "ros_plugins_timeout": 10000,
-        }],
-    )
-
-    # ── Core: Skill Server (Python orchestrator) ─────────────────────────────
+    # ── Core: Skill Server (Python orchestrator + tree executor) ───────────
     skill_server_node = Node(
         package="robot_skill_server",
         executable="skill_server_node",

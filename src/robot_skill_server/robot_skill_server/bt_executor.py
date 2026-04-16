@@ -1,9 +1,8 @@
 """
-BtExecutor - Action bridge between the dashboard and TreeExecutionServer.
+BtExecutor - Executes BehaviorTree XML as a ROS2 Action Server.
 
-Translates between the framework's ExecuteBehaviorTree action (used by the
-dashboard and BehaviorLibrary) and the library's ExecuteTree action (served
-by the C++ RobotTreeServer).
+Parses BT.CPP v4 XML and executes trees directly in Python using ROS2
+action clients. No C++ dependency, no subprocess, no BT.CPP library.
 
 Action: /skill_server/execute_behavior_tree (ExecuteBehaviorTree.action)
 Topic:  /skill_server/task_state (TaskState.msg)
@@ -13,13 +12,14 @@ Topic:  /skill_server/active_bt_xml (String, transient_local)
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from typing import Optional
 
 import rclpy
 import rclpy.time
-from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
@@ -28,30 +28,31 @@ from diagnostic_msgs.msg import DiagnosticStatus
 from diagnostic_updater import Updater
 from std_msgs.msg import String
 
-from btcpp_ros2_interfaces.action import ExecuteTree
 from robot_skills_msgs.action import ExecuteBehaviorTree
 from robot_skills_msgs.msg import LogEvent, TaskState
 
+from robot_skill_server.tree_executor import (
+    Blackboard,
+    ExecutionContext,
+    NodeStatus,
+    count_action_nodes,
+    get_main_tree_name,
+    parse_trees,
+)
 
-def humanise(s: str) -> str:
-    """Convert snake_case to 'Title case': 'go_to_observe' -> 'Go to observe'."""
+
+def _humanise(s: str) -> str:
     return s.replace("_", " ").capitalize() if s else s
 
 
 class BtExecutor(Node):
-    """Action bridge: ExecuteBehaviorTree -> ExecuteTree."""
+    """Executes BT XML directly using the Python tree executor."""
 
     def __init__(self):
         super().__init__("bt_executor")
 
-        self.declare_parameter("tick_rate_hz", 10.0)
-        self.declare_parameter(
-            "execute_tree_action_name", "/skill_server/execute_tree"
-        )
-
         callback_group = ReentrantCallbackGroup()
 
-        # ── Our action server (dashboard-facing) ─────────────────────────────
         self._action_server = ActionServer(
             self,
             ExecuteBehaviorTree,
@@ -62,16 +63,6 @@ class BtExecutor(Node):
             callback_group=callback_group,
         )
 
-        # ── Action client to the C++ TreeExecutionServer ─────────────────────
-        action_name = self.get_parameter("execute_tree_action_name").value
-        self._tree_client = ActionClient(
-            self,
-            ExecuteTree,
-            action_name,
-            callback_group=callback_group,
-        )
-
-        # ── Publishers ───────────────────────────────────────────────────────
         self._task_state_pub = self.create_publisher(
             TaskState, "/skill_server/task_state", 10
         )
@@ -85,14 +76,12 @@ class BtExecutor(Node):
             LogEvent, "/skill_server/log_events", 10
         )
 
-        # ── State ────────────────────────────────────────────────────────────
         self._current_task_id: Optional[str] = None
-        self._current_goal_handle = None  # ExecuteTree goal handle
+        self._current_ctx: Optional[ExecutionContext] = None
         self._task_started_at = None
         self._total_tasks_executed = 0
         self._last_task_result = "IDLE"
 
-        # ── Diagnostics ──────────────────────────────────────────────────────
         self._diag_updater = Updater(self)
         self._diag_updater.setHardwareID("bt_executor")
         self._diag_updater.add("executor_status", self._produce_diagnostics)
@@ -100,8 +89,6 @@ class BtExecutor(Node):
         self.get_logger().info(
             "BtExecutor started on /skill_server/execute_behavior_tree"
         )
-
-    # ── Action server callbacks ──────────────────────────────────────────────
 
     def _goal_callback(self, goal_request):
         self.get_logger().info(
@@ -111,16 +98,14 @@ class BtExecutor(Node):
 
     def _cancel_callback(self, goal_handle):
         self.get_logger().info("BT execution cancel requested")
-        # Forward cancellation to the C++ server
-        if self._current_goal_handle is not None:
-            self._current_goal_handle.cancel_goal_async()
+        if self._current_ctx:
+            self._current_ctx.cancelled = True
         return CancelResponse.ACCEPT
 
     async def _execute_bt(self, goal_handle) -> ExecuteBehaviorTree.Result:
-        """Bridge: receive ExecuteBehaviorTree, forward as ExecuteTree."""
         goal = goal_handle.request
         result = ExecuteBehaviorTree.Result()
-        task_id = "t" + str(uuid.uuid4()).replace("-", "")[:8]
+        task_id = "t" + uuid.uuid4().hex[:8]
         self._current_task_id = task_id
         self._task_started_at = self.get_clock().now().to_msg()
         start_time = time.time()
@@ -129,139 +114,104 @@ class BtExecutor(Node):
             f"Executing BT '{goal.tree_name}' (id={task_id})"
         )
 
-        # Publish active BT XML for the web dashboard
         self._active_bt_xml_pub.publish(String(data=goal.tree_xml))
 
-        # Publish task_started log event
         self._publish_log_event(
             "task_started",
             f"Task '{goal.tree_name}' started",
             task_id=task_id,
         )
-
-        # Publish initial task state
         self._publish_task_state(
             task_id=task_id,
             task_name=goal.tree_name,
             status="RUNNING",
-            current_node="",
         )
 
-        # ── Wait for the C++ tree server ─────────────────────────────────────
-        if not self._tree_client.wait_for_server(timeout_sec=5.0):
-            self.get_logger().error("TreeExecutionServer not available")
-            result.success = False
-            result.final_status = "ERROR"
-            result.message = "TreeExecutionServer not available"
-            result.total_execution_time_sec = time.time() - start_time
-            self._publish_log_event(
-                "task_error",
-                result.message,
-                severity="error",
-                task_id=task_id,
-            )
-            goal_handle.abort(result)
-            self._current_task_id = None
-            return result
-
-        # ── Send ExecuteTree goal ────────────────────────────────────────────
-        tree_goal = ExecuteTree.Goal()
-        tree_goal.target_tree = goal.tree_name
-        tree_goal.payload = goal.tree_xml
-
-        send_goal_future = self._tree_client.send_goal_async(
-            tree_goal,
-            feedback_callback=lambda fb: self._on_tree_feedback(
-                fb, goal_handle, goal.tree_name, task_id, start_time
-            ),
-        )
-        send_goal_future = await send_goal_future
-
-        if not send_goal_future.accepted:
-            self.get_logger().error("ExecuteTree goal was rejected")
-            result.success = False
-            result.final_status = "ERROR"
-            result.message = "Tree execution goal rejected by server"
-            result.total_execution_time_sec = time.time() - start_time
-            goal_handle.abort(result)
-            self._current_task_id = None
-            return result
-
-        self._current_goal_handle = send_goal_future
-
-        # ── Wait for result ──────────────────────────────────────────────────
         try:
-            get_result_future = send_goal_future.get_result_async()
-            tree_result = await get_result_future
-        except Exception as e:
-            self.get_logger().error(f"Error getting tree result: {e}")
+            # Parse the XML into tree nodes
+            trees = parse_trees(goal.tree_xml)
+            main_tree_name = get_main_tree_name(goal.tree_xml)
+            main_tree = trees.get(main_tree_name)
+
+            if not main_tree:
+                raise ValueError(
+                    f"Main tree '{main_tree_name}' not found in XML. "
+                    f"Available: {list(trees.keys())}"
+                )
+
+            # Create execution context
+            ctx = ExecutionContext(self, trees)
+            ctx.total_action_nodes = count_action_nodes(main_tree)
+            self._current_ctx = ctx
+
+            # Execute the tree
+            bb = Blackboard()
+            tree_status = await main_tree.tick(bb, ctx)
+
+            self._current_ctx = None
             elapsed = time.time() - start_time
+
+            if ctx.cancelled:
+                final_status = "HALTED"
+                success = False
+                await main_tree.halt(ctx)
+            elif tree_status == NodeStatus.SUCCESS:
+                final_status = "SUCCESS"
+                success = True
+            else:
+                final_status = "FAILURE"
+                success = False
+
+        except Exception as e:
+            self._current_ctx = None
+            elapsed = time.time() - start_time
+            self.get_logger().error(f"Tree execution error: {e}")
             result.success = False
             result.final_status = "ERROR"
             result.message = f"Tree execution error: {e}"
             result.total_execution_time_sec = elapsed
             self._publish_log_event(
-                "task_error",
-                result.message,
-                severity="error",
+                "task_error", str(e), severity="error", task_id=task_id
+            )
+            self._publish_task_state(
                 task_id=task_id,
+                task_name=goal.tree_name,
+                status="FAILURE",
+                error_message=str(e),
             )
             goal_handle.abort(result)
             self._current_task_id = None
-            self._current_goal_handle = None
             return result
-
-        self._current_goal_handle = None
-        elapsed_total = time.time() - start_time
-
-        # ── Map result ───────────────────────────────────────────────────────
-        node_status = tree_result.result.node_status.status
-        return_message = tree_result.result.return_message
-
-        # GoalStatus: 4=SUCCEEDED, 5=CANCELED, 6=ABORTED
-        # btcpp_ros2_interfaces NodeStatus: 0=IDLE, 1=RUNNING, 2=SUCCESS,
-        # 3=FAILURE, 4=SKIPPED
-        from action_msgs.msg import GoalStatus
-        if tree_result.status == GoalStatus.STATUS_CANCELED:
-            final_status = "HALTED"
-            success = False
-        elif node_status == 2:  # NodeStatus.SUCCESS
-            final_status = "SUCCESS"
-            success = True
-        elif node_status == 3:  # NodeStatus.FAILURE
-            final_status = "FAILURE"
-            success = False
-        else:
-            final_status = "ERROR"
-            success = False
 
         result.success = success
         result.final_status = final_status
-        result.total_execution_time_sec = elapsed_total
+        result.total_execution_time_sec = elapsed
         result.message = (
             f"BT '{goal.tree_name}' completed: {final_status} "
-            f"in {elapsed_total:.2f}s"
-            + (f" ({return_message})" if return_message else "")
+            f"in {elapsed:.2f}s"
         )
 
         self._total_tasks_executed += 1
         self._last_task_result = final_status
         self.get_logger().info(result.message)
 
-        # Final task state
         self._publish_task_state(
             task_id=task_id,
             task_name=goal.tree_name,
             status=final_status,
-            current_node="",
-            progress=1.0 if success else 0.0,
+            current_node=ctx.current_skill if not success else "",
+            progress=1.0 if success else ctx.progress,
+            completed_skills=ctx.completed_skills,
+            failed_skills=ctx.failed_skills,
+            error_message=(
+                ctx.failed_skills[-1] if ctx.failed_skills else ""
+            ) if not success else "",
         )
 
-        # Task-level log event
-        if final_status == "HALTED":
+        if final_status == "HALTED" and goal_handle.is_cancel_requested:
             self._publish_log_event(
                 "task_cancelled",
-                f"Task '{goal.tree_name}' cancelled after {elapsed_total:.1f}s",
+                f"Task '{goal.tree_name}' cancelled after {elapsed:.1f}s",
                 severity="warn",
                 task_id=task_id,
             )
@@ -269,90 +219,21 @@ class BtExecutor(Node):
         elif success:
             self._publish_log_event(
                 "task_completed",
-                f"Task '{goal.tree_name}' completed in {elapsed_total:.1f}s",
+                f"Task '{goal.tree_name}' completed in {elapsed:.1f}s",
                 task_id=task_id,
             )
             goal_handle.succeed(result)
         else:
             self._publish_log_event(
                 "task_failed",
-                f"Task '{goal.tree_name}' failed after {elapsed_total:.1f}s"
-                + (f": {return_message}" if return_message else ""),
+                f"Task '{goal.tree_name}' failed after {elapsed:.1f}s",
                 severity="error",
                 task_id=task_id,
             )
-            goal_handle.succeed(result)
+            goal_handle.abort(result)
 
         self._current_task_id = None
         return result
-
-    # ── Feedback handling ────────────────────────────────────────────────────
-
-    def _on_tree_feedback(self, feedback_msg, goal_handle, tree_name,
-                          task_id, start_time):
-        """Parse feedback from C++ server, publish TaskState and LogEvent."""
-        message = feedback_msg.feedback.message
-        elapsed = time.time() - start_time
-
-        # Parse "node_name|progress|event" format from RobotTreeServer
-        parts = message.split("|", 2) if message else []
-        node_name = parts[0] if len(parts) > 0 else ""
-        progress = 0.0
-        event = ""
-        if len(parts) > 1:
-            try:
-                progress = float(parts[1])
-            except ValueError:
-                pass
-        if len(parts) > 2:
-            event = parts[2]
-
-        human_name = humanise(node_name)
-
-        # Publish TaskState
-        self._publish_task_state(
-            task_id=task_id,
-            task_name=tree_name,
-            status="RUNNING",
-            current_node=node_name,
-            progress=progress,
-        )
-
-        # Publish skill transition log events
-        if event == "started":
-            self._publish_log_event(
-                "skill_started",
-                f"Running: {human_name}",
-                severity="debug",
-                task_id=task_id,
-                skill_name=node_name,
-            )
-        elif event == "completed":
-            self._publish_log_event(
-                "skill_completed",
-                f"Completed: {human_name}",
-                task_id=task_id,
-                skill_name=node_name,
-            )
-        elif event == "failed":
-            self._publish_log_event(
-                "skill_failed",
-                f"Failed: {human_name}",
-                severity="error",
-                task_id=task_id,
-                skill_name=node_name,
-            )
-
-        # Forward as ExecuteBehaviorTree feedback
-        feedback = ExecuteBehaviorTree.Feedback()
-        feedback.current_node_name = node_name
-        feedback.tree_status = "RUNNING"
-        feedback.elapsed_time_sec = elapsed
-        feedback.status_message = (
-            f"Running {human_name} ({progress * 100:.0f}%)"
-            if node_name else f"Running... ({elapsed:.1f}s)"
-        )
-        goal_handle.publish_feedback(feedback)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -361,8 +242,11 @@ class BtExecutor(Node):
         task_id: str,
         task_name: str,
         status: str,
-        current_node: str,
+        current_node: str = "",
         progress: float = 0.0,
+        completed_skills: list[str] | None = None,
+        failed_skills: list[str] | None = None,
+        error_message: str = "",
     ):
         now = self.get_clock().now().to_msg()
         msg = TaskState()
@@ -379,6 +263,9 @@ class BtExecutor(Node):
              - rclpy.time.Time.from_msg(msg.started_at).nanoseconds) / 1e9
             if self._task_started_at else 0.0
         )
+        msg.completed_skills = completed_skills or []
+        msg.failed_skills = failed_skills or []
+        msg.error_message = error_message
         self._task_state_pub.publish(msg)
 
     def _publish_log_event(
@@ -387,7 +274,6 @@ class BtExecutor(Node):
         message: str,
         severity: str = "info",
         task_id: str = "",
-        skill_name: str = "",
     ):
         log_msg = LogEvent()
         log_msg.stamp = self.get_clock().now().to_msg()
@@ -395,7 +281,6 @@ class BtExecutor(Node):
         log_msg.severity = severity
         log_msg.message = message
         log_msg.task_id = task_id
-        log_msg.skill_name = skill_name
         log_msg.tags = ["human"]
         self._log_event_pub.publish(log_msg)
 

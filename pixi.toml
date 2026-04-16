@@ -16,33 +16,31 @@ dashboard-dev = { cmd = "cd src/robot_dashboard/frontend && npx vite --host", de
 dashboard-build = { cmd = "cd src/robot_dashboard/frontend && npm ci && npm run build", description = "Build dashboard frontend for production" }
 
 # ── Lite sim (no MoveIt2, single container) ──────────────────────────────────
-lite-build = { cmd = "docker compose -f docker-compose.lite.yml build", description = "Build lite sim image" }
+lite-image = { cmd = "docker compose -f docker-compose.lite.yml build", description = "Build lite sim Docker image" }
 lite-up = { cmd = "docker compose -f docker-compose.lite.yml up -d", description = "Start lite sim container" }
 lite-down = { cmd = "docker compose -f docker-compose.lite.yml down", description = "Stop lite sim container" }
 lite-shell = { cmd = "docker exec -it ros2_robot_skills_lite bash", description = "Shell into lite container" }
 lite-logs = { cmd = "docker compose -f docker-compose.lite.yml logs -f", description = "Follow lite container logs" }
 lite-restart = { cmd = "docker compose -f docker-compose.lite.yml restart", description = "Restart lite container" }
 
+# ── Real robot (connects to host MoveIt2, no sim) ───────────────────────────
+real-image = { cmd = "docker compose build dev", description = "Build real robot Docker image" }
+real-up = { cmd = "docker compose up -d dev", description = "Start skill server for real robot (host MoveIt2)" }
+real-down = { cmd = "docker compose down", description = "Stop real robot container" }
+real-shell = { cmd = "docker exec -it ros2_robot_skills_dev bash", description = "Shell into dev container" }
+real-logs = { cmd = "docker compose logs -f dev", description = "Follow real robot logs" }
+real-restart = { cmd = "docker compose restart dev", description = "Restart real robot container" }
+
 # ── Full sim (MoveIt2 + dev container) ───────────────────────────────────────
-full-build = { cmd = "docker compose build", description = "Build full sim images" }
-full-up = { cmd = "docker compose up -d", description = "Start full sim (MoveIt2 + dev)" }
-full-down = { cmd = "docker compose down", description = "Stop full sim" }
+full-image = { cmd = "docker compose --profile sim build", description = "Build full sim Docker images" }
+full-up = { cmd = "docker compose --profile sim up -d", description = "Start full sim (MoveIt2 + dev)" }
+full-down = { cmd = "docker compose --profile sim down", description = "Stop full sim" }
 full-shell = { cmd = "docker exec -it ros2_robot_skills_dev bash", description = "Shell into dev container" }
-full-logs = { cmd = "docker compose logs -f", description = "Follow full sim logs" }
+full-logs = { cmd = "docker compose --profile sim logs -f", description = "Follow full sim logs" }
 
-# ── Build & test (inside whichever container is running) ─────────────────────
-build = { cmd = """
-  if docker ps --format '{{.Names}}' | grep -q ros2_robot_skills_lite; then
-    docker exec ros2_robot_skills_lite bash -c \
-      'source /opt/ros/jazzy/setup.bash && cd /home/ws && colcon build --symlink-install'
-  elif docker ps --format '{{.Names}}' | grep -q ros2_robot_skills_dev; then
-    docker exec ros2_robot_skills_dev bash -c \
-      'source /opt/ros/jazzy/setup.bash && cd /home/ws && colcon build --symlink-install'
-  else
-    echo 'No running container found. Run: pixi run lite-up (or full-up)' && exit 1
-  fi
-""", description = "Build all packages in running container" }
-
+# ── Test (inside whichever container is running) ─────────────────────────────
+# C++ is compiled in the Docker image. Python/XML changes are instant via
+# symlink-install + volume mount. Rebuild the image (*-image) for C++ changes.
 test = { cmd = """
   if docker ps --format '{{.Names}}' | grep -q ros2_robot_skills_lite; then
     docker exec ros2_robot_skills_lite bash -c \
