@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useSkillStore } from "../../stores/skill-store";
 import { useServiceCall } from "../../hooks/useServiceCall";
 import { useActionClient } from "../../hooks/useActionClient";
+import { useAvailableTrees } from "../../hooks/useAvailableTrees";
 import type {
   ComposeTaskRequest,
   ComposeTaskResponse,
@@ -25,6 +26,21 @@ import clsx from "clsx";
 
 // Predefined trees with embedded XML from robot_behaviors/trees/
 const PRESET_TREES = [
+  {
+    name: "MoveToSeedReady",
+    label: "Move to Seed Ready",
+    description: "Open gripper, move to seed-ready position (recorded 2026-04-16)",
+    xml: `<root BTCPP_format="4" main_tree_to_execute="MoveToSeedReady">
+  <BehaviorTree ID="MoveToSeedReady">
+    <Sequence>
+      <GripperControl name="open_gripper" command="open"/>
+      <MoveToJointConfig name="move_to_seed_ready"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.2"/>
+    </Sequence>
+  </BehaviorTree>
+</root>`,
+  },
   {
     name: "MoveToHome",
     label: "Move to Home",
@@ -254,6 +270,20 @@ interface StepEntry {
 }
 
 export default function BehaviorExecutorPanel() {
+  const serverTrees = useAvailableTrees();
+  // Use server-provided trees if available, fall back to hardcoded presets
+  const presets = useMemo(() => {
+    if (serverTrees.length > 0) {
+      return serverTrees.map((t) => ({
+        name: t.name,
+        label: t.label,
+        description: `From ${t.filename}`,
+        xml: t.xml,
+      }));
+    }
+    return PRESET_TREES;
+  }, [serverTrees]);
+
   const [mode, setMode] = useState<"preset" | "compose" | "raw">("preset");
   const [selectedPreset, setSelectedPreset] = useState<string>("");
   const [rawXml, setRawXml] = useState("");
@@ -286,7 +316,7 @@ export default function BehaviorExecutorPanel() {
   const handleLoadPreset = useCallback(
     (presetName: string) => {
       setSelectedPreset(presetName);
-      const preset = PRESET_TREES.find((p) => p.name === presetName);
+      const preset = presets.find((p) => p.name === presetName);
       if (preset) {
         setComposedXml(preset.xml);
         setRawXml(preset.xml);
@@ -295,7 +325,7 @@ export default function BehaviorExecutorPanel() {
         addLog(`Loaded preset: ${preset.label} (${preset.xml.length} chars)`);
       }
     },
-    []
+    [presets]
   );
 
   const addLog = (msg: string) => {
@@ -439,7 +469,7 @@ export default function BehaviorExecutorPanel() {
         <div className="w-96 border-r border-gray-800 overflow-auto p-3 space-y-3 shrink-0">
           {mode === "preset" && (
             <PresetMode
-              presets={PRESET_TREES}
+              presets={presets}
               selected={selectedPreset}
               onSelect={handleLoadPreset}
               loading={composing}

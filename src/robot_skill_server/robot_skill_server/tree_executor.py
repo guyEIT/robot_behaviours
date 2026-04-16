@@ -862,6 +862,8 @@ def _humanise(s: str) -> str:
 
 def _set_goal_field(goal, field_name: str, value):
     """Set a field on a ROS2 goal message, with type coercion."""
+    import array as _array
+
     current = getattr(goal, field_name, None)
     if current is None:
         return
@@ -875,15 +877,22 @@ def _set_goal_field(goal, field_name: str, value):
         setattr(goal, field_name, int(float(value)))
     elif isinstance(current, str):
         setattr(goal, field_name, str(value))
-    elif isinstance(current, list):
-        if isinstance(value, list):
-            setattr(goal, field_name, value)
-        elif isinstance(value, str):
-            # Parse "[0.1, 0.2, 0.3]" or "0.1;0.2;0.3"
+    elif isinstance(current, (list, _array.array)):
+        # ROS2 float64[] fields are array.array('d'), not list
+        if isinstance(value, str):
             value = value.strip("[] ")
             if value:
-                parts = value.replace(";", ",").split(",")
-                setattr(goal, field_name, [float(p.strip()) for p in parts])
+                parts = [float(p.strip()) for p in value.replace(";", ",").split(",")]
+            else:
+                parts = []
+        elif isinstance(value, (list, _array.array)):
+            parts = list(value)
+        else:
+            parts = [value]
+        if isinstance(current, _array.array):
+            setattr(goal, field_name, _array.array(current.typecode, parts))
+        else:
+            setattr(goal, field_name, parts)
     else:
         # PoseStamped or other complex types — pass through
         setattr(goal, field_name, value)

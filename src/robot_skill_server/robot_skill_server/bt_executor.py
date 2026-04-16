@@ -13,8 +13,11 @@ Topic:  /skill_server/active_bt_xml (String, transient_local)
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import time
 import uuid
+from pathlib import Path
 from typing import Optional
 
 import rclpy
@@ -81,6 +84,19 @@ class BtExecutor(Node):
         self._task_started_at = None
         self._total_tasks_executed = 0
         self._last_task_result = "IDLE"
+
+        # ── Available trees (scanned from disk, published as latched JSON) ──
+        latched_trees_qos = QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL
+        )
+        self._available_trees_pub = self.create_publisher(
+            String, "/skill_server/available_trees", latched_trees_qos
+        )
+        self._trees_dir = self._find_trees_dir()
+        self._last_tree_scan: dict[str, float] = {}  # filename → mtime
+        self._publish_available_trees()
+        # Re-scan every 2 seconds for new/changed files
+        self.create_timer(2.0, self._check_trees_changed)
 
         self._diag_updater = Updater(self)
         self._diag_updater.setHardwareID("bt_executor")
@@ -283,6 +299,78 @@ class BtExecutor(Node):
         log_msg.task_id = task_id
         log_msg.tags = ["human"]
         self._log_event_pub.publish(log_msg)
+
+    # ── Tree discovery ─────────────────────────────────────────────────────
+
+    def _find_trees_dir(self) -> Optional[str]:
+        """Find the behavior trees directory."""
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            d = os.path.join(
+                get_package_share_directory("robot_behaviors"), "trees"
+            )
+            if os.path.isdir(d):
+                return d
+        except Exception:
+            pass
+        # Fallback: look relative to source
+        for candidate in [
+            "/home/ws/src/robot_behaviors/trees",
+            os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                         "robot_behaviors", "trees"),
+        ]:
+            if os.path.isdir(candidate):
+                return candidate
+        return None
+
+    def _scan_trees(self) -> list[dict]:
+        """Scan the trees directory and return metadata + XML for each tree."""
+        if not self._trees_dir or not os.path.isdir(self._trees_dir):
+            return []
+
+        trees = []
+        for f in sorted(Path(self._trees_dir).glob("*.xml")):
+            try:
+                xml_text = f.read_text()
+                tree_name = get_main_tree_name(xml_text)
+                # Derive a human-readable label from filename
+                label = f.stem.replace("_", " ").title()
+                trees.append({
+                    "name": tree_name or f.stem,
+                    "label": label,
+                    "filename": f.name,
+                    "xml": xml_text,
+                })
+            except Exception as e:
+                self.get_logger().warning(f"Failed to parse {f.name}: {e}")
+        return trees
+
+    def _publish_available_trees(self):
+        """Publish the current tree list as JSON."""
+        trees = self._scan_trees()
+        msg = String()
+        msg.data = json.dumps(trees)
+        self._available_trees_pub.publish(msg)
+        # Track mtimes for change detection
+        if self._trees_dir:
+            self._last_tree_scan = {
+                f.name: f.stat().st_mtime
+                for f in Path(self._trees_dir).glob("*.xml")
+            }
+        self.get_logger().info(
+            f"Published {len(trees)} available trees from {self._trees_dir}"
+        )
+
+    def _check_trees_changed(self):
+        """Re-publish if any tree files were added, removed, or modified."""
+        if not self._trees_dir or not os.path.isdir(self._trees_dir):
+            return
+        current = {
+            f.name: f.stat().st_mtime
+            for f in Path(self._trees_dir).glob("*.xml")
+        }
+        if current != self._last_tree_scan:
+            self._publish_available_trees()
 
     def _produce_diagnostics(self, stat):
         if self._current_task_id:
