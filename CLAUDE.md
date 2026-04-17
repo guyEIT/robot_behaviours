@@ -77,6 +77,49 @@ docker exec ros2_robot_skills_lite bash -c "source /opt/ros/jazzy/setup.bash && 
 pixi run lite-restart
 ```
 
+### Live updating of skills and behavior trees
+
+The workspace is designed so that Python, XML, and frontend changes take effect without rebuilding Docker images.
+
+**How it works:**
+
+1. **Volume mounts** — Docker Compose mounts `./src:/home/ws/src:rw` into the container. Edits on the host are immediately visible inside the container.
+2. **Symlink install** — `colcon build --symlink-install` creates symlinks from `install/` back to `src/` for Python packages and XML share files. This means Python code and behavior tree XMLs are served directly from the mounted source.
+3. **Behavior tree auto-discovery** — `BtExecutor` (`bt_executor.py`) prefers the source directory `/home/ws/src/robot_behaviors/trees` over the installed share. A 2-second polling timer (`_check_trees_changed`) detects new, modified, or deleted `.xml` files and re-publishes the tree list to the latched `/skill_server/available_trees` topic.
+4. **Frontend live subscription** — The dashboard subscribes to `/skill_server/available_trees` via rosbridge (WebSocket on port 9090). New trees appear in the Preset selector within ~2 seconds of the file being saved.
+
+**What requires what:**
+
+| Change type | Action needed |
+|---|---|
+| **New/edited behavior tree XML** | Save the `.xml` file in `src/robot_behaviors/trees/` — auto-discovered in ~2s |
+| **Python skill server code** | Save the file — symlink-install means it's already live. Restart the node if it caches state at startup |
+| **Frontend (React/Vite)** | Run `vite build` then `colcon build --symlink-install --packages-select robot_dashboard` inside the container (or use `pixi run dashboard-dev` for Vite hot-reload during development) |
+| **C++ skill atoms or BT nodes** | Rebuild the package inside the container (`colcon build --packages-select <PKG>`) and restart the relevant nodes |
+| **New C++ package or Dockerfile change** | Rebuild the Docker image |
+
+**Uploading skills from the dashboard:**
+
+The frontend provides three execution modes in the Behavior Executor panel:
+
+- **Preset** — Select from auto-discovered tree XML files (from `src/robot_behaviors/trees/`)
+- **Compose** — Build a task from registered skill steps. Calls `/skill_server/compose_task` to generate BT XML, then executes via `/skill_server/execute_behavior_tree`
+- **Raw** — Paste arbitrary BT.CPP v4 XML and execute it directly
+
+Compound skills can be registered at runtime via `/skill_server/register_compound_skill` and are persisted to `~/.ros2_robot_skills/compound_skills/{name}.yaml` so they survive container restarts. Atom skills self-register with the SkillRegistry when their action servers start.
+
+**Key ROS2 topics and services:**
+
+| Endpoint | Type | Purpose |
+|---|---|---|
+| `/skill_server/available_trees` | Topic (latched) | JSON list of discovered tree files and their XML content |
+| `/skill_server/active_bt_xml` | Topic (latched) | XML of the currently-executing behavior tree |
+| `/skill_server/task_state` | Topic | Execution progress (current node, completed/failed skills) |
+| `/skill_server/execute_behavior_tree` | Action | Execute arbitrary BT XML at runtime |
+| `/skill_server/compose_task` | Service | Generate BT XML from an ordered list of TaskSteps |
+| `/skill_server/register_compound_skill` | Service | Register and persist a new compound skill |
+| `/skill_server/get_skill_descriptions` | Service | Query the skill registry (supports category/tag filters) |
+
 ### Packages
 
 - `robot_skills_msgs` — ROS2 interfaces (actions/msgs/srvs)
