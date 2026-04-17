@@ -1,0 +1,33 @@
+<root BTCPP_format="4" main_tree_to_execute="SeedPick">
+  <BehaviorTree ID="SeedPick">
+    <Sequence>
+      <!-- Approach: seed ready → over seed → grasp position -->
+      <GripperControl name="open_gripper" command="open"/>
+
+      <MoveToJointConfig name="move_to_seed_ready"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.3"/>
+
+      <MoveToJointConfig name="move_to_over_seed"
+                         joint_positions="1.3954, 0.5605, 0.4706, 0.0727, 0.5396, -0.3589"
+                         velocity_scaling="0.2"/>
+
+      <MoveToJointConfig name="descend_to_seed"
+                         joint_positions="1.4055, 0.8219, 0.4923, 0.1472, 0.2575, -0.4285"
+                         velocity_scaling="0.1"/>
+
+      <!-- Grasp -->
+      <GripperControl name="grasp_seed" command="close" force_limit="8.0"
+                      object_grasped="{object_grasped}" final_position="{grasp_position}"/>
+
+      <!-- Retreat: reverse through positions -->
+      <MoveToJointConfig name="retreat_to_over_seed"
+                         joint_positions="1.3954, 0.5605, 0.4706, 0.0727, 0.5396, -0.3589"
+                         velocity_scaling="0.2"/>
+
+      <MoveToJointConfig name="retreat_to_seed_ready"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.3"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

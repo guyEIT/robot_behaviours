@@ -1,0 +1,10 @@
+<root BTCPP_format="4" main_tree_to_execute="MoveToOverSeed">
+  <BehaviorTree ID="MoveToOverSeed">
+    <Sequence>
+      <GripperControl name="open_gripper" command="open"/>
+      <MoveToJointConfig name="move_to_over_seed"
+                         joint_positions="1.3954, 0.5605, 0.4706, 0.0727, 0.5396, -0.3589"
+                         velocity_scaling="0.2"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

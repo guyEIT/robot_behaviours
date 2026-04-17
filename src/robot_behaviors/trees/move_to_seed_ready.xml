@@ -1,0 +1,13 @@
+<root BTCPP_format="4" main_tree_to_execute="MoveToSeedReady">
+  <BehaviorTree ID="MoveToSeedReady">
+    <Sequence>
+      <!-- Open gripper first for safety -->
+      <GripperControl name="open_gripper" command="open"/>
+
+      <!-- Move to the seed-ready position (recorded 2026-04-16) -->
+      <MoveToJointConfig name="move_to_seed_ready"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.2"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

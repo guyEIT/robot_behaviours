@@ -303,7 +303,17 @@ class BtExecutor(Node):
     # ── Tree discovery ─────────────────────────────────────────────────────
 
     def _find_trees_dir(self) -> Optional[str]:
-        """Find the behavior trees directory."""
+        """Find the behavior trees directory. Prefer source (volume-mounted)
+        over installed share so new files appear immediately."""
+        # Source directory (volume-mounted, always up to date)
+        for candidate in [
+            "/home/ws/src/robot_behaviors/trees",
+            os.path.join(os.path.dirname(__file__), "..", "..", "..",
+                         "robot_behaviors", "trees"),
+        ]:
+            if os.path.isdir(candidate):
+                return os.path.realpath(candidate)
+        # Fallback: installed share directory
         try:
             from ament_index_python.packages import get_package_share_directory
             d = os.path.join(
@@ -313,14 +323,6 @@ class BtExecutor(Node):
                 return d
         except Exception:
             pass
-        # Fallback: look relative to source
-        for candidate in [
-            "/home/ws/src/robot_behaviors/trees",
-            os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                         "robot_behaviors", "trees"),
-        ]:
-            if os.path.isdir(candidate):
-                return candidate
         return None
 
     def _scan_trees(self) -> list[dict]:

@@ -1,40 +1,14 @@
 import { useCallback } from "react";
 import { useTopicSubscription } from "./useTopicSubscription";
 import { useTaskStore } from "../stores/task-store";
-import type { TaskState } from "../types/ros";
 
 /**
- * Dynamically subscribe to /skill_server/bt_runner_status/<task_id>
- * for real-time BT node tracking. Also subscribes to active_bt_xml.
+ * Subscribe to /skill_server/active_bt_xml for live tree visualization.
+ * Task state (current node, progress) comes via useTaskState hook.
  */
 export function useBtRunnerStatus() {
-  const taskState = useTaskStore((s) => s.taskState);
-  const setTaskState = useTaskStore((s) => s.setTaskState);
   const setActiveBtXml = useTaskStore((s) => s.setActiveBtXml);
 
-  // Dynamic topic based on active task
-  const taskId = taskState?.task_id;
-  const isRunning = taskState?.status === "RUNNING";
-  const topicName =
-    isRunning && taskId
-      ? `/skill_server/bt_runner_status/${taskId}`
-      : null;
-
-  const handleStatus = useCallback(
-    (msg: TaskState) => {
-      // bt_runner messages don't include task_name — preserve it from prior state
-      if (!msg.task_name) {
-        const prev = useTaskStore.getState().taskState;
-        if (prev) msg.task_name = prev.task_name;
-      }
-      setTaskState(msg);
-    },
-    [setTaskState]
-  );
-
-  useTopicSubscription<TaskState>(topicName, "robot_skills_msgs/msg/TaskState", handleStatus);
-
-  // Subscribe to active BT XML (latched topic)
   const handleXml = useCallback(
     (msg: { data: string }) => {
       setActiveBtXml(msg.data || null);
