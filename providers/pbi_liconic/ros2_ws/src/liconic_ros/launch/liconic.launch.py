@@ -21,6 +21,7 @@ def generate_launch_description() -> LaunchDescription:
     total_cassettes = LaunchConfiguration("total_cassettes")
     state_file = LaunchConfiguration("state_file")
     connect_on_start = LaunchConfiguration("connect_on_start")
+    simulation = LaunchConfiguration("simulation")
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -49,6 +50,13 @@ def generate_launch_description() -> LaunchDescription:
             "connect_on_start", default_value="true",
             description="If false, the backend connects lazily on first use.",
         ),
+        DeclareLaunchArgument(
+            "simulation", default_value="false",
+            description="If true, use the in-memory LiconicSimBackend — no "
+                        "serial port, no hardware required. Lets BTs exercise "
+                        "TakeIn/Fetch/SetTemperature/etc. for integration "
+                        "testing. Default is false (real PLC over serial).",
+        ),
         Node(
             package="liconic_ros",
             executable="action_server",
@@ -61,6 +69,7 @@ def generate_launch_description() -> LaunchDescription:
                 "total_cassettes": total_cassettes,
                 "state_file": state_file,
                 "connect_on_start": connect_on_start,
+                "simulation": simulation,
             }],
         ),
     ])

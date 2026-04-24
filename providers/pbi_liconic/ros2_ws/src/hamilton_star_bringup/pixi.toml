@@ -10,7 +10,7 @@ description = "Launch files, deck configuration, and systemd unit for the Hamilt
 backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
-distro = "humble"
+distro = "jazzy"
 # Watch launch/ + config/ + systemd/ — pixi-build-ros's default input
 # set (package.xml + CMakeLists.txt) doesn't include these, so edits to
 # e.g. star_deck.json wouldn't otherwise trigger a rebuild.
@@ -20,7 +20,7 @@ extra-input-globs = [
   "systemd/**/*",
 ]
 # Both sibling packages are built locally; redirect the auto-mapped
-# `ros-humble-*` names back to the unprefixed conda names
+# `ros-jazzy-*` names back to the unprefixed conda names
 # pixi-build-ros publishes them under.
 extra-package-mappings = [
   { hamilton_star_msgs = { conda = ["hamilton_star_msgs"] } },

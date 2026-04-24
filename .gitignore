@@ -51,5 +51,18 @@ htmlcov/
 # Pixi
 .pixi/
 
+# Provider workspace build artifacts (each subtree is its own colcon/pixi workspace)
+providers/*/build/
+providers/*/install/
+providers/*/log/
+providers/*/.pixi/
+providers/*/ros2_ws/build/
+providers/*/ros2_ws/install/
+providers/*/ros2_ws/log/
+# pixi-build-ros files.txt is emitted next to each package manifest with
+# absolute paths from the build cache. Upstream pbi_liconic currently
+# tracks these; we don't want them regenerated-and-committed on every build.
+providers/pbi_liconic/ros2_ws/src/*/files.txt
+
 # Host-local binaries (Groot2 etc.)
 .local/

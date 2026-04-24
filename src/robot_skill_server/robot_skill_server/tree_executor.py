@@ -44,6 +44,29 @@ from robot_skills_msgs.action import (
 )
 from robot_skills_msgs.msg import HumanPrompt, HumanResponse, LogEvent
 
+# Provider actions — optional imports. If a provider msgs package isn't
+# installed in the current env, its BT node types simply aren't registered
+# and any tree that references them fails at tick time with a clear error.
+try:
+    from liconic_msgs.action import (
+        TakeIn as _LiconicTakeIn,
+        Fetch as _LiconicFetch,
+    )
+    _HAS_LICONIC = True
+except ImportError:
+    _HAS_LICONIC = False
+
+try:
+    from hamilton_star_msgs.action import (
+        MoveResource as _HamiltonMoveResource,
+        HandoffTransfer as _HamiltonHandoffTransfer,
+        PickUpCoreGripper as _HamiltonPickUpCoreGripper,
+        ReturnCoreGripper as _HamiltonReturnCoreGripper,
+    )
+    _HAS_HAMILTON = True
+except ImportError:
+    _HAS_HAMILTON = False
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Node status
@@ -215,17 +238,41 @@ class RosActionNode(TreeNode):
                     bb.set(bb_key[1:-1], getattr(result, result_field, None))
 
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
+        logger = ctx.ros_node.get_logger()
         client = self._get_client(ctx)
         if not client.wait_for_server(timeout_sec=5.0):
-            ctx.log(f"Action server '{self.server_name}' not available", "error")
+            logger.error(
+                f"[{self.name}] action server '{self.server_name}' not available"
+            )
             return NodeStatus.FAILURE
 
-        goal = self._build_goal(bb)
+        try:
+            goal = self._build_goal(bb)
+        except Exception as e:
+            import traceback
+            logger.error(
+                f"[{self.name}] _build_goal failed: {type(e).__name__}: {e}\n"
+                f"{traceback.format_exc()}"
+            )
+            return NodeStatus.FAILURE
         ctx.on_skill_started(self.name)
 
         send_future = client.send_goal_async(goal)
-        goal_handle = await send_future
+        try:
+            goal_handle = await send_future
+        except Exception as e:
+            import traceback
+            logger.error(
+                f"[{self.name}] send_goal failed: {type(e).__name__}: {e}\n"
+                f"{traceback.format_exc()}"
+            )
+            ctx.on_skill_failed(self.name)
+            return NodeStatus.FAILURE
         if not goal_handle.accepted:
+            logger.warn(
+                f"[{self.name}] goal rejected by {self.server_name} "
+                f"(check server state)"
+            )
             ctx.on_skill_failed(self.name)
             return NodeStatus.FAILURE
 
@@ -242,6 +289,8 @@ class RosActionNode(TreeNode):
             ctx.on_skill_completed(self.name)
             return NodeStatus.SUCCESS
         else:
+            msg = getattr(result, "message", "")
+            logger.warn(f"[{self.name}] action returned success=False: {msg}")
             ctx.on_skill_failed(self.name)
             return NodeStatus.FAILURE
 
@@ -317,8 +366,25 @@ class CheckGraspSuccessNode(SyncNode):
 
 class WaitForDurationNode(SyncNode):
     async def tick(self, bb, ctx):
+        # rclpy's action-server execute_callback doesn't run in an asyncio
+        # event loop, so `await asyncio.sleep(...)` raises "no running event
+        # loop". Use rclpy's sleep via a one-shot timer + rclpy.Future so we
+        # yield control to the executor while waiting.
         seconds = float(self.attrs.get("seconds", "1.0"))
-        await asyncio.sleep(seconds)
+        import rclpy.task
+        fut: rclpy.task.Future = rclpy.task.Future()
+
+        def _on_timer():
+            if not fut.done():
+                fut.set_result(None)
+            timer.cancel()
+
+        timer = ctx.ros_node.create_timer(seconds, _on_timer)
+        try:
+            await fut
+        finally:
+            timer.cancel()
+            ctx.ros_node.destroy_timer(timer)
         return NodeStatus.SUCCESS
 
 
@@ -745,6 +811,91 @@ ACTION_REGISTRY: dict[str, dict] = {
         "defaults": {"timeout_sec": "5.0"},
     },
 }
+
+# Provider-specific actions, conditionally registered. BT XML referring to
+# these node types fails parse-time only if the provider msgs package isn't
+# installed; when it is, the registry picks them up on import.
+# Default server names match the upstream launch files:
+#   liconic_ros/launch/liconic.launch.py               -> node name "liconic_action_server"
+#   hamilton_star_bringup/launch/action_server.launch  -> node name "hamilton_star_action_server"
+# Override per-tree via the `server_name=` XML attr if the node is renamed or namespaced.
+if _HAS_LICONIC:
+    ACTION_REGISTRY["LiconicTakeIn"] = {
+        "action_type": _LiconicTakeIn,
+        "server": "/liconic_action_server/take_in",
+        "inputs": {
+            "plate_name": "plate_name",
+            "barcode": "barcode",
+            "cassette": "cassette",
+            "position": "position",
+        },
+        "outputs": {"success": "success", "message": "message"},
+        "defaults": {"barcode": ""},
+    }
+    ACTION_REGISTRY["LiconicFetch"] = {
+        "action_type": _LiconicFetch,
+        "server": "/liconic_action_server/fetch",
+        "inputs": {
+            "plate_name": "plate_name",
+            "cassette": "cassette",
+            "position": "position",
+        },
+        "outputs": {
+            "success": "success",
+            "message": "message",
+            "plate_name_out": "plate_name",
+        },
+        "defaults": {"plate_name": "", "cassette": "0", "position": "0"},
+    }
+
+if _HAS_HAMILTON:
+    ACTION_REGISTRY["HamiltonMoveResource"] = {
+        "action_type": _HamiltonMoveResource,
+        "server": "/hamilton_star_action_server/move_resource",
+        "inputs": {
+            "resource": "resource",
+            "to": "to",
+            "transport": "transport",
+            "pickup_direction": "pickup_direction",
+            "drop_direction": "drop_direction",
+            "use_unsafe_hotel": "use_unsafe_hotel",
+        },
+        "outputs": {"success": "success", "message": "message"},
+        "defaults": {
+            "transport": "auto",
+            "pickup_direction": "front",
+            "drop_direction": "front",
+            "use_unsafe_hotel": "false",
+        },
+    }
+    ACTION_REGISTRY["HamiltonHandoffTransfer"] = {
+        "action_type": _HamiltonHandoffTransfer,
+        "server": "/hamilton_star_action_server/handoff_transfer",
+        "inputs": {
+            "calibration_name": "calibration_name",
+            "direction": "direction",
+            "on_deck_resource": "on_deck_resource",
+        },
+        "outputs": {"success": "success", "message": "message"},
+        "defaults": {"direction": "to_handoff"},
+    }
+    ACTION_REGISTRY["HamiltonPickUpCoreGripper"] = {
+        "action_type": _HamiltonPickUpCoreGripper,
+        "server": "/hamilton_star_action_server/pick_up_core_gripper",
+        "inputs": {
+            "gripper_resource": "gripper_resource",
+            "front_channel": "front_channel",
+        },
+        "outputs": {"success": "success", "message": "message"},
+        "defaults": {"gripper_resource": "core_grippers", "front_channel": "7"},
+    }
+    ACTION_REGISTRY["HamiltonReturnCoreGripper"] = {
+        "action_type": _HamiltonReturnCoreGripper,
+        "server": "/hamilton_star_action_server/return_core_gripper",
+        "inputs": {"gripper_resource": "gripper_resource"},
+        "outputs": {"success": "success", "message": "message"},
+        "defaults": {"gripper_resource": "core_grippers"},
+    }
 
 UTILITY_REGISTRY: dict[str, type[TreeNode]] = {
     "SetPose": SetPoseNode,

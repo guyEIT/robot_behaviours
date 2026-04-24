@@ -1,0 +1,56 @@
+<!--
+  Liconic STX44 smoke test — validated SUCCESS E2E 2026-04-24 (1.09s)
+  against the in-memory sim backend (LiconicSimBackend).
+
+  Preconditions (on the Liconic-host PC):
+    pixi run liconic-sim-up      # action server + LiconicSimBackend
+                                 # (no serial, no PLC)
+    pixi run orchestrator-up     # skill_server + dashboard
+
+  For real STX44 hardware: use `pixi run liconic-up` instead — same action
+  surface, real serial port, real PLC. The sim keeps the transfer tray
+  pre-loaded with a placeholder plate on startup so this round-trip runs
+  immediately without an operator physically loading a plate.
+
+  Plate registry semantics:
+    - TakeIn  : move plate from transfer tray -> cassette/position
+    - Fetch   : move plate from cassette/position -> transfer tray
+                (plate_name non-empty -> registry lookup; else explicit coords)
+
+  The tree takes the pre-loaded plate into (cassette=1, position=1), then
+  fetches it back by plate_name. The registry roundtrips cleanly (no
+  leftover entries) as long as no prior run left state in
+  ~/.local/state/liconic/plate_registry.json.
+-->
+<root BTCPP_format="4" main_tree_to_execute="LiconicSmokeTest">
+
+  <BehaviorTree ID="LiconicSmokeTest">
+    <Sequence name="liconic_main">
+      <LogEvent name="log_start"
+                event_name="liconic_smoke_test_start"
+                severity="info"
+                message="Liconic smoke test starting"/>
+
+      <!-- Store a plate from the tray into the first cassette position -->
+      <LiconicTakeIn name="store_plate"
+                     plate_name="smoke_test_plate_001"
+                     barcode=""
+                     cassette="1"
+                     position="1"/>
+
+      <WaitForDuration name="settle_in_cassette" seconds="0.5"/>
+
+      <!-- Fetch it back onto the tray — plate_name lookup uses the registry -->
+      <LiconicFetch name="retrieve_plate"
+                    plate_name="smoke_test_plate_001"
+                    cassette="0"
+                    position="0"/>
+
+      <LogEvent name="log_done"
+                event_name="liconic_smoke_test_done"
+                severity="info"
+                message="Liconic smoke test complete"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

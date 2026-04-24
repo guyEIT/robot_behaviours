@@ -3,17 +3,37 @@
 <!-- Author: Garrison Johnston 12/2025 -->
 
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <!-- `simulation` must be declared as a xacro:arg (not a macro param) so
+         that `$(arg simulation)` inside `<xacro:if>` resolves correctly.
+         Xacro evaluates `<xacro:if value="true">` / "false" natively; the
+         Python-style `${x == 'true'}` form works inconsistently. The same
+         arg is declared in meca500.urdf.xacro and forwarded here. -->
+    <xacro:arg name="simulation" default="false"/>
+
     <xacro:macro name="meca500_ros2_control" params="name initial_positions_file robot_ip robot_port connect_timeout_ms response_timeout_ms">
         <xacro:property name="initial_positions" value="${load_yaml(initial_positions_file)['initial_positions']}"/>
-        
+
         <ros2_control name="${name}" type="system">
-        <hardware>
-            <plugin>meca500_hardware/Meca500Hardware</plugin>
-            <param name="robot_ip">${robot_ip}</param>
-            <param name="robot_port">${robot_port}</param>
-            <param name="connect_timeout_ms">${connect_timeout_ms}</param>
-            <param name="response_timeout_ms">${response_timeout_ms}</param>
-        </hardware>
+        <!-- Hardware plugin selection:
+             simulation=false (default) -> real meca500_hardware (TCP to robot)
+             simulation=true            -> mock_components/GenericSystem
+                                          (stateless loopback, no hardware) -->
+        <xacro:if value="$(arg simulation)">
+            <hardware>
+                <plugin>mock_components/GenericSystem</plugin>
+                <param name="mock_sensor_commands">false</param>
+                <param name="state_following_offset">0.0</param>
+            </hardware>
+        </xacro:if>
+        <xacro:unless value="$(arg simulation)">
+            <hardware>
+                <plugin>meca500_hardware/Meca500Hardware</plugin>
+                <param name="robot_ip">${robot_ip}</param>
+                <param name="robot_port">${robot_port}</param>
+                <param name="connect_timeout_ms">${connect_timeout_ms}</param>
+                <param name="response_timeout_ms">${response_timeout_ms}</param>
+            </hardware>
+        </xacro:unless>
 
         <joint name="joint1">
             <command_interface name="position"/>

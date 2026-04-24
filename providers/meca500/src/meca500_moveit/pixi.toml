@@ -3,3 +3,12 @@ backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
 distro = "jazzy"
+# MoveIt config package: SRDF, URDF xacros, controllers.yaml, RViz config,
+# launch files are installed via `install(DIRECTORY ...)`. pixi-build-ros's
+# default input set only covers package.xml + CMakeLists.txt, so edits
+# to these files wouldn't trigger a rebuild without being globbed here.
+extra-input-globs = [
+  "config/**/*",
+  "launch/**/*",
+  "srdf/**/*",
+]

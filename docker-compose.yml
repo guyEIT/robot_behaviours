@@ -33,8 +33,10 @@ services:
     volumes:
       # Mount source for development — edit on host, rebuild in container
       - ./src:/home/ws/src:rw
-      # Meca500 description package (meshes, URDF) — needed by MoveGroupInterface
-      - /home/eit/workspace/meca_ws/install/meca500_description:/home/ws/install/meca500_description:ro
+      # Meca500 workspace (URDF, MoveIt config, hardware interface) now lives in
+      # providers/meca500/ (git subtree of guyEIT/meca500_ros2). Mount it into
+      # the container so colcon/pixi inside can build / source it.
+      - ./providers:/home/ws/providers:rw
       # X11 display socket
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       # Build cache persisted across container restarts

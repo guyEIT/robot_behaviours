@@ -5,6 +5,7 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="meca500_arm">
     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
     <xacro:arg name="hardware_type" default="meca500_hardware" />
+    <xacro:arg name="simulation" default="false" />
     <xacro:arg name="robot_ip" default="10.6.105.53" />
     <xacro:arg name="robot_port" default="10000" />
     <xacro:arg name="connect_timeout_ms" default="2000" />
@@ -16,6 +17,9 @@
     <!-- Import control_xacro -->
     <xacro:include filename="meca500.ros2_control.xacro" />
 
+    <!-- simulation is consumed directly inside meca500.ros2_control.xacro
+         via `$(arg simulation)` in <xacro:if> — it's declared as a xacro:arg
+         in both files so the substitution works regardless of include order. -->
     <xacro:meca500_ros2_control
         name="$(arg hardware_type)"
         initial_positions_file="$(arg initial_positions_file)"

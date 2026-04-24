@@ -24,7 +24,11 @@ robots:
     allowed_named_configs: ["home"]
     has_gripper: true
     local: true
-    check_systems: ["move_group", "joint_states", "joint_trajectory_controller", "gripper_controller"]
+    # Use "arm_controller" / "gripper_controller" (not the literal controller node
+     # names) — check_system_ready_skill.cpp dispatches on these system labels and
+     # looks up the actual action-server path via the arm_controller_action /
+     # gripper_controller_action params set from robots.yaml (see launch_helpers.py).
+    check_systems: ["move_group", "joint_states", "arm_controller", "gripper_controller"]
     workspace:
       min_x: -0.6
       max_x: 0.6

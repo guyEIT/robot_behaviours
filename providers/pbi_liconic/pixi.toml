@@ -2,7 +2,7 @@
 name = "plr"
 version = "0.1.0"
 description = "pylabrobot + ROS 2 action server for a Hamilton STAR"
-channels = ["https://prefix.dev/robostack-humble", "conda-forge"]
+channels = ["https://prefix.dev/robostack-jazzy", "conda-forge"]
 platforms = ["linux-64"]
 # pixi-build (preview) is what lets us declare the three ROS 2 packages
 # under ros2_ws/src/ as native pixi path-dependencies. Each has its own
@@ -49,19 +49,17 @@ liconic-probe = "python scripts/liconic_probe.py"
 lsusb = "lsusb -d 08af:"
 pytest = { cmd = "pytest -v", cwd = "ros2_ws/src/hamilton_star_ros/test" }
 
-# --- ROS 2 Humble (RoboStack) environment ---
+# --- ROS 2 Jazzy (RoboStack) environment ---
 [feature.ros2.dependencies]
-# Python 3.12 — that's what robostack-humble has a full ros-humble-*
-# build set against. 3.11 has gaps (e.g. rosidl_default_runtime only
-# builds against 3.9/3.12 in robostack-humble). See conftest.py for
-# the atexit workaround that prevents a shutdown hang on 3.12.
+# Python 3.12 — Jazzy supports 3.10–3.12; 3.12 matches the robot_behaviours
+# orchestrator workspace so cross-distro interop isn't a concern.
 python = ">=3.12,<3.13"
-# Our three ROS 2 packages, resolved + built by the pixi-build-ros
+# Our five ROS 2 packages, resolved + built by the pixi-build-ros
 # backend. pixi-build-ros publishes each under its unprefixed
-# package.xml name (not ros-humble-…). Sibling `<depend>`s are mapped
+# package.xml name (not ros-jazzy-…). Sibling `<depend>`s are mapped
 # back to those names via each package's own extra-package-mappings.
 # Their other package.xml dependencies (rclpy, std_msgs, rosidl codegen,
-# etc.) pull in the ros-humble-* conda packages automatically via the
+# etc.) pull in the ros-jazzy-* conda packages automatically via the
 # robostack dependency mapping — so we don't list them here.
 hamilton_star_msgs = { path = "ros2_ws/src/hamilton_star_msgs" }
 hamilton_star_ros = { path = "ros2_ws/src/hamilton_star_ros" }
@@ -72,17 +70,17 @@ hamilton_star_bringup = { path = "ros2_ws/src/hamilton_star_bringup" }
 liconic_msgs = { path = "ros2_ws/src/liconic_msgs" }
 liconic_ros = { path = "ros2_ws/src/liconic_ros" }
 # Runtime-only CLI we use from tasks, not declared in any package.xml.
-ros-humble-ros2launch = "*"
-ros-humble-ros2cli = "*"
+ros-jazzy-ros2launch = "*"
+ros-jazzy-ros2cli = "*"
 # ros2 CLI subcommand packages — each is a separate conda package.
 # Without these, `ros2 service call`, `ros2 topic echo`, etc. fall
 # through to the base ros2 entrypoint and error with "invalid choice".
-ros-humble-ros2service = "*"
-ros-humble-ros2topic = "*"
-ros-humble-ros2node = "*"
-ros-humble-ros2action = "*"
-ros-humble-ros2param = "*"
-ros-humble-ros2interface = "*"
+ros-jazzy-ros2service = "*"
+ros-jazzy-ros2topic = "*"
+ros-jazzy-ros2node = "*"
+ros-jazzy-ros2action = "*"
+ros-jazzy-ros2param = "*"
+ros-jazzy-ros2interface = "*"
 # Shared test tooling.
 numpy = "*"
 transitions = "*"

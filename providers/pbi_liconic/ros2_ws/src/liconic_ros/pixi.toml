@@ -10,7 +10,17 @@ description = "ROS 2 action server exposing a pylabrobot-driven Liconic STX incu
 backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
-distro = "humble"
+distro = "jazzy"
+# ament_python sources are picked up by setup.py find_packages, but
+# pixi-build-ros only rebuilds when its declared inputs change. Without
+# these globs, edits to action_server.py / machine.py / sim_backend.py /
+# launch/*.py silently use the cached build (stale .pyc files).
+extra-input-globs = [
+  "liconic_ros/**/*.py",
+  "launch/**/*.py",
+  "test/**/*.py",
+  "resource/**/*",
+]
 extra-package-mappings = [
   { liconic_msgs = { conda = ["liconic_msgs"] } },
 ]

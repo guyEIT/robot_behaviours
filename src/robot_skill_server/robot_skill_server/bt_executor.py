@@ -179,9 +179,13 @@ class BtExecutor(Node):
                 success = False
 
         except Exception as e:
+            import traceback
             self._current_ctx = None
             elapsed = time.time() - start_time
-            self.get_logger().error(f"Tree execution error: {e}")
+            self.get_logger().error(
+                f"Tree execution error: {type(e).__name__}: {e}\n"
+                f"{traceback.format_exc()}"
+            )
             result.success = False
             result.final_status = "ERROR"
             result.message = f"Tree execution error: {e}"

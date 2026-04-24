@@ -10,10 +10,19 @@ description = "ROS 2 action server exposing a pylabrobot-driven Hamilton Microla
 backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
-distro = "humble"
+distro = "jazzy"
+# ament_python: pixi-build-ros won't detect edits to Python sources
+# unless they're globbed explicitly — otherwise the cached build is
+# reused and stale .pyc files stay in the env.
+extra-input-globs = [
+  "hamilton_star_ros/**/*.py",
+  "launch/**/*.py",
+  "test/**/*.py",
+  "resource/**/*",
+]
 # Sibling hamilton_star_msgs is built locally (not from a channel), so
 # override the default robostack mapping that would hunt for
-# `ros-humble-hamilton-star-msgs` in the conda index.
+# `ros-jazzy-hamilton-star-msgs` in the conda index.
 extra-package-mappings = [
   { hamilton_star_msgs = { conda = ["hamilton_star_msgs"] } },
 ]

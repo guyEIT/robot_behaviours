@@ -71,6 +71,10 @@ class LiconicActionServer(Node):
         self.declare_parameter("total_cassettes", 2)
         self.declare_parameter("state_file", DEFAULT_STATE_FILE)
         self.declare_parameter("connect_on_start", True)
+        # simulation=true swaps the PLC backend for an in-memory sim (see
+        # liconic_ros.sim_backend). Lets BTs exercise TakeIn/Fetch/etc.
+        # without real hardware.
+        self.declare_parameter("simulation", False)
 
         port = self._str_param("port")
         model = self._str_param("model")
@@ -82,9 +86,23 @@ class LiconicActionServer(Node):
         connect_on_start = bool(
             self.get_parameter("connect_on_start").get_parameter_value().bool_value
         )
+        simulation = bool(
+            self.get_parameter("simulation").get_parameter_value().bool_value
+        )
 
         self._actions_cb_group = ReentrantCallbackGroup()
         self._services_cb_group = MutuallyExclusiveCallbackGroup()
+
+        # In sim mode the registry is ephemeral — the sim backend doesn't
+        # model persistent plate locations (plates are only tracked for the
+        # lifetime of the process), so starting with a stale registry from
+        # a previous real-hardware run would make smoke tests fail on the
+        # duplicate plate_name check. Wipe the state file first.
+        if simulation and state_file.exists():
+            self.get_logger().info(
+                f"simulation=true — clearing existing plate registry at {state_file}"
+            )
+            state_file.unlink()
 
         self._registry = PlateRegistry(state_file)
         self.get_logger().info(
@@ -95,8 +113,12 @@ class LiconicActionServer(Node):
 
         self._machine = LiconicMachine(
             port=port, model=model, rack_model=rack_model,
-            total_cassettes=total_cassettes,
+            total_cassettes=total_cassettes, simulation=simulation,
         )
+        if simulation:
+            self.get_logger().info(
+                "simulation=true — using LiconicSimBackend (no PLC, no serial)"
+            )
 
         self._bridge = AsyncioBridge()
         self._bridge.start()

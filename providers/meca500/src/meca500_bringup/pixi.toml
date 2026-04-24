@@ -3,3 +3,11 @@ backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
 distro = "jazzy"
+# Bringup package: launch files + config + rviz assets installed via
+# `install(DIRECTORY ...)` — pixi-build-ros needs them globbed to detect edits.
+extra-input-globs = [
+  "launch/**/*",
+  "config/**/*",
+  "rviz/**/*",
+  "scripts/**/*",
+]

@@ -10,6 +10,13 @@ channels = [
 ]
 platforms = ["osx-arm64", "osx-64", "linux-64"]
 
+# Declares the minimum host glibc so Linux envs can pull packages like
+# realsense2-camera and librealsense2 that gate on `__glibc >=2.34`. Mirrors
+# the meca500_ros2 upstream workspace. Without this, pixi defaults to an
+# older assumed glibc and the meca500-host env fails to solve.
+[system-requirements]
+libc = { family = "glibc", version = "2.34" }
+
 [dependencies]
 nodejs = ">=20"
 rattler-index = ">=0.27"
@@ -145,11 +152,155 @@ ros-jazzy-rviz2                 = "*"
 real-native-run   = { cmd = "ros2 launch robot_skill_server skill_server.launch.py hardware_mode:=real use_rviz:=false use_rosboard:=false", description = "Launch real stack natively (pixi auto-builds on install; connects to host MoveIt2)" }
 real-native-shell = { cmd = "bash -i", description = "Shell in the real-native pixi environment" }
 
+# ── Orchestrator PC env (skill server + dashboard only; atoms live on remote hosts) ──
+[feature.orchestrator]
+platforms = ["linux-64"]
+channels = [
+  "~/channel",
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/robostack-jazzy",
+  "https://prefix.dev/conda-forge",
+]
+
+[feature.orchestrator.dependencies]
+ros-jazzy-robot-skills-msgs  = "*"
+ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }
+ros-jazzy-robot-behaviors    = { path = "src/robot_behaviors" }
+ros-jazzy-robot-dashboard    = { path = "src/robot_dashboard" }
+# Provider-defined interfaces the orchestrator needs to call into:
+# tree_executor imports these msgs packages to build action goals.
+liconic_msgs       = { path = "providers/pbi_liconic/ros2_ws/src/liconic_msgs" }
+hamilton_star_msgs = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_msgs" }
+cbor2 = "*"
+ros-jazzy-ros2launch            = "*"
+ros-jazzy-rosbridge-suite       = "*"
+ros-jazzy-tf2                   = "*"
+ros-jazzy-tf2-ros               = "*"
+ros-jazzy-diagnostic-aggregator = "*"
+
+[feature.orchestrator.tasks]
+orchestrator-run   = { cmd = "ros2 launch robot_skill_server skill_server.launch.py hardware_mode:=real use_rviz:=false use_rosboard:=false", description = "Run skill_server + dashboard only; atoms must run on their own host PCs (see meca500-host, provider-liconic tasks)" }
+orchestrator-shell = { cmd = "bash -i", description = "Shell in the orchestrator pixi environment" }
+
+# ── Meca500 robot PC env (runs skill_atoms under /meca500 + providers/meca500 packages) ──
+# Path-deps into providers/meca500/src/* — each sub-package has [package.build] pixi-build-ros.
+# Upstream also has providers/meca500/pixi.toml; we ignore that nested workspace and
+# reference the leaf packages directly from here.
+[feature.meca500-host]
+platforms = ["linux-64"]
+channels = [
+  "~/channel",
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/robostack-jazzy",
+  "https://prefix.dev/conda-forge",
+]
+
+[feature.meca500-host.dependencies]
+ros-jazzy-robot-skills-msgs = "*"
+ros-jazzy-robot-skill-atoms = { path = "src/robot_skill_atoms" }
+ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }   # needed for skill_atoms_remote.launch.py + launch_helpers
+ros-jazzy-meca500-description = { path = "providers/meca500/src/meca500_description" }
+ros-jazzy-meca500-hardware    = { path = "providers/meca500/src/meca500_hardware" }
+ros-jazzy-meca500-moveit      = { path = "providers/meca500/src/meca500_moveit" }
+ros-jazzy-meca500-bringup     = { path = "providers/meca500/src/meca500_bringup" }
+# meca500_bringup's moveit.launch.py pulls these in via `Node(package=...)`
+# and `IncludeLaunchDescription(...)`. Since they're not declared as
+# <depend> in its package.xml (only <exec_depend>), the robostack mapping
+# doesn't surface them into the env — list them explicitly.
+ros-jazzy-ros2launch                    = "*"
+ros-jazzy-ros2cli                       = "*"
+ros-jazzy-ros2action                    = "*"
+ros-jazzy-ros2topic                     = "*"
+ros-jazzy-ros2node                      = "*"
+ros-jazzy-ros2service                   = "*"
+ros-jazzy-ros2interface                 = "*"
+ros-jazzy-moveit-ros-move-group         = "*"
+ros-jazzy-moveit-ros-planning-interface = "*"
+ros-jazzy-moveit-ros-planning           = "*"
+ros-jazzy-moveit-core                   = "*"
+ros-jazzy-moveit-msgs                   = "*"
+ros-jazzy-moveit-kinematics             = "*"
+ros-jazzy-moveit-planners               = "*"
+ros-jazzy-moveit-simple-controller-manager = "*"
+ros-jazzy-moveit-configs-utils          = "*"
+ros-jazzy-control-msgs                  = "*"
+ros-jazzy-controller-manager-msgs       = "*"
+ros-jazzy-controller-manager            = "*"
+# controller_manager's `spawner` Python entry point imports `filelock` but
+# robostack doesn't list it as a dep. Add it explicitly.
+filelock                                = "*"
+ros-jazzy-ros2-control                  = "*"
+ros-jazzy-ros2-controllers              = "*"
+ros-jazzy-joint-state-broadcaster       = "*"
+ros-jazzy-joint-state-publisher         = "*"
+ros-jazzy-joint-trajectory-controller   = "*"
+ros-jazzy-position-controllers          = "*"
+ros-jazzy-gripper-controllers           = "*"
+ros-jazzy-robot-state-publisher         = "*"
+ros-jazzy-xacro                         = "*"
+ros-jazzy-tf2                           = "*"
+ros-jazzy-tf2-ros                       = "*"
+ros-jazzy-tf2-geometry-msgs             = "*"
+
+[feature.meca500-host.tasks]
+meca500-moveit-run     = { cmd = "ros2 launch meca500_bringup moveit.launch.py", description = "Bring up Meca500 MoveIt2 stack (real hardware; robot_ip arg optional)" }
+meca500-moveit-sim-run = { cmd = "ros2 launch meca500_bringup moveit.launch.py simulation:=true", description = "Bring up Meca500 MoveIt2 stack against fake_hardware (no real robot needed; exposes /move_action + /joint_trajectory_controller on mock)" }
+meca500-atoms-run      = { cmd = "ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=meca500", description = "Start skill atoms under /meca500; they self-register with the orchestrator's SkillRegistry over DDS" }
+meca500-shell          = { cmd = "bash -i", description = "Shell in the meca500-host pixi environment" }
+
+# ── Liconic + Hamilton host PC env (runs both action servers + their clients) ──
+# Now that pbi_liconic is on Jazzy, all 5 packages path-dep into the root workspace.
+# One box can run both servers simultaneously, or split across two PCs by selecting
+# only the relevant launch tasks from this env.
+[feature.liconic-host]
+platforms = ["linux-64"]
+channels = [
+  "~/channel",
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/robostack-jazzy",
+  "https://prefix.dev/conda-forge",
+]
+
+[feature.liconic-host.dependencies]
+ros-jazzy-robot-skills-msgs = "*"
+liconic_msgs          = { path = "providers/pbi_liconic/ros2_ws/src/liconic_msgs" }
+liconic_ros           = { path = "providers/pbi_liconic/ros2_ws/src/liconic_ros" }
+hamilton_star_msgs    = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_msgs" }
+hamilton_star_ros     = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_ros" }
+hamilton_star_bringup = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup" }
+ros-jazzy-ros2launch = "*"
+# ros2 CLI subcommands (action/topic/node/service/interface) — needed for
+# diagnostics and direct action calls without the orchestrator in the loop.
+ros-jazzy-ros2cli       = "*"
+ros-jazzy-ros2action    = "*"
+ros-jazzy-ros2topic     = "*"
+ros-jazzy-ros2node      = "*"
+ros-jazzy-ros2service   = "*"
+ros-jazzy-ros2interface = "*"
+libusb = "*"
+transitions = "*"
+pyserial = "*"
+
+[feature.liconic-host.pypi-dependencies]
+pylabrobot = { version = "*", extras = ["usb"] }
+fastapi = "*"
+uvicorn = "*"
+
+[feature.liconic-host.tasks]
+liconic-server        = { cmd = "ros2 launch liconic_ros liconic.launch.py", description = "Start Liconic STX44 action server against real hardware" }
+liconic-server-sim    = { cmd = "ros2 launch liconic_ros liconic.launch.py simulation:=true", description = "Start Liconic STX44 action server with the in-memory sim backend (LiconicSimBackend; no serial, no hardware)" }
+hamilton-server       = { cmd = "ros2 launch hamilton_star_bringup action_server.launch.py backend:=star", description = "Start Hamilton STAR action server against real USB hardware" }
+hamilton-server-sim   = { cmd = "ros2 launch hamilton_star_bringup action_server.launch.py backend:=simulator", description = "Start Hamilton STAR action server against STARChatterbox simulator (no hardware needed)" }
+liconic-host-shell    = { cmd = "bash -i", description = "Shell in the liconic-host pixi environment" }
+
 [environments]
-ros-tools   = ["ros-tools"]
-local-dev   = ["local-dev"]
-lite-native = ["lite-native"]
-real-native = ["real-native"]
+ros-tools    = ["ros-tools"]
+local-dev    = ["local-dev"]
+lite-native  = ["lite-native"]
+real-native  = ["real-native"]
+orchestrator = ["orchestrator"]
+meca500-host = ["meca500-host"]
+liconic-host = ["liconic-host"]
 
 [tasks]
 # ── msgs channel (populates ~/channel) ───────────────────────────────────────
@@ -176,7 +327,26 @@ real-native-install = { cmd = "pixi install --environment real-native", depends-
 real-native-up      = { cmd = "pixi run real-native-run", depends-on = ["real-native-install"], description = "Build and launch real stack natively (connects to host MoveIt2)" }
 
 # ── Shared native helpers ────────────────────────────────────────────────────
-native-clean = { cmd = "rm -rf .pixi/build .pixi/envs/lite-native .pixi/envs/real-native", description = "Delete pixi-build cache and native envs (keeps ~/channel — use `rm -rf ~/channel` to wipe msgs too)" }
+native-clean = { cmd = "rm -rf .pixi/build .pixi/envs/lite-native .pixi/envs/real-native .pixi/envs/orchestrator .pixi/envs/meca500-host .pixi/envs/liconic-host", description = "Delete pixi-build cache and native envs (keeps ~/channel — use `rm -rf ~/channel` to wipe msgs too)" }
+
+# ── Orchestrator PC (skill_server + dashboard only) ──────────────────────────
+orchestrator-install = { cmd = "pixi install --environment orchestrator", depends-on = ["update-msgs", "dashboard-build"], description = "Rebuild msgs + dashboard + resolve orchestrator env" }
+orchestrator-up      = { cmd = "pixi run orchestrator-run", depends-on = ["orchestrator-install"], description = "Launch skill_server + dashboard on the orchestrator PC (no local atoms)" }
+
+# ── Meca500 robot PC ─────────────────────────────────────────────────────────
+meca500-host-install = { cmd = "pixi install --environment meca500-host", depends-on = ["update-msgs"], description = "Resolve meca500-host env (pulls in providers/meca500 path-deps)" }
+meca500-up           = { cmd = "pixi run meca500-atoms-run", depends-on = ["meca500-host-install"], description = "Start Meca500 skill atoms under /meca500 (assumes MoveIt2 already running; launch with `pixi run meca500-moveit-run` in another shell)" }
+meca500-sim-up       = { cmd = "ros2 launch meca500_bringup moveit.launch.py simulation:=true", depends-on = ["meca500-host-install"], description = "Bring up the Meca500 MoveIt sim (fake_hardware) — ready to receive plans from skill atoms or direct MoveGroup clients" }
+
+# ── Liconic / Hamilton STAR PC ──────────────────────────────────────────────
+# pbi_liconic is now on Jazzy, so all 5 packages path-dep into the root
+# workspace as the `liconic-host` env. The nested pbi_liconic/pixi.toml still
+# works as a standalone dev workspace for tests that don't touch robot_skills_msgs.
+liconic-host-install  = { cmd = "pixi install --environment liconic-host", depends-on = ["update-msgs"], description = "Resolve liconic-host env (pulls in all 5 providers/pbi_liconic packages)" }
+liconic-up            = { cmd = "pixi run liconic-server", depends-on = ["liconic-host-install"], description = "Start Liconic STX44 action server against real hardware" }
+liconic-sim-up        = { cmd = "pixi run liconic-server-sim", depends-on = ["liconic-host-install"], description = "Start Liconic STX44 action server with in-memory sim backend (no hardware)" }
+hamilton-up           = { cmd = "pixi run hamilton-server", depends-on = ["liconic-host-install"], description = "Start Hamilton STAR action server against real USB hardware" }
+hamilton-sim-up       = { cmd = "pixi run hamilton-server-sim", depends-on = ["liconic-host-install"], description = "Start Hamilton STAR action server against the STARChatterbox simulator (no hardware)" }
 
 ros2 = { cmd = "ros2", default-environment = "ros-tools", description = "Run ros2 from the Pixi ROS tools environment" }
 

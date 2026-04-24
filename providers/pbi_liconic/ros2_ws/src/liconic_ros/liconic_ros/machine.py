@@ -20,6 +20,8 @@ from pylabrobot.storage.liconic import ExperimentalLiconicBackend
 from pylabrobot.storage.liconic import racks as liconic_racks
 from pylabrobot.storage.liconic.constants import LiconicType
 
+from .sim_backend import LiconicSimBackend
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,7 @@ class LiconicMachine:
         model: str,
         rack_model: str,
         total_cassettes: int,
+        simulation: bool = False,
     ) -> None:
         try:
             liconic_type = LiconicType(model)
@@ -56,12 +59,21 @@ class LiconicMachine:
         self._port = port
         self._rack_model = rack_model
         self._total_cassettes = total_cassettes
+        self._simulation = simulation
         self._racks: List[PlateCarrier] = [
             factory(name=f"liconic_cassette_{i + 1}") for i in range(total_cassettes)
         ]
         self._positions_per_cassette = len(self._racks[0].sites)
 
-        self.backend = ExperimentalLiconicBackend(model=liconic_type, port=port)
+        # simulation=True swaps the PLC-backed backend for an in-memory one
+        # (see liconic_ros.sim_backend.LiconicSimBackend). Same coroutine API,
+        # so machine.py doesn't care which is live.
+        if simulation:
+            self.backend = LiconicSimBackend(model=liconic_type, port=port)
+        else:
+            self.backend = ExperimentalLiconicBackend(
+                model=liconic_type, port=port
+            )
         self._lock = asyncio.Lock()
         self._connected = False
 

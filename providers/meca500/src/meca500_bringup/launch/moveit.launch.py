@@ -190,14 +190,19 @@ def launch_setup(context, *args, **kwargs):
             package_name="meca500_moveit",
         )
         .robot_description(
+            # moveit_configs_utils does NOT call .perform(context) on
+            # LaunchConfiguration objects in `mappings`; it ends up passing
+            # their __repr__ to xacro, which silently ignores them. Resolve
+            # to strings explicitly so `$(arg simulation)` in the URDF xacro
+            # actually receives "true"/"false".
             mappings={
-                "hardware_type": hardware_type,
-                "simulation": simulation,
-                "robot_ip": robot_ip,
-                "robot_port": robot_port,
-                "connect_timeout_ms": connect_timeout_ms,
-                "response_timeout_ms": response_timeout_ms,
-                "control_port": control_port,
+                "hardware_type": hardware_type.perform(context),
+                "simulation": simulation.perform(context),
+                "robot_ip": robot_ip.perform(context),
+                "robot_port": robot_port.perform(context),
+                "connect_timeout_ms": connect_timeout_ms.perform(context),
+                "response_timeout_ms": response_timeout_ms.perform(context),
+                "control_port": control_port.perform(context),
             }
         )
         .trajectory_execution(file_path="config/moveit_controllers.yaml")

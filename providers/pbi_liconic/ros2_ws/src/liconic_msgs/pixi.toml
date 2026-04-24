@@ -9,7 +9,7 @@ description = "Action, service, and message definitions for the Liconic STX incu
 backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
-distro = "humble"
+distro = "jazzy"
 extra-input-globs = [
   "msg/**/*.msg",
   "srv/**/*.srv",

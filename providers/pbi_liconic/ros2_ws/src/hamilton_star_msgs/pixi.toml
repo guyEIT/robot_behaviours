@@ -1,6 +1,6 @@
 # ament_cmake package with rosidl action/msg/srv generation. Metadata
 # (name, version, description, deps) is read from package.xml by
-# pixi-build-ros. We pin distro=humble explicitly because the
+# pixi-build-ros. We pin distro=jazzy explicitly because the
 # robostack-staging channel contains multiple distros and the backend's
 # auto-detection is unreliable there.
 [package]
@@ -12,7 +12,7 @@ description = "Action, service, and message definitions for the Hamilton STAR RO
 backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
-distro = "humble"
+distro = "jazzy"
 # rosidl codegen input files — make sure the backend re-runs codegen
 # when any of these change.
 extra-input-globs = [

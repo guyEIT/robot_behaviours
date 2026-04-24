@@ -7,6 +7,11 @@ extra-input-globs = [
   "config/**/*",
   "launch/**/*.py",
   "test/**/*.py",
+  # ament_cmake_python package: Python sources live under robot_skill_server/
+  # and are installed via ament_python_install_package. Without this glob,
+  # pixi-build-ros doesn't detect edits to tree_executor.py / skill_registry.py
+  # and the installed env keeps stale .pyc files.
+  "robot_skill_server/**/*.py",
 ]
 extra-package-mappings = [
   { python3-jsonschema = { conda = "jsonschema" } },

@@ -1,0 +1,48 @@
+<!--
+  Hamilton STAR sim smoke test — uses STARChatterboxBackend (no hardware).
+
+  Preconditions (on the Hamilton-host PC):
+    pixi run hamilton-sim-up                # starts action server + sim backend
+
+  Pick up the CoRe II gripper from its parking slot on the default
+  star_deck.json, then return it. This is the minimum round-trip that
+  actually runs on the default sim deck:
+
+    - The default deck config (see providers/pbi_liconic/ros2_ws/src/
+      hamilton_star_bringup/config/star_deck.json) includes "core_grippers",
+      "trash", "teaching_tip_rack*", "incubator_handoff" — but no plate
+      carriers, so MoveResource-based trees need a richer deck first.
+    - pylabrobot derives back_channel = front_channel - 1, so front_channel=7
+      pairs channels 6 and 7 on an 8-channel STAR.
+    - After a failed action the server transitions to "Error"; a real
+      fixture would call /hamilton_star_action_server/reset_error first.
+
+  Validated 2026-04-24 with backend:=simulator against PickUpCoreGripper +
+  ReturnCoreGripper — both succeed.
+-->
+<root BTCPP_format="4" main_tree_to_execute="HamiltonSimSmokeTest">
+
+  <BehaviorTree ID="HamiltonSimSmokeTest">
+    <Sequence name="hamilton_main">
+      <LogEvent name="log_start"
+                event_name="hamilton_sim_test_start"
+                severity="info"
+                message="Hamilton STAR sim smoke test starting"/>
+
+      <HamiltonPickUpCoreGripper name="pick_core_gripper"
+                                 gripper_resource="core_grippers"
+                                 front_channel="7"/>
+
+      <WaitForDuration name="settle" seconds="0.5"/>
+
+      <HamiltonReturnCoreGripper name="return_core_gripper"
+                                 gripper_resource="core_grippers"/>
+
+      <LogEvent name="log_done"
+                event_name="hamilton_sim_test_done"
+                severity="info"
+                message="Hamilton sim smoke test complete"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

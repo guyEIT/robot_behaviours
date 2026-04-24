@@ -3,3 +3,9 @@ backend = { name = "pixi-build-ros", version = "*" }
 
 [package.build.config]
 distro = "jazzy"
+# URDF + meshes are installed via `install(DIRECTORY ...)`; glob them so
+# pixi-build-ros picks up edits to robot geometry / joints.
+extra-input-globs = [
+  "urdf/**/*",
+  "meshes/**/*",
+]
