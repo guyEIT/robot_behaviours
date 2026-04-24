@@ -1,0 +1,27 @@
+# Snapshot of the Liconic action server's view of the incubator. Reads
+# target/actual climate from the PLC (if connected and climate-capable)
+# and the full plate registry from in-memory state.
+---
+bool connected
+string model                            # e.g. "STX44_IC"
+bool climate_supported                  # false on *_NC models
+float32 target_temperature_c
+float32 actual_temperature_c
+float32 target_humidity                 # fraction in [0, 1]
+float32 actual_humidity                 # fraction in [0, 1]
+liconic_msgs/PlateLocation[] plates     # plates stored in cassettes
+liconic_msgs/PlateLocation loading_tray_plate  # empty plate_name if tray empty
+
+# PLC error state. ``error_flag`` is "1" when an error is latched (the
+# 30 s alarm beep is sounding); ``error_code`` is the DM200 register —
+# matches the HandlingError enum in pylabrobot.storage.liconic.constants
+# (e.g. "00008" = GATE_CLOSE_ERROR). Both are "" if the read failed or
+# the device isn't connected.
+string error_flag
+string error_code
+
+# Currently configured shaker frequency in Hz (RD DM39 / 10). The PLC
+# doesn't expose a reliable "is shaking on" register in pylabrobot's
+# Liconic backend — this value is the last set frequency, NOT proof
+# that the shaker is active. NaN if unavailable.
+float32 shaker_frequency_hz

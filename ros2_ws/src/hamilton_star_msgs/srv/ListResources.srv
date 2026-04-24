@@ -1,0 +1,6 @@
+# List every named resource on the currently-loaded deck.
+---
+bool success
+string message
+string[] names
+string[] categories  # parallel with names (e.g. "plate", "tip_rack", "core_grippers")

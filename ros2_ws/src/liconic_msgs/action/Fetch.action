@@ -1,0 +1,19 @@
+# Fetch a plate from a carousel site to the Liconic transfer tray.
+#
+# Source resolution: if `plate_name` is non-empty the server looks it up
+# in the registry and uses the recorded (cassette, position). Otherwise
+# the explicit cassette/position fields must reference a registered
+# plate. Positions are 1-indexed.
+#
+# The loading tray must be empty at the start of the call; on success
+# the registry entry moves from the cassette site onto the tray and is
+# persisted.
+string plate_name                       # optional — registry lookup if non-empty
+uint8 cassette                          # 1-indexed; required if plate_name is empty
+uint8 position                          # 1-indexed; required if plate_name is empty
+---
+bool success
+string message
+string plate_name                       # echo of the plate fetched (for logging)
+---
+string stage                            # "validating" | "dispatching" | "waiting_ready" | "done"

@@ -1,0 +1,5 @@
+# Hamilton Microlab STAR (VID 08af). Gives members of the `plugdev` group
+# read/write access and exposes the device as /dev/hamilton_star.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="08af", \
+  MODE="0660", GROUP="plugdev", TAG+="uaccess", \
+  SYMLINK+="hamilton_star"

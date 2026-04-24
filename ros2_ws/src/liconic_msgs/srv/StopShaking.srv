@@ -1,0 +1,4 @@
+# Stop the incubator's internal shaker (firmware RS 1913).
+---
+bool success
+string message

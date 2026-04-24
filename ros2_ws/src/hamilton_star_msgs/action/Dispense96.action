@@ -1,0 +1,13 @@
+# Goal: dispense `volume` uL on the 96-head into a plate or trough.
+string resource
+float64 volume
+geometry_msgs/Vector3 offset
+float64 flow_rate
+float64 blow_out_air_volume
+---
+bool success
+string message
+string[] warnings
+---
+float32 progress
+string stage

@@ -1,0 +1,5 @@
+# Return the current deck as a pylabrobot-serialized JSON string.
+---
+bool success
+string message
+string deck_json

@@ -1,0 +1,9 @@
+# Goal: return the CoRe II gripper tool pair to its parking slot.
+string gripper_resource  # default "core_grippers" when empty
+---
+bool success
+string message
+string[] warnings
+---
+float32 progress
+string stage

@@ -1,0 +1,10 @@
+# Start the incubator's internal shaker. ``frequency_hz`` must be in
+# [1.0, 50.0]. A common default is 10.0 Hz.
+#
+# Note (from pylabrobot's Liconic backend): the PLC register scaling for
+# this command is flagged UNTESTED — the wrapper assumes 25 Hz → register
+# value 250 (1/10 Hz units). Verify on bench before trusting the readout.
+float32 frequency_hz
+---
+bool success
+string message

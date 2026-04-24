@@ -1,0 +1,12 @@
+# Goal: aspirate `volume` uL on the 96-head from a plate or trough.
+string resource
+float64 volume
+geometry_msgs/Vector3 offset
+float64 flow_rate
+---
+bool success
+string message
+string[] warnings
+---
+float32 progress
+string stage

@@ -1,0 +1,29 @@
+# ament_python package — the action server implementation. Depends on
+# hamilton_star_msgs (sibling), rclpy, etc. (resolved automatically from
+# package.xml via the robostack mappings).
+[package]
+name = "hamilton_star_ros"
+version = "0.1.0"
+description = "ROS 2 action server exposing a pylabrobot-driven Hamilton Microlab STAR liquid handler."
+
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "humble"
+# Sibling hamilton_star_msgs is built locally (not from a channel), so
+# override the default robostack mapping that would hunt for
+# `ros-humble-hamilton-star-msgs` in the conda index.
+extra-package-mappings = [
+  { hamilton_star_msgs = { conda = ["hamilton_star_msgs"] } },
+]
+
+# Path-deps on the sibling msgs package: host-dependencies for the
+# target env (so `import hamilton_star_msgs` works), build-dependencies
+# for pixi-build-ros's own build environment (it validates deps at
+# build time).
+[package.host-dependencies]
+hamilton_star_msgs = { path = "../hamilton_star_msgs" }
+
+[package.build-dependencies]
+hamilton_star_msgs = { path = "../hamilton_star_msgs" }

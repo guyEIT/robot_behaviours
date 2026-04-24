@@ -1,0 +1,11 @@
+# Goal: drop the 96-head tips to a rack or "trash".
+string target
+geometry_msgs/Vector3 offset
+bool allow_nonzero_volume
+---
+bool success
+string message
+string[] warnings
+---
+float32 progress
+string stage

@@ -1,0 +1,10 @@
+# Register (or update) a handoff site in the server's registry. The
+# record is consumed at goal time by HandoffTransfer, HotelTransfer,
+# and MoveResource(to_handoff). Set ``replace_existing=true`` to
+# overwrite a name that already exists; otherwise a collision is
+# rejected with success=false.
+Handoff handoff
+bool replace_existing
+---
+bool success
+string message

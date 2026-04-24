@@ -1,0 +1,125 @@
+[workspace]
+name = "plr"
+version = "0.1.0"
+description = "pylabrobot + ROS 2 action server for a Hamilton STAR"
+channels = ["https://prefix.dev/robostack-humble", "conda-forge"]
+platforms = ["linux-64"]
+# pixi-build (preview) is what lets us declare the three ROS 2 packages
+# under ros2_ws/src/ as native pixi path-dependencies. Each has its own
+# per-package pixi.toml pointing at the pixi-build-ros backend. No
+# colcon, no `source install/setup.bash` — packages land in the conda
+# env's site-packages / share / etc. automatically.
+preview = ["pixi-build"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+libusb = "*"
+# Needed by the hamilton_star_ros pure-Python modules and their unit
+# tests, which are importable without a ROS 2 install.
+transitions = "*"
+pytest = "*"
+pytest-asyncio = "*"
+# Serial transport for the Liconic STX44 PLC (used by scripts/test_liconic.py).
+pyserial = "*"
+
+[pypi-dependencies]
+pylabrobot = { version = "*", extras = ["usb"] }
+fastapi = "*"
+uvicorn = "*"
+
+[tasks]
+# Direct-hardware scripts live in scripts/ and open their own USB
+# connection to the STAR. For the persistent ROS 2 action server, use
+# `pixi run -e ros2 action-server` + the ros2-* tasks below.
+test-star = "python scripts/test_star.py"
+test-sim = "python scripts/test_star_sim.py"
+test-gripper = "python scripts/test_core_gripper.py"
+test-iswap = "python scripts/test_iswap.py"
+iswap-teach = "python scripts/iswap_teach.py"
+test-iswap-grab = "python scripts/test_iswap_grab_6well.py"
+test-iswap-pm = "python scripts/test_iswap_pm_orientation.py"
+iswap-release = "python scripts/iswap_release.py"
+iswap-to-incubator = "python scripts/test_iswap_to_incubator.py"
+iswap-from-incubator = "python scripts/test_iswap_from_incubator.py"
+test-liconic = "python scripts/test_liconic.py"
+test-liconic-take-in = "python scripts/test_liconic_take_in.py"
+test-liconic-fetch = "python scripts/test_liconic_fetch.py"
+liconic-humidity = "python scripts/liconic_set_humidity.py"
+liconic-probe = "python scripts/liconic_probe.py"
+lsusb = "lsusb -d 08af:"
+pytest = { cmd = "pytest -v", cwd = "ros2_ws/src/hamilton_star_ros/test" }
+
+# --- ROS 2 Humble (RoboStack) environment ---
+[feature.ros2.dependencies]
+# Python 3.12 — that's what robostack-humble has a full ros-humble-*
+# build set against. 3.11 has gaps (e.g. rosidl_default_runtime only
+# builds against 3.9/3.12 in robostack-humble). See conftest.py for
+# the atexit workaround that prevents a shutdown hang on 3.12.
+python = ">=3.12,<3.13"
+# Our three ROS 2 packages, resolved + built by the pixi-build-ros
+# backend. pixi-build-ros publishes each under its unprefixed
+# package.xml name (not ros-humble-…). Sibling `<depend>`s are mapped
+# back to those names via each package's own extra-package-mappings.
+# Their other package.xml dependencies (rclpy, std_msgs, rosidl codegen,
+# etc.) pull in the ros-humble-* conda packages automatically via the
+# robostack dependency mapping — so we don't list them here.
+hamilton_star_msgs = { path = "ros2_ws/src/hamilton_star_msgs" }
+hamilton_star_ros = { path = "ros2_ws/src/hamilton_star_ros" }
+hamilton_star_bringup = { path = "ros2_ws/src/hamilton_star_bringup" }
+# Sibling node for the Liconic STX44 incubator. Runs as its own ROS 2
+# process (own serial connection, own plate-registry JSON), independent
+# of the Hamilton server.
+liconic_msgs = { path = "ros2_ws/src/liconic_msgs" }
+liconic_ros = { path = "ros2_ws/src/liconic_ros" }
+# Runtime-only CLI we use from tasks, not declared in any package.xml.
+ros-humble-ros2launch = "*"
+ros-humble-ros2cli = "*"
+# ros2 CLI subcommand packages — each is a separate conda package.
+# Without these, `ros2 service call`, `ros2 topic echo`, etc. fall
+# through to the base ros2 entrypoint and error with "invalid choice".
+ros-humble-ros2service = "*"
+ros-humble-ros2topic = "*"
+ros-humble-ros2node = "*"
+ros-humble-ros2action = "*"
+ros-humble-ros2param = "*"
+ros-humble-ros2interface = "*"
+# Shared test tooling.
+numpy = "*"
+transitions = "*"
+pytest = "*"
+pytest-asyncio = "*"
+
+[feature.ros2.tasks]
+# No colcon, no source install/setup.bash — packages are installed into
+# the conda env by pixi-build on `pixi install -e ros2` and whenever
+# their source changes.
+test-sim = "python scripts/test_star_sim.py"
+test-ros2-sim = "pytest ros2_ws/src/hamilton_star_ros/test/ -v"
+action-server = "ros2 launch hamilton_star_bringup action_server.launch.py"
+action-server-sim = "ros2 launch hamilton_star_bringup action_server.launch.py backend:=simulator"
+liconic-server = "ros2 launch liconic_ros liconic.launch.py"
+liconic-roundtrip = "python scripts/test_ros2_liconic_roundtrip.py"
+liconic-workcell-roundtrip = "python scripts/test_ros2_plate_roundtrip.py"
+liconic-clear-tray = "python scripts/liconic_clear_tray.py"
+liconic-clear-slot = "python scripts/liconic_clear_slot.py"
+liconic-shake = "python scripts/liconic_shake.py"
+liconic-reset-error = "python scripts/liconic_reset_error.py"
+# End-to-end client scripts that drive the running action-server.
+# Requires `pixi run -e ros2 action-server` in another shell; these
+# tasks reuse its USB-connected backend.
+ros2-iswap-to-incubator = "python scripts/test_ros2_iswap_to_incubator.py"
+ros2-iswap-from-incubator = "python scripts/test_ros2_iswap_from_incubator.py"
+# Canonical registry-aware transfers. The server auto-detects which
+# side is a registered handoff and routes through the manual 6-stage
+# recipe that handles shoulder/wrist calibration correctly for this
+# STAR (the atomic hotel path can't express the required shoulder+
+# wrist combo — see NOTES-pylabrobot-feedback.md).
+ros2-move-to-incubator = "python scripts/test_ros2_move_to_incubator.py"
+ros2-move-from-incubator = "python scripts/test_ros2_move_from_incubator.py"
+# On-deck → on-deck site swap on a single plate carrier. Exercises
+# the atomic path (pylabrobot's iswap_get_plate / iswap_put_plate).
+ros2-move-between-sites = "python scripts/test_ros2_move_between_sites.py"
+
+[environments]
+default = { solve-group = "default" }
+ros2 = { features = ["ros2"] }

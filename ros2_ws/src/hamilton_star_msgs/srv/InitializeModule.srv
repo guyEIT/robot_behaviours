@@ -1,0 +1,6 @@
+# Initialize a STAR submodule without tearing down the USB connection.
+# Valid modules: "pip", "pipetting_channels", "iswap", "autoload", "core96", "hhc".
+string module
+---
+bool success
+string message

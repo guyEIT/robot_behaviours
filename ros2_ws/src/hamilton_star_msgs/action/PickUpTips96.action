@@ -1,0 +1,10 @@
+# Goal: pick up 96 tips with the CoRe 96 head. Exclusive op.
+string tip_rack
+geometry_msgs/Vector3 offset
+---
+bool success
+string message
+string[] warnings
+---
+float32 progress
+string stage

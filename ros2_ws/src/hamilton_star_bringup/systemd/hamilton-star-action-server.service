@@ -1,0 +1,24 @@
+[Unit]
+Description=Hamilton STAR ROS 2 action server (pylabrobot, pixi)
+Documentation=https://github.com/PyLabRobot/pylabrobot
+After=network-online.target dev-hamilton_star.device
+Wants=network-online.target
+Requires=dev-hamilton_star.device
+
+[Service]
+Type=simple
+User=eit
+Group=eit
+WorkingDirectory=/home/eit/code/plr
+Environment=PIXI_FROZEN=true
+ExecStart=/usr/bin/env pixi run --environment ros2 ros2 launch hamilton_star_bringup action_server.launch.py
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+# Do NOT set `Restart=always` casually — every restart pays a full STAR
+# end-stop calibration. on-failure is the right default.
+
+[Install]
+WantedBy=multi-user.target

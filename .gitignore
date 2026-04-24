@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Pixi (managed env + pixi-build sub-package outputs live under .pixi/)
+.pixi/
+
+# Legacy colcon artifacts — pre-pixi-build-ros. Left in the ignore
+# list in case anyone regenerates them on a branch that still runs
+# colcon.
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

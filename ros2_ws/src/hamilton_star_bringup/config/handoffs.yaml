@@ -1,0 +1,33 @@
+# iSWAP handoff calibrations loaded by hamilton_star_action_server.
+#
+# Each entry becomes six individually-updatable ROS parameters:
+#   handoff.<name>.x
+#   handoff.<name>.y
+#   handoff.<name>.z
+#   handoff.<name>.plate_width
+#   handoff.<name>.rotation
+#   handoff.<name>.wrist
+#
+# These are seeded from iswap_calibrations.json as of 2026-04-22 so the
+# node works out of the box without loading this file. Users can tune
+# live with:
+#   ros2 param set /hamilton_star_action_server handoff.incubator_handoff.y 172.5
+# and persist by editing this YAML and reloading via --params-file.
+#
+# Adding a new handoff site:
+#   1. Add the name to `handoff_names` below.
+#   2. Add a block under `handoff:` with x, y, z, plate_width, rotation, wrist.
+#   3. Mirror the default into _HANDOFF_DEFAULTS in action_server.py so the
+#      node boots without this YAML too.
+hamilton_star_action_server:
+  ros__parameters:
+    handoff_names:
+      - incubator_handoff
+    handoff:
+      incubator_handoff:
+        x: -216.1
+        y: 170.6
+        z: 123.6
+        plate_width: 80.0
+        rotation: LEFT
+        wrist: STRAIGHT

@@ -1,0 +1,14 @@
+# Clear the plate entry on the loading tray without moving any motor.
+#
+# Called by an orchestrating client after an EXTERNAL actor physically
+# removes the plate from the Liconic transfer tray — e.g. the Hamilton
+# iSWAP picking up from the incubator handoff in a workcell round-trip.
+# The Liconic has no way to detect that event on its own, so the client
+# must explicitly tell the registry.
+#
+# Returns the plate_name that was removed, or "" if the tray was
+# already empty. Always success=true unless an unexpected error occurs.
+---
+bool success
+string message
+string cleared_plate_name

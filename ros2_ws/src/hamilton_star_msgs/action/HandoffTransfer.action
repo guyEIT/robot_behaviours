@@ -1,0 +1,29 @@
+# Goal: manual-jog iSWAP transfer between an on-deck plate site and a
+# calibrated off-deck handoff position. Needed because the STAR firmware
+# atomics (iswap_get_plate / iswap_put_plate) refuse off-deck X and bare
+# rotations near end stops lock the drive — this action encodes the
+# known-good recipe (middle-Y rotation, traverse-Z descent, wider
+# release open) that the standalone ``iswap-to-incubator`` script uses.
+#
+# ``calibration_name`` is looked up at goal time in the node's
+# ``handoff.<name>.{x,y,z,plate_width,rotation,wrist}`` parameters so
+# live tuning via ``ros2 param set`` takes effect on the next goal.
+#
+# ``on_deck_resource`` is a name in the pylabrobot deck tree
+# (e.g. ``plate_carrier_01/site_0`` or the plate itself).
+#
+# Zero floats below mean "use the server default".
+string calibration_name
+string direction                  # "to_handoff" | "from_handoff"
+string on_deck_resource
+float32 plate_width               # 0 = use calibration's plate_width
+float32 pickup_distance_from_top  # 0 = use default (18.0)
+float32 safe_y                    # 0 = use default (450.0)
+float32 traverse_z                # 0 = use default (280.0)
+geometry_msgs/Vector3 handoff_offset  # runtime nudge of the off-deck endpoint
+---
+bool success
+string message
+---
+uint8 stage                       # 1..6
+string stage_name

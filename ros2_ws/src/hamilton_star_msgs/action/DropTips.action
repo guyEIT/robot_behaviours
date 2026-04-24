@@ -1,0 +1,14 @@
+# Goal: drop tips on 1-8 channels. `target` is either a tip-rack resource name
+# or the literal string "trash" (resolved to the deck's trash resource).
+string target
+string[] wells
+int32[] use_channels
+bool allow_nonzero_volume
+---
+bool success
+string message
+string[] warnings
+int32[] channels_used
+---
+float32 progress
+string stage
