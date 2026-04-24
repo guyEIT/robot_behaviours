@@ -1,0 +1,29 @@
+<!DOCTYPE FilterScript>
+<FilterScript>
+  <filter name="Remove Duplicate Vertices"/>
+  <filter name="Remove Duplicate Faces"/>
+  <filter name="Remove Zero Area Faces"/>
+  <filter name="Remove Unreferenced Vertices"/>
+  <filter name="Remove Isolated pieces (wrt Face Num.)">
+    <Param name="MinComponentSize" type="RichInt" value="2048"/>
+    <Param name="removeUnref" type="RichBool" value="true"/>
+  </filter>
+  <filter name="Uniform Mesh Resampling">
+    <Param
+      name="CellSize"
+      type="RichAbsPerc"
+      value="6.0"
+      min="0"
+      max="863.8524780273438"/>
+    <Param
+      name="Offset"
+      type="RichAbsPerc"
+      value="0.0"
+      min="-863.8524780273438"
+      max="863.8524780273438"/>
+    <Param name="mergeCloseVert" type="RichBool" value="true"/>
+    <Param name="discretize" type="RichBool" value="false"/>
+    <Param name="multisample" type="RichBool" value="true"/>
+    <Param name="absDist" type="RichBool" value="false"/>
+  </filter>
+</FilterScript>

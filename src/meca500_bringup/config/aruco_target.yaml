@@ -1,0 +1,14 @@
+aruco_target:
+  enable_startup_calibration: false
+  dictionary: DICT_6X6_250
+  marker_id: 23
+  marker_size_m: 0.05
+  averaging_window_s: 5.0
+  marker_in_parent:
+    x: 0.09
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 3.14159
+  notes: Single-marker startup calibration target. Set marker_in_parent pose before use, and print at exactly 50 mm square.

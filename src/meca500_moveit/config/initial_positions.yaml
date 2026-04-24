@@ -1,0 +1,10 @@
+# Default initial positions for meca500's ros2_control fake system
+# Author: Garrison Johnston 12/2025
+initial_positions:
+  joint1: 0.0
+  joint2: 0.0
+  joint3: 0.0
+  joint4: 0.0
+  joint5: 0.0
+  joint6: 0.0
+  meca_gripper_finger1_joint: 0.0055  # start fully open (5.5mm short stroke)

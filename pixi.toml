@@ -1,0 +1,44 @@
+[workspace]
+name = "meca500_ros2"
+version = "0.1.0"
+description = "Mecademic Meca500 ROS 2 workspace"
+authors = ["Garrison Johnston <Garrison.L.Johnston@vanderbilt.edu>"]
+channels = [
+    "https://prefix.dev/pixi-build-backends",
+    "https://prefix.dev/robostack-jazzy",
+    "https://prefix.dev/conda-forge",
+]
+platforms = ["linux-64"]
+preview = ["pixi-build"]
+
+[system-requirements]
+libc = { family = "glibc", version = "2.34" }
+
+[dependencies]
+ros-jazzy-ros-base = "*"
+ros-jazzy-ros2launch = "*"
+ros-jazzy-ros2pkg = "*"
+ros-jazzy-meca500-description = { path = "src/meca500_description" }
+ros-jazzy-meca500-hardware    = { path = "src/meca500_hardware" }
+ros-jazzy-meca500-moveit      = { path = "src/meca500_moveit" }
+ros-jazzy-meca500-bringup     = { path = "src/meca500_bringup" }
+
+[tasks]
+build              = "echo 'Packages build during pixi install. Run `pixi install` to (re)build.'"
+clean              = "rm -rf .pixi build install log"
+launch-moveit      = "ros2 launch meca500_bringup moveit.launch.py"
+launch-calibration = "ros2 launch meca500_bringup startup_calibration.launch.py"
+moveit-setup       = "ros2 launch meca500_moveit setup_assistant.launch.py"
+rviz               = "rviz2"
+test               = { cmd = "colcon test --event-handlers console_direct+", description = "Run colcon tests." }
+
+[feature.tools.dependencies]
+python = ">=3.11"
+numpy = "*"
+
+[feature.tools.tasks]
+optimize-mecatable = { cmd = "python tools/optimize_mecatable.py", description = "Optimize mecatable STL mesh." }
+
+[environments]
+default = { solve-group = "default" }
+tools   = { features = ["tools"], no-default-feature = true }
