@@ -1,0 +1,15 @@
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+extra-input-globs = [
+  "config/**/*",
+  "launch/**/*.py",
+  "test/**/*.py",
+]
+extra-package-mappings = [
+  { python3-jsonschema = { conda = "jsonschema" } },
+  { python3-lxml       = { conda = "lxml" } },
+  { python3-yaml       = { conda = "pyyaml" } },
+]

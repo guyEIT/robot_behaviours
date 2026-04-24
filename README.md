@@ -34,51 +34,59 @@ A hierarchical, extensible, agent-callable robot control framework for the **Mec
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- X11 display (Linux desktop, or XQuartz on macOS)
+- Pixi
+- Linux desktop for the local ROS2 Jazzy runtime
 
-### 1. Build and start
+Docker and Docker Compose are still available as a fallback, but the normal
+development loop is local through Pixi.
 
-```bash
-# Build images (compiles all ROS2 packages — only needed once or after source changes)
-docker compose build
-
-# Allow containers to access your display (run once per session, for Groot2/RViz)
-DISPLAY=:1 xhost +local:
-
-# Launch everything
-docker compose up -d
-```
-
-That's it. `docker compose up` launches the full stack:
-1. **sim container** — MoveIt2 + ros2_control simulation (Franka Panda mock hardware)
-2. **dev container** — skill server (orchestrator + skill atoms + diagnostics)
-
-Watch the logs with `docker compose logs -f`.
-
-### 2. Shell into the dev container
+### 1. Build and start locally
 
 ```bash
-docker exec -it ros2_robot_skills_dev bash
+pixi run dev
 ```
 
-Everything is already sourced via `.bashrc`. Useful aliases: `cb` (build), `cbt <pkg>` (build one package), `ct` (test).
+This builds the dashboard, builds the lite ROS workspace with `colcon`, and
+launches the local lite stack:
+
+1. mock skill atoms
+2. skill server, task composer, and BT executor
+3. robot state publisher, diagnostics, rosbridge, and dashboard
+
+The dashboard is served at `http://localhost:8080`. Stop the local stack with
+`Ctrl+C`.
+
+### 2. Local development loop
+
+```bash
+# Rebuild ROS packages after Python/XML/C++ changes
+pixi run dev-build-fast
+
+# Relaunch without rebuilding
+pixi run dev-run
+
+# Open a sourced local ROS shell
+pixi run dev-shell
+
+# Inspect the local ROS graph
+pixi run status
+```
+
+Use `pixi run dashboard-dev` when you want the React dev server with hot
+reload. Use `pixi run dashboard-build` before `dev-build-fast` when frontend
+assets should be installed into the ROS package.
 
 ### 3. Run tests
 
 ```bash
-docker exec ros2_robot_skills_dev bash -c \
-  "source /opt/ros/jazzy/setup.bash && \
-   source /opt/bt_ros2_ws/install/setup.bash && \
-   source /home/ws/install/setup.bash && \
-   cd /home/ws && colcon test && colcon test-result --verbose"
+pixi run test
 ```
 
-### 5. Call skills
+### 4. Call skills
 
 ```bash
-# Shell into the dev container
-docker exec -it ros2_robot_skills_dev bash
+# Open a local ROS shell
+pixi run dev-shell
 
 # List all available skills
 ros2 service call /skill_server/get_skill_descriptions \
@@ -105,68 +113,106 @@ ros2 service call /skill_server/compose_task \
   }'
 ```
 
-### 6. Groot2 (BT monitoring)
+### 5. Groot2 (BT monitoring)
 
-On the host, Pixi manages a platform-specific Groot2 binary under `.local/bin`.
-It checks the configured path first and only downloads when the binary is
-missing. The download metadata lives in `config/groot2.json`.
+Groot2 is no longer managed through Pixi. If you run Groot2 separately, connect
+it to the running skill server with `Connect -> ZMQ Server -> Port 1666`.
 
-Note: the official download page may not provide a macOS installer. If that
-applies, place your own `groot2` binary at `.local/bin/groot2` and `pixi run groot2`
-will use it.
+### 6. Native pixi build (no Docker)
 
-```bash
-# Show the resolved host config for your platform
-pixi run groot2-config
+`pixi-build-ros` builds each ROS package as a conda package inside a pixi
+environment. Sibling packages (e.g. `robot_mock_skill_atoms` including message
+headers from `robot_skills_msgs`) can't be chained through pixi-build's build
+environments in pixi ≤ 0.67, so `robot_skills_msgs` is hosted in a local conda
+channel at `~/channel`. Every other package is declared as a path-dependency
+and rebuilt by pixi-build-ros on source change.
 
-# Download or refresh the host-native Groot2 binary
-pixi run groot2-download
-
-# Launch Groot2 on the host (auto-downloads if missing)
-pixi run groot2
-
-# Optional: print the managed binary path
-pixi run groot2-path
-```
-
-In Groot2: `Connect -> ZMQ Server -> Port 1666`.
-
-### 7. RViz2 (robot visualization)
-
-RViz2 is available in both containers. From the dev container:
+#### First time per machine
 
 ```bash
-docker exec -it ros2_robot_skills_dev bash
-source /home/ws/install/setup.bash
-rviz2
+bash scripts/bootstrap-msgs.sh
 ```
 
-To launch the sim with RViz enabled (default is disabled in the sim container):
+Creates `~/channel/` and builds `robot_skills_msgs` into it. Run this once on
+a clean machine. It bypasses `pixi run` because pixi 0.67 eagerly resolves all
+declared environments, and the `lite-native` / `real-native` envs reference
+`~/channel` — so no `pixi run *` task can start until `~/channel` exists.
+
+#### Run natively
+
+After the bootstrap, one command handles everything:
 
 ```bash
-# Stop and restart sim with RViz
-docker exec ros2_robot_sim bash -c \
-  "source /opt/ros/jazzy/setup.bash && \
-   source /home/ws/install/setup.bash && \
-   ros2 launch robot_sim_config sim.launch.py use_rviz:=true"
+pixi run lite-native-up   # rebuild msgs + dashboard + all path-deps, then launch lite stack
+pixi run real-native-up   # same, but builds skill_atoms (MoveIt2) instead of mock atoms
 ```
 
-### Stopping
+Both tasks `depends-on` `update-msgs` and `dashboard-build`, so you don't need
+to chain commands — source edits anywhere in the workspace are picked up on
+the next `*-native-up`.
+
+`real-native-up` expects the host's `move_group` (Meca500 MoveIt2) to already
+be running; it connects over the shared DDS domain.
+
+#### Common workflows
 
 ```bash
-docker compose down
+# Rebuild only msgs (after editing a .msg/.srv/.action):
+pixi run update-msgs
+
+# Launch without rebuilding anything:
+pixi run lite-native-run          # or real-native-run (auto-picks the right env)
+
+# Open a shell in the native env:
+pixi run lite-native-shell        # or real-native-shell
+
+# Wipe the native envs (keeps ~/channel):
+pixi run native-clean
+
+# Nuke everything and start over:
+pixi run native-clean && rm -rf ~/channel && bash scripts/bootstrap-msgs.sh
 ```
 
-## Docker Setup
+The native tasks launch the dashboard on **port 8081** (matching the Docker-lite
+convention) and rosbridge on **port 9090**. Override with a launch arg:
+
+```bash
+pixi run lite-native-run dashboard_port:=8082 rosbridge_port:=9091
+```
+
+If the Docker lite container is running, stop it first to free the ports:
+
+```bash
+pixi run lite-down && pixi run lite-native-up
+```
+
+### 7. Docker fallback
+
+The Docker workflows remain in Pixi for comparison and fallback:
+
+```bash
+pixi run lite-up
+pixi run lite-logs
+pixi run lite-down
+
+pixi run real-up
+pixi run real-logs
+pixi run real-down
+
+pixi run docker-status
+pixi run docker-test
+```
+
+## Docker Fallback
 
 | Container | Image | Purpose |
 |-----------|-------|---------|
-| `ros2_robot_sim` | `ros2-jazzy-robot-sim` | MoveIt2 + ros2_control simulation (Franka Panda with mock hardware) |
-| `ros2_robot_skills_dev` | `ros2-jazzy-robot-skills` | Full dev toolchain: BT.CPP, MoveIt2, Groot2, RealSense drivers |
+| `ros2_robot_skills_lite` | `ros2-jazzy-robot-skills-lite` | Lite mock skill stack |
+| `ros2_robot_skills_dev` | `ros2-jazzy-robot-skills` | Real robot skill server container |
 
-Both containers use **host networking** for ROS2 DDS discovery and share `/tmp/.X11-unix` for GUI forwarding. All packages are pre-built during `docker compose build` so startup is fast.
-
-The dev container bind-mounts `./src` from the host for development. On startup it runs a fast incremental rebuild (instant if source hasn't changed). After editing source files, run `cb` inside the container to rebuild.
+Docker containers use host networking for ROS2 DDS discovery and bind-mount
+`./src` for source edits. They are kept for fallback while local Pixi dev is
+the preferred path.
 
 ## Package Structure
 

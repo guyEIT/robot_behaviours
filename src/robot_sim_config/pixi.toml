@@ -1,0 +1,14 @@
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+extra-input-globs = [
+  "config/**/*",
+  "launch/**/*.py",
+  "urdf/**/*",
+]
+extra-package-mappings = [
+  # mock_components is bundled in ros2_control on robostack — no separate conda package
+  { mock_components = { conda = "ros-jazzy-ros2-control" } },
+]

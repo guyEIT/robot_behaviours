@@ -33,11 +33,6 @@ def generate_launch_description():
         default_value="info",
         description="ROS2 log level: debug, info, warn, error",
     )
-    groot_port_arg = DeclareLaunchArgument(
-        "groot_port",
-        default_value="1666",
-        description="Groot2 ZMQ publisher port for live BT monitoring",
-    )
     use_rosboard_arg = DeclareLaunchArgument(
         "use_rosboard",
         default_value="false",
@@ -46,7 +41,7 @@ def generate_launch_description():
     use_dashboard_arg = DeclareLaunchArgument(
         "use_dashboard",
         default_value="true",
-        description="Launch web dashboard (replaces rosboard + groot2)",
+        description="Launch web dashboard",
     )
     rosbridge_port_arg = DeclareLaunchArgument(
         "rosbridge_port",
@@ -60,7 +55,6 @@ def generate_launch_description():
     )
 
     log_level = LaunchConfiguration("log_level")
-    groot_port = LaunchConfiguration("groot_port")
     use_rosboard = LaunchConfiguration("use_rosboard")
     use_dashboard = LaunchConfiguration("use_dashboard")
     rosbridge_port = LaunchConfiguration("rosbridge_port")
@@ -286,16 +280,12 @@ def generate_launch_description():
             "║                                                              ║\n"
             "║  Web Dashboard:     http://localhost:", dashboard_port, "                    ║\n"
             "║  rosbridge WS:     ws://localhost:", rosbridge_port, "                       ║\n"
-            "║  Groot2 ZMQ port:  ", groot_port, "                                ║\n"
-            "║                                                              ║\n"
-            "║  Connect Groot2 on host:  pixi run groot2                    ║\n"
             "╚══════════════════════════════════════════════════════════════╝"
         ]
     )
 
     return LaunchDescription([
         log_level_arg,
-        groot_port_arg,
         use_rosboard_arg,
         use_dashboard_arg,
         rosbridge_port_arg,
@@ -320,7 +310,6 @@ def generate_launch_description():
         mock_record_rosbag,
         mock_check_system_ready,
         # Tree execution server + orchestrator
-        tree_server_node,
         skill_server_node,
         # Monitoring
         diagnostic_aggregator_node,
