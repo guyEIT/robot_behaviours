@@ -42,9 +42,9 @@
   <!-- PickObject subtree: detect + grasp -->
   <BehaviorTree ID="PickObject">
     <Sequence name="pick_sequence">
-      <MoveToNamedConfig name="go_observe"
-                         config_name="observe"
-                         velocity_scaling="0.5"/>
+      <MoveToJointConfig name="go_observe"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.3"/>
       <DetectObject name="find_object"
                     object_class="{object_class}"
                     confidence_threshold="0.7"

@@ -1,18 +1,56 @@
 <!--
-  MoveToHome with experiment wrapper.
+  MoveToHome wrapped in an experiment shell (rosbag + operator prompts).
 
-  Demonstrates using experiment_wrapper.xml:
-    1. Prompts operator for experiment name and description
-    2. Starts rosbag recording
-    3. Runs MoveToHome (open gripper + move to home config)
-    4. Stops recording and notifies operator
+  Self-contained: the Python tree executor does not support <include path="…">,
+  so the ExperimentTask wrapper is inlined here alongside TaskBody.
 
-  The main tree is ExperimentTask (from the wrapper),
-  and TaskBody contains the actual work.
+  Flow:
+    1. Prompt operator for experiment name and description
+    2. Start rosbag recording in parallel with the task
+    3. Run TaskBody (open gripper + move to home)
+    4. Recording halts when TaskBody completes; notify operator
 -->
 <root BTCPP_format="4" main_tree_to_execute="ExperimentTask">
 
-  <include path="experiment_wrapper.xml"/>
+  <BehaviorTree ID="ExperimentTask">
+    <Sequence name="experiment_wrapper_seq">
+      <HumanInput name="get_experiment_name"
+                  title="Experiment Name"
+                  message="Enter a name for this experiment run:"
+                  input_type="text"
+                  default_value=""
+                  value="{experiment_name}"/>
+
+      <HumanInput name="get_experiment_description"
+                  title="Experiment Description"
+                  message="Describe the experiment (optional):"
+                  input_type="text"
+                  default_value=""
+                  value="{experiment_description}"/>
+
+      <LogEvent name="log_experiment_start"
+                event_name="experiment_start"
+                severity="info"
+                message="Starting experiment: {experiment_name}"/>
+
+      <Parallel success_count="1" failure_count="1">
+        <RecordRosbag name="experiment_recording"
+                      output_path="/tmp/experiments/{experiment_name}"
+                      duration_sec="0.0"/>
+
+        <SubTree ID="TaskBody" _autoremap="true"/>
+      </Parallel>
+
+      <LogEvent name="log_experiment_end"
+                event_name="experiment_end"
+                severity="info"
+                message="Experiment '{experiment_name}' completed successfully"/>
+
+      <HumanNotification name="notify_experiment_complete"
+                         title="Experiment Complete"
+                         message="'{experiment_name}' finished. Bag saved to /tmp/experiments/{experiment_name}"/>
+    </Sequence>
+  </BehaviorTree>
 
   <BehaviorTree ID="TaskBody">
     <Sequence name="move_to_home">
@@ -21,8 +59,8 @@
 
       <MoveToNamedConfig name="go_home"
                          config_name="home"
-                         velocity_scaling="0.3"
-                         acceleration_scaling="0.3"/>
+                         velocity_scaling="0.2"
+                         acceleration_scaling="0.2"/>
     </Sequence>
   </BehaviorTree>
 

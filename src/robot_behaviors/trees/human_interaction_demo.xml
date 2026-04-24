@@ -60,9 +60,9 @@
                severity="info"
                tags="human"/>
 
-      <MoveToNamedConfig name="go_observe"
-                         config_name="observe"
-                         velocity_scaling="0.5"/>
+      <MoveToJointConfig name="go_observe"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.3"/>
 
       <LogEvent name="log_picking"
                event_name="robot_action"
@@ -72,7 +72,7 @@
 
       <MoveToNamedConfig name="go_home_after_pick"
                          config_name="home"
-                         velocity_scaling="0.3"/>
+                         velocity_scaling="0.2"/>
 
       <LogEvent name="log_pick_done"
                event_name="robot_action"

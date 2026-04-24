@@ -29,11 +29,11 @@
   <BehaviorTree ID="SeedCollection">
     <Sequence name="seed_collection_main">
 
-      <!-- ── Phase 1: Move to observation position ─────────────────────── -->
-      <MoveToNamedConfig name="go_to_observe"
-                         config_name="observe"
-                         velocity_scaling="0.5"
-                         acceleration_scaling="0.4"/>
+      <!-- ── Phase 1: Move to observation joint pose (Meca500 pre-pick) ── -->
+      <MoveToJointConfig name="go_to_observe"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.3"
+                         acceleration_scaling="0.3"/>
 
       <!-- ── Phase 2: Detect seed ──────────────────────────────────────── -->
       <DetectObject name="find_seed"
