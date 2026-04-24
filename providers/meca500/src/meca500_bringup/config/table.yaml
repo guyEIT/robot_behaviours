@@ -1,0 +1,11 @@
+table:
+  show: true
+  mesh_path: ""  # Empty uses default package mesh (mecatable_simple.stl)
+  frame_id: world
+  scale: 0.001   # STL is in mm, convert to meters
+  x: 0.0
+  y: 0.08
+  z: -0.23
+  roll: 1.5708   # 90° — tilt up onto its feet
+  pitch: 0.0
+  yaw: 1.5708    # 90° — rotate around Z

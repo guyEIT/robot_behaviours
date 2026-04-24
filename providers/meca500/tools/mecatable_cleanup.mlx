@@ -1,0 +1,11 @@
+<!DOCTYPE FilterScript>
+<FilterScript>
+  <filter name="Remove Duplicate Vertices"/>
+  <filter name="Remove Duplicate Faces"/>
+  <filter name="Remove Zero Area Faces"/>
+  <filter name="Remove Unreferenced Vertices"/>
+  <filter name="Remove Isolated pieces (wrt Face Num.)">
+    <Param name="MinComponentSize" type="RichInt" value="2048"/>
+    <Param name="removeUnref" type="RichBool" value="true"/>
+  </filter>
+</FilterScript>

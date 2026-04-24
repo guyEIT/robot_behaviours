@@ -1,0 +1,13 @@
+aruco_single_target:
+  dictionary: DICT_6X6_250
+  marker_id: 23
+  marker_size_m: 0.05
+  zero_point_definition: Marker center (+X right, +Y up on print, +Z out of page)
+  startup_calibration:
+    averaging_window_s: 5.0
+    min_detections: 20
+    outlier_rejection: reject samples with translation error > 2 sigma
+  print_notes:
+  - Print on A5 at 100% scale (no fit to page).
+  - Verify marker side is exactly 50 mm.
+  - Mount flat and rigid before startup calibration.

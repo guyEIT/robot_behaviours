@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+
+<!-- Author: Garrison Johnston 12/2025 -->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="meca500_arm">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+    <xacro:arg name="hardware_type" default="meca500_hardware" />
+    <xacro:arg name="robot_ip" default="10.6.105.53" />
+    <xacro:arg name="robot_port" default="10000" />
+    <xacro:arg name="connect_timeout_ms" default="2000" />
+    <xacro:arg name="response_timeout_ms" default="30000" />
+
+    <!-- Import meca500 urdf file -->
+    <xacro:include filename="$(find meca500_description)/urdf/meca500.xacro" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="meca500.ros2_control.xacro" />
+
+    <xacro:meca500_ros2_control
+        name="$(arg hardware_type)"
+        initial_positions_file="$(arg initial_positions_file)"
+        robot_ip="$(arg robot_ip)"
+        robot_port="$(arg robot_port)"
+        connect_timeout_ms="$(arg connect_timeout_ms)"
+        response_timeout_ms="$(arg response_timeout_ms)"
+    />
+</robot>

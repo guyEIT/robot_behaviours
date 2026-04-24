@@ -1,0 +1,14 @@
+camera_calibration:
+  enable_realsense: true
+  camera_namespace: ''
+  camera_name: camera
+  parent_frame: meca_base_link
+  frame_id: camera_link
+  calibration_frame_id: camera_color_optical_frame
+  x: 0.10429464305665782
+  y: 0.5590783932262318
+  z: 0.30623305939128226
+  roll: 0.07414544183537994
+  pitch: 0.35672325062795396
+  yaw: -1.9281153687359431
+  calibrated_at_utc: '2026-04-08T07:40:13.079727+00:00'
