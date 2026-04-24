@@ -1,0 +1,19 @@
+# Goal: aspirate on 1-8 channels.
+# `resources` parallel to `volumes`; each is a deck-resolvable container/well name.
+# Optional arrays (empty = backend default): flow_rates, offsets_z, liquid_height.
+# Tipless channels are rejected pre-lock by the FSM.
+string[] resources
+float64[] volumes
+int32[] use_channels
+float64[] flow_rates
+float64[] offsets_z
+float64[] liquid_height
+---
+bool success
+string message
+string[] warnings
+int32[] channels_used
+float64[] final_volumes  # volume actually aspirated per channel
+---
+float32 progress
+string stage

@@ -1,0 +1,17 @@
+# Goal: pick up tips on 1-8 channels.
+# `tip_rack` is the deck-resolvable resource name of the tip rack.
+# `wells` are well names on that rack (e.g. ["A1","B1","C1"]).
+# `use_channels` is the 0-based channel list; empty means auto (first N channels).
+# `offsets_z` optional per-channel z-offset overrides; empty means no override.
+string tip_rack
+string[] wells
+int32[] use_channels
+float64[] offsets_z
+---
+bool success
+string message
+string[] warnings
+int32[] channels_used
+---
+float32 progress
+string stage

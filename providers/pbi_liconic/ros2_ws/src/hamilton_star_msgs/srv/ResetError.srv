@@ -1,0 +1,6 @@
+# Operator-initiated recovery from the Error state. Only valid when
+# FSM op_state == "Error". The acknowledgment string is logged to ~/events.
+string acknowledgment
+---
+bool success
+string message

@@ -1,0 +1,7 @@
+# Write the incubator target humidity setpoint as a fraction in [0, 1]
+# (0.6 = 60 %RH). Returns on PLC ack; equilibration takes minutes.
+# Rejected on *_NC models (no climate control).
+float32 humidity_fraction
+---
+bool success
+string message

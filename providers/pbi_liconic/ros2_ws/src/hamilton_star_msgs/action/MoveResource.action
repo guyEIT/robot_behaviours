@@ -1,0 +1,31 @@
+# Goal: move a plate / lid / generic resource to another location.
+# `transport` ∈ {"iswap", "core", "auto"}. "core" requires a CoRe gripper held;
+# "iswap" requires the iSWAP module; "auto" lets the node pick based on
+# availability (iSWAP first, CoRe as fallback).
+# `pickup_direction` / `drop_direction` ∈ {"front", "back", "left", "right"}.
+#
+# Hotel mode is auto-detected: if ``to`` names a resource that is also
+# a registered handoff (see ``~/define_handoff``), the server routes
+# through pylabrobot's ``use_unsafe_hotel=True`` path (STAR firmware
+# ``PO``/``PI``) and pulls ``hotel_depth`` + ``hotel_clearance_height``
+# from the registered record. For explicit overrides (tuning, or
+# hotel-via-non-handoff-name corner cases) the bool + floats below are
+# honoured when non-default.
+string resource
+string to
+string transport
+string pickup_direction
+string drop_direction
+geometry_msgs/Vector3 pickup_offset
+geometry_msgs/Vector3 destination_offset
+bool use_unsafe_hotel                   # force on (even if ``to`` isn't a handoff)
+float32 hotel_depth                     # 0 = registered value, or pylabrobot default
+float32 hotel_clearance_height          # 0 = registered value, or pylabrobot default
+float32 pickup_distance_from_top        # 0 = resource's preferred pickup
+---
+bool success
+string message
+string[] warnings
+---
+float32 progress
+string stage

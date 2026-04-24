@@ -1,0 +1,3 @@
+# Return every registered handoff site. Callers filter by name.
+---
+Handoff[] handoffs

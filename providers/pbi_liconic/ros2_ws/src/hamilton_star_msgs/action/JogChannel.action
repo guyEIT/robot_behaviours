@@ -1,0 +1,15 @@
+# Goal: low-level jog of a single pipetting channel on one axis.
+# Exclusive op; intended for teaching / recovery, not routine workflows.
+int32 channel
+string axis    # "x", "y", or "z"
+float64 target # absolute target in mm
+---
+bool success
+string message
+string[] warnings
+float64 final_x
+float64 final_y
+float64 final_z
+---
+float32 progress
+string stage

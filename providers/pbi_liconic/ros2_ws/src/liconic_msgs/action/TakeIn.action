@@ -1,0 +1,18 @@
+# Take a plate from the Liconic transfer tray into a carousel site.
+#
+# Preconditions (operator-enforced):
+#   - A plate is physically on the transfer tray.
+#   - The target (cassette, position) site is empty.
+#
+# The server persists the plate_name → (cassette, position) mapping in
+# its JSON registry on success. Re-using an already-registered
+# plate_name is rejected. Positions are 1-indexed.
+string plate_name                       # unique label; rejected if already in use
+string barcode                          # optional ("")
+uint8 cassette                          # 1-indexed
+uint8 position                          # 1-indexed within the cassette
+---
+bool success
+string message
+---
+string stage                            # "validating" | "dispatching" | "waiting_ready" | "done"

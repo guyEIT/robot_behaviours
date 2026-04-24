@@ -1,0 +1,7 @@
+# Write the incubator target temperature setpoint (°C). The call returns
+# as soon as the PLC acknowledges the write; actual chamber equilibration
+# takes minutes. Rejected on *_NC models (no climate control).
+float32 temperature_c
+---
+bool success
+string message

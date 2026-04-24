@@ -1,0 +1,22 @@
+# ament_python package — the Liconic STX action server. Depends on the
+# sibling liconic_msgs package (path-dep so pixi-build-ros resolves it
+# from the local workspace rather than a conda channel).
+[package]
+name = "liconic_ros"
+version = "0.1.0"
+description = "ROS 2 action server exposing a pylabrobot-driven Liconic STX incubator."
+
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "humble"
+extra-package-mappings = [
+  { liconic_msgs = { conda = ["liconic_msgs"] } },
+]
+
+[package.host-dependencies]
+liconic_msgs = { path = "../liconic_msgs" }
+
+[package.build-dependencies]
+liconic_msgs = { path = "../liconic_msgs" }

@@ -1,0 +1,14 @@
+# Goal: pick up the CoRe II gripper tool pair.
+# pylabrobot derives `back_channel = front_channel - 1`, so `front_channel`
+# must be in [1, num_channels - 1] (e.g. 7 for an 8-channel STAR, giving
+# channels 6 and 7 as the gripper-holding pair).
+string gripper_resource  # default "core_grippers" when empty
+int32 front_channel
+---
+bool success
+string message
+string[] warnings
+int32[] channels_used   # [back_channel, front_channel]
+---
+float32 progress
+string stage

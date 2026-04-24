@@ -1,0 +1,16 @@
+# Goal: aspirate `source_volume` from one source and dispense across targets.
+# Mirrors pylabrobot's LiquidHandler.transfer.
+string source
+string[] targets
+float64 source_volume
+float64[] target_volumes   # parallel with targets; empty means split evenly
+float64 aspiration_flow_rate
+float64 dispense_flow_rate
+---
+bool success
+string message
+string[] warnings
+int32[] channels_used
+---
+float32 progress
+string stage

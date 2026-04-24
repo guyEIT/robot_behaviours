@@ -1,0 +1,7 @@
+# Load a pylabrobot-serialized deck JSON file. Rejected unless FSM is Idle and
+# CoRe gripper is parked. Does NOT reconnect the backend.
+string deck_file
+---
+bool success
+string message
+string deck_hash

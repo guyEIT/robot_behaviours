@@ -1,0 +1,17 @@
+# Goal: dispense on 1-8 channels. See Aspirate.action for field semantics.
+string[] resources
+float64[] volumes
+int32[] use_channels
+float64[] flow_rates
+float64[] offsets_z
+float64[] liquid_height
+float64[] blow_out_air_volume
+---
+bool success
+string message
+string[] warnings
+int32[] channels_used
+float64[] final_volumes
+---
+float32 progress
+string stage

@@ -1,0 +1,17 @@
+# Re-initialize the Liconic PLC — sends firmware ST 1900 (re-init) +
+# ST 1801 (activate handling) + polls ready. Clears most latched error
+# states and silences the 30 s alarm beep.
+#
+# CAVEAT: this re-homes the carousel. Any plate currently in a cassette
+# will stay where it is (no motion), but a plate on the shovel/transfer
+# mechanism at the moment of reset can end up in an unexpected state.
+# Make sure the transfer tray and shovel are empty before calling.
+---
+bool success
+string message
+# Error register values read BEFORE the reset — useful for diagnostics.
+# ``error_flag_before`` is PLC register RD 1814 ("1" if an error was
+# latched, "0" if not). ``error_code_before`` is RD DM200 (matches the
+# HandlingError enum in liconic.constants; e.g. "00008" = GATE_CLOSE_ERROR).
+string error_flag_before
+string error_code_before

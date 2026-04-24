@@ -1,0 +1,6 @@
+# Remove a handoff from the registry. success=false if the name is not
+# registered; no-op otherwise.
+string name
+---
+bool success
+string message

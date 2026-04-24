@@ -1,0 +1,16 @@
+# Clear the registry entry at (cassette, position) without moving any motor.
+#
+# Recovery primitive for when a physical plate has left the cassette
+# outside the server's control — e.g. a fetch motion that failed midway
+# so the cassette entry never got moved onto the tray, or an operator
+# manually retrieving a plate. There is no cassette-slot sensor on the
+# STX44, so the caller is the authority on physical truth for this.
+#
+# Both indices are 1-indexed. Returns the plate_name that was cleared,
+# or "" if the slot was already empty.
+uint8 cassette
+uint8 position
+---
+bool success
+string message
+string cleared_plate_name
