@@ -6,6 +6,10 @@ import BtXmlViewer from "./BtXmlViewer";
 import { TreePine, Locate } from "lucide-react";
 import clsx from "clsx";
 
+// Stable empty-list sentinel for the Zustand selectors below. See comment
+// in BtTreePanel for why this matters.
+const EMPTY_LIST: readonly string[] = Object.freeze([]);
+
 // Demo tree for when no task is running
 const DEMO_XML = `<root BTCPP_format="4" main_tree_to_execute="Demo">
   <BehaviorTree ID="Demo">
@@ -21,6 +25,22 @@ export default function BtTreePanel() {
   const taskStatus = useTaskStore((s) => s.taskState?.status ?? null);
   const activeNodeName = useTaskStore((s) =>
     s.taskState?.status === "RUNNING" ? s.taskState.current_bt_node : null
+  );
+  // Past-completed and past-failed skill names — keep them rendered green/red
+  // so the operator can see the BT's progress trail, not just the live frame.
+  // Critical for fast actions (Hamilton/Liconic complete in ms — without this
+  // the highlight pulses too briefly to see).
+  //
+  // IMPORTANT: returning `?? []` from a Zustand selector creates a new array
+  // every render (Zustand uses Object.is for change detection, so new []
+  // never compares equal). That triggers an infinite re-render loop in
+  // BtTreeGraph's useEffect, which silently breaks highlighting. Reuse a
+  // module-level frozen sentinel instead.
+  const completedNodeNames = useTaskStore(
+    (s) => s.taskState?.completed_skills ?? EMPTY_LIST,
+  );
+  const failedNodeNames = useTaskStore(
+    (s) => s.taskState?.failed_skills ?? EMPTY_LIST,
   );
   const activeBtXml = useTaskStore((s) => s.activeBtXml);
   const hasHistory = useTaskStore((s) => s.taskHistory.length > 0);
@@ -86,7 +106,13 @@ export default function BtTreePanel() {
             </div>
           </div>
         )}
-        <BtTreeGraph xml={xml} activeNodeName={activeNodeName} followActive={followActive} />
+        <BtTreeGraph
+          xml={xml}
+          activeNodeName={activeNodeName}
+          completedNodeNames={completedNodeNames}
+          failedNodeNames={failedNodeNames}
+          followActive={followActive}
+        />
       </div>
 
       {/* XML viewer */}

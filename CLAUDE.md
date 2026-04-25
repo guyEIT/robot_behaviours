@@ -160,36 +160,44 @@ Each PC installs only what it needs via a scoped pixi environment:
 
 ### Running sims end-to-end
 
-**Meca500 sim** (no real hardware):
+#### Whole-lab one-shot (for clicking through BTs in the UI)
+
 ```bash
-# shell 1 — MoveIt fake_hardware
-pixi run meca500-sim-up
-# shell 2 — skill atoms under /meca500, self-register with SkillRegistry
-pixi run meca500-up
-# shell 3 — orchestrator + dashboard
-pixi run orchestrator-up
-# then in dashboard, select preset: test_meca500_sim → Run
+pixi run lab-sim-up
+# open http://localhost:8081 — pick test_meca500_sim / test_hamilton_sim
+# / test_liconic_smoke from the preset selector and hit Run
 ```
 
-**Hamilton STAR sim** (STARChatterboxBackend, no hardware):
+Brings up *every* provider sim + skill atoms + skill_server + web dashboard in a single `ros2 launch` invocation. Validated 2026-04-25: hamilton 0.54s, liconic 0.54s, meca500 8.80s — all SUCCESS through the unified launch.
+
+The `lab-sim` pixi env is a superset of `meca500-host` + `liconic-host` + `orchestrator` (everything on one box). Use it for dev / smoke tests; production deploys still split across per-host envs.
+
+#### Per-provider one-shot (single sim only)
+
+If you only want one sim running, the per-provider launches are still wired up — useful when you're hammering on one device and don't want the other sims spamming logs.
+
+| Sim       | One-shot command            | What it launches                                             | Tree to submit             |
+|-----------|-----------------------------|--------------------------------------------------------------|----------------------------|
+| Meca500   | `pixi run meca500-sim-test` | `moveit.launch.py simulation:=true` + `skill_atoms_remote.launch.py robot_name:=meca500` (4s delay so MoveIt is up first) + `skill_server_node` | `test_meca500_sim.xml`     |
+| Hamilton  | `pixi run hamilton-sim-test`| `hamilton_star_bringup/action_server.launch.py backend:=simulator` + `skill_server_node` | `test_hamilton_sim.xml`    |
+| Liconic   | `pixi run liconic-sim-test` | `liconic_ros/liconic.launch.py simulation:=true` + `skill_server_node`                   | `test_liconic_smoke.xml`   |
+
+The composite launches live in `src/robot_skill_server/launch/sim_<provider>.launch.py` and use `IncludeLaunchDescription` to pull in the upstream provider launch files — no duplication.
+
+Submitting a tree (any of the three sims):
 ```bash
-# shell 1 — Hamilton action server against simulator
-pixi run hamilton-sim-up
-# shell 2 — orchestrator
-pixi run orchestrator-up
-# dashboard preset: test_hamilton_sim → Run
+python3 -c "import yaml; xml=open('src/robot_behaviors/trees/test_<sim>.xml').read(); \
+  print(yaml.safe_dump({'tree_xml': xml, 'tree_name': '<sim>'}, default_style='|'))" > /tmp/g.yaml
+pixi run -e liconic-host bash -c 'ros2 action send_goal \
+  /skill_server/execute_behavior_tree robot_skills_msgs/action/ExecuteBehaviorTree \
+  "$(cat /tmp/g.yaml)"'
 ```
 
-**Liconic sim** (`LiconicSimBackend`, in-memory, no serial):
-```bash
-# shell 1 — Liconic action server with sim backend
-pixi run liconic-sim-up
-# shell 2 — orchestrator
-pixi run orchestrator-up
-# dashboard preset: test_liconic_smoke → Run
-```
+Validated 2026-04-25: hamilton 0.53s, liconic 0.55s, meca500 8.67s — all SUCCESS via one-shot launch.
 
-The sim starts with the transfer tray pre-loaded so TakeIn succeeds immediately — real hardware would require an operator to physically place a plate first. Source: [providers/pbi_liconic/ros2_ws/src/liconic_ros/liconic_ros/sim_backend.py](providers/pbi_liconic/ros2_ws/src/liconic_ros/liconic_ros/sim_backend.py). Selected at launch time via `simulation:=true`.
+If you'd rather run pieces individually (debugging, mixing real + sim, splitting across PCs), the granular tasks are still there: `meca500-sim-up` / `meca500-up` (atoms only) / `liconic-sim-up` / `hamilton-sim-up` / and a bare `skill_server_node` invocation. See `pixi info` for the full list.
+
+The Liconic sim starts with the transfer tray pre-loaded so TakeIn succeeds immediately — real hardware would require an operator to physically place a plate first. Source: [providers/pbi_liconic/ros2_ws/src/liconic_ros/liconic_ros/sim_backend.py](providers/pbi_liconic/ros2_ws/src/liconic_ros/liconic_ros/sim_backend.py). Selected at launch time via `simulation:=true`.
 
 ### Test behavior trees — validation status
 

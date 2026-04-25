@@ -42,7 +42,8 @@ from robot_skills_msgs.action import (
     SetDigitalIO,
     UpdatePlanningScene,
 )
-from robot_skills_msgs.msg import HumanPrompt, HumanResponse, LogEvent
+from robot_skills_msgs.msg import HumanPrompt, HumanResponse, LogEvent, TaskState
+from robot_skills_msgs.srv import AcquireLease, ReleaseLease, RenewLease
 
 # Provider actions — optional imports. If a provider msgs package isn't
 # installed in the current env, its BT node types simply aren't registered
@@ -149,6 +150,14 @@ class ParallelNode(TreeNode):
         self.failure_count = int(attrs.get("failure_count", "1"))
 
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
+        # KNOWN LIMITATION: asyncio.create_task / asyncio.as_completed below
+        # require an asyncio event loop, but rclpy's action-server callback
+        # doesn't run inside one — same root cause as WaitForDuration's
+        # "no running event loop" bug. None of the current test BTs use
+        # Parallel; if you author one that does, this needs to switch to
+        # rclpy.task.Future + parallel future-tracking (mirroring
+        # _rclpy_sleep further down) or to spawning the children on a
+        # MultiThreadedExecutor + callback groups.
         tasks = [asyncio.create_task(c.tick(bb, ctx)) for c in self.children]
         successes = 0
         failures = 0
@@ -239,11 +248,30 @@ class RosActionNode(TreeNode):
 
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
         logger = ctx.ros_node.get_logger()
+        # Cooperative abort: if an upstream signal (lease revoked, manual
+        # stop) has set _abort_requested on the blackboard, refuse to start
+        # new actions. In-flight goals are torn down via halt(), not here.
+        if bb.get("_abort_requested"):
+            logger.warn(
+                f"[{self.name}] skipping send_goal — abort flagged: "
+                f"{bb.get('_abort_reason', 'unspecified')}"
+            )
+            return NodeStatus.FAILURE
+
+        # Mark this skill as currently running BEFORE wait_for_server / build,
+        # so the dashboard's BT viewer highlights the node even if those
+        # steps fail (e.g. action server missing → 5 s timeout). Otherwise
+        # the user just sees the BT go RUNNING → 5 s of dead air → FAILURE
+        # with no node ever lit up — making it impossible to tell which
+        # step blocked.
+        ctx.on_skill_started(self.name)
+
         client = self._get_client(ctx)
         if not client.wait_for_server(timeout_sec=5.0):
             logger.error(
                 f"[{self.name}] action server '{self.server_name}' not available"
             )
+            ctx.on_skill_failed(self.name)
             return NodeStatus.FAILURE
 
         try:
@@ -254,8 +282,8 @@ class RosActionNode(TreeNode):
                 f"[{self.name}] _build_goal failed: {type(e).__name__}: {e}\n"
                 f"{traceback.format_exc()}"
             )
+            ctx.on_skill_failed(self.name)
             return NodeStatus.FAILURE
-        ctx.on_skill_started(self.name)
 
         send_future = client.send_goal_async(goal)
         try:
@@ -277,9 +305,16 @@ class RosActionNode(TreeNode):
             return NodeStatus.FAILURE
 
         self._goal_handle = goal_handle
-        result_future = goal_handle.get_result_async()
-        wrapped = await result_future
-        self._goal_handle = None
+        ctx.inflight_goals.append(goal_handle)
+        try:
+            result_future = goal_handle.get_result_async()
+            wrapped = await result_future
+        finally:
+            try:
+                ctx.inflight_goals.remove(goal_handle)
+            except ValueError:
+                pass
+            self._goal_handle = None
 
         result = wrapped.result
         if getattr(result, "success", True):
@@ -304,7 +339,23 @@ class RosActionNode(TreeNode):
 
 class SyncNode(TreeNode):
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
-        return self.execute(bb, ctx)
+        # Fire skill events so the dashboard's BT viewer highlights this
+        # node while it ticks. Without these, only RosActionNodes were
+        # publishing task_state — non-action nodes (LogEvent,
+        # ComputePreGraspPose, WaitForDuration, HumanConfirm, …) were
+        # invisible to the live BT view, so HumanInteractionDemo and
+        # similar trees showed no progress at all.
+        ctx.on_skill_started(self.name)
+        try:
+            status = self.execute(bb, ctx)
+        except Exception:
+            ctx.on_skill_failed(self.name)
+            raise
+        if status == NodeStatus.SUCCESS:
+            ctx.on_skill_completed(self.name)
+        elif status == NodeStatus.FAILURE:
+            ctx.on_skill_failed(self.name)
+        return status
 
     def execute(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
         raise NotImplementedError
@@ -364,27 +415,41 @@ class CheckGraspSuccessNode(SyncNode):
         return NodeStatus.SUCCESS if (grasped and pos > min_width) else NodeStatus.FAILURE
 
 
+async def _rclpy_sleep(node: Node, seconds: float) -> None:
+    """`asyncio.sleep`-compatible wait that works inside an rclpy action-server
+    callback (which doesn't run in an asyncio event loop). Uses a one-shot
+    rclpy timer that completes an `rclpy.Future` so the await yields to the
+    rclpy executor instead of asyncio's `events.get_running_loop()`.
+    """
+    import rclpy.task
+    fut: rclpy.task.Future = rclpy.task.Future()
+
+    def _on_timer():
+        if not fut.done():
+            fut.set_result(None)
+        timer.cancel()
+
+    timer = node.create_timer(seconds, _on_timer)
+    try:
+        await fut
+    finally:
+        timer.cancel()
+        node.destroy_timer(timer)
+
+
 class WaitForDurationNode(SyncNode):
     async def tick(self, bb, ctx):
-        # rclpy's action-server execute_callback doesn't run in an asyncio
-        # event loop, so `await asyncio.sleep(...)` raises "no running event
-        # loop". Use rclpy's sleep via a one-shot timer + rclpy.Future so we
-        # yield control to the executor while waiting.
+        # Override SyncNode.tick because we need an async sleep, but mirror
+        # its skill-event firing so the dashboard highlights this node for
+        # the whole wait duration (otherwise a 5 s wait shows nothing).
         seconds = float(self.attrs.get("seconds", "1.0"))
-        import rclpy.task
-        fut: rclpy.task.Future = rclpy.task.Future()
-
-        def _on_timer():
-            if not fut.done():
-                fut.set_result(None)
-            timer.cancel()
-
-        timer = ctx.ros_node.create_timer(seconds, _on_timer)
+        ctx.on_skill_started(self.name)
         try:
-            await fut
-        finally:
-            timer.cancel()
-            ctx.ros_node.destroy_timer(timer)
+            await _rclpy_sleep(ctx.ros_node, seconds)
+        except Exception:
+            ctx.on_skill_failed(self.name)
+            raise
+        ctx.on_skill_completed(self.name)
         return NodeStatus.SUCCESS
 
 
@@ -475,6 +540,12 @@ class HumanBlockingNode(TreeNode):
         prompt_id = f"{self.name}_{uuid.uuid4().hex[:8]}"
         timeout = float(self.attrs.get("timeout_sec", "0"))
 
+        # Highlight this node as "running" the whole time we're waiting on
+        # the operator. Without this, the dashboard's BT viewer sees no
+        # task_state update for human prompts and the node stays gray —
+        # so the operator can't tell which step is asking for input.
+        ctx.on_skill_started(self.name)
+
         self._publish_prompt(ctx, prompt_id)
 
         start = time.monotonic()
@@ -482,11 +553,19 @@ class HumanBlockingNode(TreeNode):
             response = ctx.check_human_response(prompt_id)
             if response is not None:
                 self._store_response(response, bb)
-                return NodeStatus.SUCCESS if response.accepted else NodeStatus.FAILURE
+                if response.accepted:
+                    ctx.on_skill_completed(self.name)
+                    return NodeStatus.SUCCESS
+                ctx.on_skill_failed(self.name)
+                return NodeStatus.FAILURE
             if timeout > 0 and (time.monotonic() - start) > timeout:
                 ctx.log(f"Human prompt '{self.name}' timed out", "warn")
+                ctx.on_skill_failed(self.name)
                 return NodeStatus.FAILURE
-            await asyncio.sleep(0.1)
+            # Same rclpy-vs-asyncio reason as WaitForDurationNode: bare
+            # `asyncio.sleep` raises "no running event loop" because rclpy's
+            # action-server execute_callback isn't on an asyncio loop.
+            await _rclpy_sleep(ctx.ros_node, 0.1)
 
     def _publish_prompt(self, ctx, prompt_id):
         raise NotImplementedError
@@ -573,21 +652,177 @@ class ScriptConditionNode(SyncNode):
         return NodeStatus.FAILURE
 
 
+# ── Lease nodes ──────────────────────────────────────────────────────────────
+
+class AcquireLeaseNode(TreeNode):
+    """Acquire an exclusive lease on a named resource.
+
+    Attrs:
+      resource       — resource_id (required). Free-form string; conventionally
+                       a robots.yaml key ("meca500") or an action-server path.
+      ttl            — lease TTL in seconds; keepalive renews at ttl/3 (default 10)
+      wait           — "true" to block until available (default "false")
+      wait_timeout   — max block time for wait=true (default 30)
+      output_key     — "{bb_var}" to receive the minted lease_id
+      holder_id      — optional caller tag (default: task_id or "bt_executor")
+    """
+
+    async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
+        logger = ctx.ros_node.get_logger()
+        resource = self.attrs.get("resource", "") or self.attrs.get(
+            "resource_id", ""
+        )
+        if not resource:
+            logger.error(f"[{self.name}] missing 'resource' attribute")
+            return NodeStatus.FAILURE
+
+        ttl = float(self.attrs.get("ttl", "10.0"))
+        wait = self.attrs.get("wait", "false").lower() in ("true", "1", "yes")
+        wait_timeout = float(self.attrs.get("wait_timeout", "30.0"))
+        holder_id = (
+            self.attrs.get("holder_id", "")
+            or ctx.task_id
+            or "bt_executor"
+        )
+
+        client = ctx.get_acquire_lease_client()
+        if not client.wait_for_service(timeout_sec=5.0):
+            logger.error(
+                f"[{self.name}] /skill_server/acquire_lease unavailable"
+            )
+            return NodeStatus.FAILURE
+
+        req = AcquireLease.Request()
+        req.resource_id = resource
+        req.holder_id = holder_id
+        req.ttl_sec = ttl
+        req.wait = wait
+        req.wait_timeout_sec = wait_timeout
+
+        try:
+            resp = await client.call_async(req)
+        except Exception as e:
+            logger.error(f"[{self.name}] acquire_lease call failed: {e}")
+            return NodeStatus.FAILURE
+
+        if not resp.success:
+            logger.warn(f"[{self.name}] acquire_lease refused: {resp.reason}")
+            return NodeStatus.FAILURE
+
+        # Publish lease_id onto the blackboard if output_key given.
+        output_key = self.attrs.get("output_key", "")
+        if output_key.startswith("{") and output_key.endswith("}"):
+            bb.set(output_key[1:-1], resp.lease_id)
+
+        ctx.start_lease_keepalive(resp.lease_id, resource, ttl)
+        ctx.publish_log_event(
+            "lease_acquired",
+            f"Acquired lease on '{resource}' (ttl={ttl:.1f}s)",
+            "info",
+        )
+        return NodeStatus.SUCCESS
+
+
+class ReleaseLeaseNode(TreeNode):
+    """Release a previously-acquired lease.
+
+    Attrs:
+      lease_id — either literal string or "{bb_var}" reference
+      reason   — optional free-form release reason
+    """
+
+    async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
+        logger = ctx.ros_node.get_logger()
+        raw = self.attrs.get("lease_id", "")
+        lease_id = bb.resolve(raw) if raw else ""
+        if not lease_id:
+            logger.warn(f"[{self.name}] lease_id empty or unresolved")
+            return NodeStatus.FAILURE
+
+        # Stop keepalive first so a pending renew can't race the release.
+        resource = ctx.stop_lease_keepalive(lease_id)
+
+        client = ctx.get_release_lease_client()
+        if not client.wait_for_service(timeout_sec=2.0):
+            logger.warn(
+                f"[{self.name}] /skill_server/release_lease unavailable"
+            )
+            return NodeStatus.FAILURE
+
+        req = ReleaseLease.Request()
+        req.lease_id = lease_id
+        req.reason = self.attrs.get("reason", "")
+
+        try:
+            resp = await client.call_async(req)
+        except Exception as e:
+            logger.error(f"[{self.name}] release_lease call failed: {e}")
+            return NodeStatus.FAILURE
+
+        ctx.publish_log_event(
+            "lease_released",
+            f"Released lease on '{resource or 'unknown'}'",
+            "info",
+        )
+        return NodeStatus.SUCCESS if resp.success else NodeStatus.FAILURE
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Execution context
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class ExecutionContext:
-    def __init__(self, ros_node: Node, trees: dict[str, TreeNode]):
+    def __init__(
+        self,
+        ros_node: Node,
+        trees: dict[str, TreeNode],
+        task_id: str = "",
+        task_name: str = "",
+    ):
         self.ros_node = ros_node
         self.trees = trees
+        self.task_id = task_id
+        # task_name and started_at are populated by BtExecutor before tick;
+        # they're echoed into every per-skill TaskState publish so the
+        # dashboard's BT viewer can correlate updates with the running task.
+        self.task_name = task_name
+        self.started_at = ros_node.get_clock().now().to_msg()
         self.completed_skills: list[str] = []
         self.failed_skills: list[str] = []
         self.current_skill = ""
         self.total_action_nodes = 0
         self.cancelled = False
 
+        # Abort-signalling — populated when a lease is revoked mid-tree or
+        # when BtExecutor otherwise decides the tree must stop. Mirrored
+        # onto the root blackboard so RosActionNode.tick can short-circuit.
+        self.root_bb: Optional["Blackboard"] = None
+        self.abort_requested = False
+        self.abort_reason = ""
+
+        # Lease keepalive bookkeeping. Keys are lease_ids; values are the
+        # rclpy timer driving the renewer and the resource_id it guards.
+        self._lease_timers: dict[str, Any] = {}
+        self._lease_resources: dict[str, str] = {}
+
+        # In-flight action goal handles. RosActionNode registers its goal
+        # handle on tick and removes on completion; BtExecutor walks this
+        # list to hard-cancel when a lease is revoked mid-tree.
+        # (ClientGoalHandle isn't hashable, so list + identity removal.)
+        self.inflight_goals: list = []
+
+        # Service clients for the lease broker (lazy-created).
+        self._acquire_client = None
+        self._renew_client = None
+        self._release_client = None
+
         self._log_pub = ros_node.create_publisher(LogEvent, "/skill_server/log_events", 10)
+        # task_state is also published by BtExecutor on overall start/end, but
+        # those edges are 0% and 100%. Per-skill ticks publish here so the
+        # dashboard's BT viewer can highlight the currently-executing node.
+        self._task_state_pub = ros_node.create_publisher(
+            TaskState, "/skill_server/task_state", 10
+        )
         self._human_pub = ros_node.create_publisher(
             HumanPrompt, "/skill_server/human_prompts", 10
         )
@@ -598,21 +833,61 @@ class ExecutionContext:
 
     @property
     def progress(self) -> float:
+        # SyncNodes / HumanBlockingNodes also bump completed_skills now (so
+        # the BT viewer can paint a green trail through every node, not
+        # just RosActionNodes). total_action_nodes still only counts
+        # RosActionNodes for backwards compatibility, so clamp to [0, 1]
+        # to avoid 200%+ progress bars when sync nodes outnumber actions.
         if self.total_action_nodes == 0:
             return 0.0
-        return len(self.completed_skills) / self.total_action_nodes
+        return min(1.0, len(self.completed_skills) / self.total_action_nodes)
 
     def on_skill_started(self, name: str):
         self.current_skill = name
         self.publish_log_event("skill_started", f"Running: {_humanise(name)}", "debug")
+        self._publish_task_state("RUNNING")
 
     def on_skill_completed(self, name: str):
         self.completed_skills.append(name)
         self.publish_log_event("skill_completed", f"Completed: {_humanise(name)}")
+        # Stay in RUNNING — overall task hasn't ended yet. The dashboard
+        # uses progress + completed_skills to update the BT visualizer
+        # between this skill's completion and the next one starting.
+        self._publish_task_state("RUNNING")
 
     def on_skill_failed(self, name: str):
         self.failed_skills.append(name)
         self.publish_log_event("skill_failed", f"Failed: {_humanise(name)}", "error")
+        # Still RUNNING here too — a Fallback / RetryUntilSuccessful might
+        # consume the failure and continue. BtExecutor publishes the
+        # terminal FAILURE/SUCCESS once the whole tree.tick returns.
+        self._publish_task_state("RUNNING")
+
+    def _publish_task_state(self, status: str):
+        if not self.task_id:
+            return  # standalone use (tests) — no task to report against
+        msg = TaskState()
+        msg.task_id = self.task_id
+        msg.task_name = self.task_name
+        msg.status = status
+        msg.current_skill = self.current_skill
+        msg.current_bt_node = self.current_skill
+        msg.progress = self.progress
+        msg.started_at = self.started_at
+        msg.updated_at = self.ros_node.get_clock().now().to_msg()
+        # elapsed_sec is computed from started_at -> updated_at
+        try:
+            import rclpy.time
+            msg.elapsed_sec = (
+                self.ros_node.get_clock().now().nanoseconds
+                - rclpy.time.Time.from_msg(self.started_at).nanoseconds
+            ) / 1e9
+        except Exception:
+            msg.elapsed_sec = 0.0
+        msg.completed_skills = list(self.completed_skills)
+        msg.failed_skills = list(self.failed_skills)
+        msg.error_message = ""
+        self._task_state_pub.publish(msg)
 
     def log(self, message: str, severity: str = "info"):
         self.ros_node.get_logger().info(f"[tree] {message}")
@@ -652,6 +927,114 @@ class ExecutionContext:
 
     def _on_human_response(self, msg: HumanResponse):
         self._human_responses[msg.prompt_id] = msg
+
+    # ── Lease broker clients + keepalive ──────────────────────────────────────
+
+    def get_acquire_lease_client(self):
+        if self._acquire_client is None:
+            self._acquire_client = self.ros_node.create_client(
+                AcquireLease, "/skill_server/acquire_lease"
+            )
+        return self._acquire_client
+
+    def get_renew_lease_client(self):
+        if self._renew_client is None:
+            self._renew_client = self.ros_node.create_client(
+                RenewLease, "/skill_server/renew_lease"
+            )
+        return self._renew_client
+
+    def get_release_lease_client(self):
+        if self._release_client is None:
+            self._release_client = self.ros_node.create_client(
+                ReleaseLease, "/skill_server/release_lease"
+            )
+        return self._release_client
+
+    def start_lease_keepalive(
+        self, lease_id: str, resource_id: str, ttl_sec: float
+    ):
+        """Begin periodic renewal via an rclpy timer.
+
+        The renew period is ttl/3 (minimum 0.5 s). Renew failures are logged
+        but do not themselves cancel the tree — the broker will publish a
+        'revoked' LeaseEvent when the TTL actually lapses, and BtExecutor's
+        lease-event subscriber is the single source of the cancel signal.
+        """
+        if lease_id in self._lease_timers:
+            return  # already running
+        self._lease_resources[lease_id] = resource_id
+        period = max(ttl_sec / 3.0, 0.5)
+        renew_client = self.get_renew_lease_client()
+        node = self.ros_node
+        logger = node.get_logger()
+
+        def _fire():
+            if lease_id not in self._lease_timers:
+                return  # stopped while we were scheduled
+            req = RenewLease.Request()
+            req.lease_id = lease_id
+            req.ttl_sec = ttl_sec
+            try:
+                fut = renew_client.call_async(req)
+            except Exception as e:
+                logger.warning(
+                    f"[keepalive {lease_id[:8]}] call_async failed: {e}"
+                )
+                return
+
+            def _on_done(f):
+                try:
+                    resp = f.result()
+                except Exception as e:
+                    logger.warning(
+                        f"[keepalive {lease_id[:8]}] renew exception: {e}"
+                    )
+                    return
+                if resp is None or not resp.success:
+                    reason = (
+                        getattr(resp, "reason", "no response")
+                        if resp is not None
+                        else "no response"
+                    )
+                    logger.warning(
+                        f"[keepalive {lease_id[:8]}] renew failed: {reason}"
+                    )
+
+            fut.add_done_callback(_on_done)
+
+        timer = node.create_timer(period, _fire)
+        self._lease_timers[lease_id] = timer
+
+    def stop_lease_keepalive(self, lease_id: str) -> str:
+        """Cancel the keepalive timer for a lease. Returns the resource_id
+        (or empty string) for logging."""
+        timer = self._lease_timers.pop(lease_id, None)
+        resource = self._lease_resources.pop(lease_id, "")
+        if timer is not None:
+            try:
+                timer.cancel()
+                self.ros_node.destroy_timer(timer)
+            except Exception:
+                pass
+        return resource
+
+    def active_lease_ids(self) -> list[str]:
+        return list(self._lease_timers.keys())
+
+    def resource_for_lease(self, lease_id: str) -> str:
+        return self._lease_resources.get(lease_id, "")
+
+    def request_abort(self, reason: str):
+        """Flag the tree for cooperative + hard abort. Writes
+        _abort_requested / _abort_reason into the root blackboard so
+        RosActionNode.tick can short-circuit upcoming actions."""
+        self.abort_requested = True
+        self.abort_reason = reason or "unspecified"
+        self.cancelled = True
+        if self.root_bb is not None:
+            self.root_bb.set("_abort_requested", True)
+            self.root_bb.set("_abort_reason", self.abort_reason)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -916,6 +1299,9 @@ UTILITY_REGISTRY: dict[str, type[TreeNode]] = {
     "HumanConfirm": HumanConfirmNode,
     "HumanInput": HumanInputNode,
     "HumanTask": HumanTaskNode,
+    # Resource ownership
+    "AcquireLease": AcquireLeaseNode,
+    "ReleaseLease": ReleaseLeaseNode,
 }
 
 CONTROL_REGISTRY: dict[str, type[TreeNode]] = {

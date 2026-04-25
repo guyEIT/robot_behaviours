@@ -63,11 +63,16 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Serve the built React app with Python's http.server
+    # Serve the built React app with a thin no-cache wrapper around
+    # http.server. Vanilla `python -m http.server` lets the browser cache
+    # `index.html` indefinitely, so users keep seeing stale UI after
+    # `pixi run dashboard-build`. The wrapper sets Cache-Control: no-store
+    # on entry-point HTML/JS and immutable on hashed /assets/ bundles.
     dashboard_port = LaunchConfiguration("dashboard_port")
+    serve_script = os.path.join(pkg_share, "scripts", "serve_dashboard.py")
     static_server = ExecuteProcess(
         cmd=[
-            "python3", "-m", "http.server",
+            "python3", serve_script,
             dashboard_port,
             "--directory", www_dir,
             "--bind", "0.0.0.0",

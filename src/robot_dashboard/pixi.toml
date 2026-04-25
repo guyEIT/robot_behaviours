@@ -7,4 +7,5 @@ extra-input-globs = [
   "config/**/*",
   "frontend/dist/**/*",
   "launch/**/*.py",
+  "scripts/**/*.py",
 ]

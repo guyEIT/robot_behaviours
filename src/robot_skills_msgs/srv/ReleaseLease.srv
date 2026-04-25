@@ -1,0 +1,8 @@
+# Voluntarily return a lease. Idempotent: releasing an already-gone lease
+# returns success=true.
+
+string lease_id
+string reason                   # optional human-readable reason for release
+---
+bool success
+string message                  # diagnostic (e.g. "lease already expired" — still success)

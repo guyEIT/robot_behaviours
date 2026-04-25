@@ -9,8 +9,9 @@ install(DIRECTORY frontend/dist/
   OPTIONAL  # Allow colcon build to succeed even if frontend hasn't been built yet
 )
 
-# Install launch and config
+# Install launch, config, and the static-server helper
 install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)
 install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
+install(DIRECTORY scripts/ DESTINATION share/${PROJECT_NAME}/scripts)
 
 ament_package()

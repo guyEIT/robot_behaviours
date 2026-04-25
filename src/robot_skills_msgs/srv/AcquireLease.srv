@@ -1,0 +1,18 @@
+# Request an exclusive lease on a named resource.
+#
+# A successful acquire returns an opaque lease_id the caller must present
+# to renew or release. The lease expires at `expires_at` unless renewed;
+# expiry publishes a `revoked` LeaseEvent so anyone holding keepalive
+# responsibility can notice.
+
+string resource_id              # e.g. "meca500" or "/meca500/skill_atoms/move_to_named_config"
+string holder_id                # caller-supplied (task_id, process name, "dashboard", ...)
+float32 ttl_sec                 # how long the lease should live before needing a renew
+bool wait                       # if held by someone else, block until free
+float32 wait_timeout_sec        # only used when wait=true; 0 means no bound
+---
+bool success
+string lease_id                 # opaque UUID; empty on failure
+string reason                   # human-readable explanation (empty on success)
+builtin_interfaces/Time expires_at
+string current_holder           # on failure-held, who currently owns the resource

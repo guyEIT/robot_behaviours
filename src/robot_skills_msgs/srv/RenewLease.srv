@@ -1,0 +1,9 @@
+# Renew an existing lease. Must be called before expires_at or the lease
+# will be revoked and this service will return success=false.
+
+string lease_id
+float32 ttl_sec                 # new ttl; if <= 0 the broker reuses the lease's prior ttl
+---
+bool success
+builtin_interfaces/Time expires_at
+string reason                   # e.g. "unknown lease_id" or "lease already expired"

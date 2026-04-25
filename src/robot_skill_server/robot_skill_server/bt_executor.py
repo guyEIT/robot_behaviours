@@ -32,7 +32,8 @@ from diagnostic_updater import Updater
 from std_msgs.msg import String
 
 from robot_skills_msgs.action import ExecuteBehaviorTree
-from robot_skills_msgs.msg import LogEvent, TaskState
+from robot_skills_msgs.msg import LeaseEvent, LogEvent, TaskState
+from robot_skills_msgs.srv import ReleaseLease
 
 from robot_skill_server.tree_executor import (
     Blackboard,
@@ -77,6 +78,15 @@ class BtExecutor(Node):
         )
         self._log_event_pub = self.create_publisher(
             LogEvent, "/skill_server/log_events", 10
+        )
+
+        # Listen for lease lifecycle; 'revoked' on a lease we hold triggers
+        # hard-cancel of the executing tree.
+        self._lease_event_sub = self.create_subscription(
+            LeaseEvent,
+            "/skill_server/lease_events",
+            self._on_lease_event,
+            20,
         )
 
         self._current_task_id: Optional[str] = None
@@ -155,16 +165,28 @@ class BtExecutor(Node):
                     f"Available: {list(trees.keys())}"
                 )
 
-            # Create execution context
-            ctx = ExecutionContext(self, trees)
+            # Create execution context. task_name + started_at travel with
+            # the ctx so per-skill TaskState publishes (emitted from
+            # tree_executor's on_skill_* hooks) carry the right correlation
+            # info for the dashboard's BT viewer.
+            ctx = ExecutionContext(
+                self, trees, task_id=task_id, task_name=goal.tree_name,
+            )
+            ctx.started_at = self._task_started_at
             ctx.total_action_nodes = count_action_nodes(main_tree)
             self._current_ctx = ctx
 
             # Execute the tree
             bb = Blackboard()
-            tree_status = await main_tree.tick(bb, ctx)
+            ctx.root_bb = bb
+            try:
+                tree_status = await main_tree.tick(bb, ctx)
+            finally:
+                # Best-effort release of any leases the tree held but didn't
+                # <ReleaseLease/> itself — e.g. mid-tree failure, cancel,
+                # or a forgotten release in the XML.
+                self._release_surviving_leases(ctx)
 
-            self._current_ctx = None
             elapsed = time.time() - start_time
 
             if ctx.cancelled:
@@ -177,9 +199,12 @@ class BtExecutor(Node):
             else:
                 final_status = "FAILURE"
                 success = False
+            self._current_ctx = None
 
         except Exception as e:
             import traceback
+            if self._current_ctx is not None:
+                self._release_surviving_leases(self._current_ctx)
             self._current_ctx = None
             elapsed = time.time() - start_time
             self.get_logger().error(
@@ -254,6 +279,69 @@ class BtExecutor(Node):
 
         self._current_task_id = None
         return result
+
+    # ── Lease integration ────────────────────────────────────────────────────
+
+    def _on_lease_event(self, msg: LeaseEvent):
+        """React to lease lifecycle messages.
+
+        Only 'revoked' events matter here: if the revoked lease belongs to
+        the currently-running tree, trigger hard-cancel. Other events
+        (acquired/renewed/released) are informational — the broker is the
+        source of truth.
+        """
+        if msg.event != "revoked":
+            return
+        ctx = self._current_ctx
+        if ctx is None:
+            return
+        if msg.lease_id not in ctx.active_lease_ids():
+            return
+        reason = (
+            f"lease_revoked: {msg.resource_id} ({msg.reason or 'unknown'})"
+        )
+        self.get_logger().warning(
+            f"Lease {msg.lease_id[:8]} on '{msg.resource_id}' revoked mid-tree "
+            f"— hard-cancelling (reason={msg.reason})"
+        )
+        ctx.request_abort(reason)
+        # Interrupt any in-flight action so the RosActionNode await returns.
+        self._cancel_inflight(ctx)
+
+    def _cancel_inflight(self, ctx: ExecutionContext):
+        """Best-effort cancel of every goal the tree currently has in flight.
+        cancel_goal_async is non-blocking; the action server responds with
+        CANCELED, the await in RosActionNode.tick resumes with a failed
+        result, and the tree unwinds via FAILURE propagation."""
+        inflight = getattr(ctx, "inflight_goals", None)
+        if not inflight:
+            return
+        for gh in list(inflight):
+            try:
+                gh.cancel_goal_async()
+            except Exception as e:
+                self.get_logger().debug(
+                    f"cancel_goal_async on {gh}: {type(e).__name__}: {e}"
+                )
+
+    def _release_surviving_leases(self, ctx: ExecutionContext):
+        """Release any leases the tree still holds at exit. Prevents zombie
+        leases when a tree is cancelled, fails, or raises mid-execution."""
+        client = ctx.get_release_lease_client()
+        for lease_id in list(ctx.active_lease_ids()):
+            resource = ctx.stop_lease_keepalive(lease_id)
+            try:
+                req = ReleaseLease.Request()
+                req.lease_id = lease_id
+                req.reason = "tree_ended"
+                client.call_async(req)  # fire-and-forget
+                self.get_logger().info(
+                    f"Released surviving lease {lease_id[:8]} on '{resource}'"
+                )
+            except Exception as e:
+                self.get_logger().warning(
+                    f"Failed to release surviving lease {lease_id[:8]}: {e}"
+                )
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 

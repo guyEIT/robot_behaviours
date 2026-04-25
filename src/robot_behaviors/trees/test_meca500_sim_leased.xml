@@ -1,0 +1,71 @@
+<!--
+  Meca500 sim smoke test with resource-ownership lease.
+
+  Identical to test_meca500_sim.xml but wrapped in an <AcquireLease>/
+  <ReleaseLease> pair so that a second concurrent run against the same
+  robot is refused at the broker instead of racing for the arm.
+
+  Behavior:
+    1. AcquireLease on "meca500" (10 s TTL, keepalive at ~3.3 s period)
+    2. CheckSystemReady → home → joint configs → home (as per base tree)
+    3. ReleaseLease on exit
+
+  To test contention, fire two concurrent tree goals: the second's
+  AcquireLease returns FAILURE with `reason="resource 'meca500' is held
+  by ...". The first run proceeds uninterrupted.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MecaSimSmokeTestLeased">
+
+  <BehaviorTree ID="MecaSimSmokeTestLeased">
+    <Sequence name="meca_sim_leased_main">
+      <LogEvent name="log_start"
+                event_name="meca_sim_leased_test_start"
+                severity="info"
+                message="Meca500 leased sim test starting"/>
+
+      <AcquireLease name="acquire_meca"
+                    resource="meca500"
+                    ttl="10.0"
+                    wait="false"
+                    output_key="{meca_lease}"/>
+
+      <CheckSystemReady name="check_meca_ready"
+                        server_name="/meca500/skill_atoms/check_system_ready"
+                        timeout_sec="10.0"/>
+
+      <MoveToNamedConfig name="go_home_start"
+                         server_name="/meca500/skill_atoms/move_to_named_config"
+                         config_name="home"
+                         velocity_scaling="0.3"/>
+
+      <MoveToJointConfig name="go_to_pre_pick"
+                         server_name="/meca500/skill_atoms/move_to_joint_config"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.3"/>
+
+      <WaitForDuration name="settle" seconds="0.5"/>
+
+      <MoveToJointConfig name="go_to_over_seed"
+                         server_name="/meca500/skill_atoms/move_to_joint_config"
+                         joint_positions="1.3954, 0.5605, 0.4706, 0.0727, 0.5396, -0.3589"
+                         velocity_scaling="0.25"/>
+
+      <WaitForDuration name="settle_again" seconds="0.5"/>
+
+      <MoveToNamedConfig name="go_home_end"
+                         server_name="/meca500/skill_atoms/move_to_named_config"
+                         config_name="home"
+                         velocity_scaling="0.3"/>
+
+      <ReleaseLease name="release_meca"
+                    lease_id="{meca_lease}"
+                    reason="test_complete"/>
+
+      <LogEvent name="log_done"
+                event_name="meca_sim_leased_test_done"
+                severity="info"
+                message="Meca500 leased sim test complete"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

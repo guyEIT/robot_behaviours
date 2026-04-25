@@ -55,6 +55,9 @@ from .plate_registry import PlateRegistry, PlateRegistryError
 
 
 DEFAULT_STATE_FILE = "~/.local/state/liconic/plate_registry.json"
+# Sim mode keeps its registry well away from the real-hardware path so the
+# wipe-on-startup behaviour can't destroy production state by accident.
+DEFAULT_STATE_FILE_SIM = "~/.local/state/liconic/plate_registry_sim.json"
 
 
 class LiconicActionServer(Node):
@@ -82,7 +85,6 @@ class LiconicActionServer(Node):
         total_cassettes = int(
             self.get_parameter("total_cassettes").get_parameter_value().integer_value
         )
-        state_file = Path(self._str_param("state_file")).expanduser()
         connect_on_start = bool(
             self.get_parameter("connect_on_start").get_parameter_value().bool_value
         )
@@ -90,17 +92,25 @@ class LiconicActionServer(Node):
             self.get_parameter("simulation").get_parameter_value().bool_value
         )
 
+        # Resolve state_file. If the operator passed an explicit value it
+        # wins. Otherwise default to *_sim.json under sim mode so the sim's
+        # wipe-on-startup behaviour can never touch the real registry —
+        # critical when both real-hardware and sim launches share a host.
+        state_file_param = self._str_param("state_file")
+        if state_file_param == DEFAULT_STATE_FILE and simulation:
+            state_file_param = DEFAULT_STATE_FILE_SIM
+        state_file = Path(state_file_param).expanduser()
+
         self._actions_cb_group = ReentrantCallbackGroup()
         self._services_cb_group = MutuallyExclusiveCallbackGroup()
 
         # In sim mode the registry is ephemeral — the sim backend doesn't
-        # model persistent plate locations (plates are only tracked for the
-        # lifetime of the process), so starting with a stale registry from
-        # a previous real-hardware run would make smoke tests fail on the
-        # duplicate plate_name check. Wipe the state file first.
+        # model persistent plate locations across server restarts, so a
+        # stale entry from a previous sim run would make smoke tests fail
+        # on the duplicate plate_name check. Wipe only the sim file.
         if simulation and state_file.exists():
             self.get_logger().info(
-                f"simulation=true — clearing existing plate registry at {state_file}"
+                f"simulation=true — clearing existing sim plate registry at {state_file}"
             )
             state_file.unlink()
 

@@ -22,11 +22,16 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/TaskStep.msg"
   "msg/HumanPrompt.msg"
   "msg/HumanResponse.msg"
+  "msg/LeaseState.msg"
+  "msg/LeaseEvent.msg"
   # Services
   "srv/GetSkillDescriptions.srv"
   "srv/ComposeTask.srv"
   "srv/RegisterCompoundSkill.srv"
   "srv/RegisterSkill.srv"
+  "srv/AcquireLease.srv"
+  "srv/RenewLease.srv"
+  "srv/ReleaseLease.srv"
   # Actions
   "action/MoveToCartesianPose.action"
   "action/MoveToNamedConfig.action"
