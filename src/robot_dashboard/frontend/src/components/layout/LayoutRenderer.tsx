@@ -6,6 +6,7 @@ import { PANELS, PANEL_MAP } from "./PanelRegistry";
 import { PanelSlot } from "./PanelHost";
 import { X, Columns2, Rows2 } from "lucide-react";
 import clsx from "clsx";
+import { IconBtn } from "../ui";
 
 function SplitMenu({
   panelId,
@@ -20,19 +21,20 @@ function SplitMenu({
   const splitPanel = useLayoutStore((s) => s.splitPanel);
   const activeIds = collectPanelIds(layout);
 
-  // Only show panels not already in the layout
   const available = PANELS.filter((p) => !activeIds.has(p.id));
 
   if (available.length === 0) {
     return (
-      <div className="absolute top-full left-0 mt-1 w-40 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-2">
-        <p className="text-[10px] text-gray-500 text-center py-1">All panels active</p>
+      <div className="absolute top-full left-0 mt-1 w-44 bg-paper border border-hair rounded-none z-50 p-2">
+        <p className="text-[10px] text-muted text-center py-1 font-mono uppercase tracking-[0.1em]">
+          All panels active
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="absolute top-full left-0 mt-1 w-40 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-1">
+    <div className="absolute top-full left-0 mt-1 w-48 bg-paper border border-hair rounded-none z-50 p-1">
       {available.map((p) => (
         <button
           key={p.id}
@@ -40,9 +42,9 @@ function SplitMenu({
             splitPanel(panelId, p.id, direction);
             onClose();
           }}
-          className="w-full flex items-center gap-2 px-2 py-1 rounded text-[10px] text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+          className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-ink-soft hover:bg-cream transition-colors"
         >
-          {p.icon}
+          <span className="text-muted">{p.icon}</span>
           {p.label}
         </button>
       ))}
@@ -56,39 +58,35 @@ function PanelTitleBar({ panelId }: { panelId: PanelId }) {
   const info = PANEL_MAP[panelId];
 
   return (
-    <div className="h-7 flex items-center gap-1.5 px-2 bg-gray-900/80 border-b border-gray-800 shrink-0 relative">
-      <span className="text-gray-400">{info?.icon}</span>
-      <span className="text-[10px] font-semibold text-gray-300 uppercase tracking-wide">
+    <div className="h-8 flex items-center gap-2 px-3 bg-cream-deep border-b border-hair shrink-0 relative">
+      <span className="text-muted">{info?.icon}</span>
+      <span className="font-mono text-[10px] font-semibold text-ink uppercase tracking-[0.12em]">
         {info?.label ?? panelId}
       </span>
       <div className="ml-auto flex items-center gap-0.5">
-        <button
+        <IconBtn
           onClick={() => setSplitDir(splitDir === "horizontal" ? null : "horizontal")}
-          className={clsx(
-            "p-0.5 rounded",
-            splitDir === "horizontal" ? "text-blue-400 bg-blue-500/10" : "text-gray-600 hover:text-gray-300"
-          )}
+          active={splitDir === "horizontal"}
+          className="!w-6 !h-6"
           title="Split left/right"
         >
           <Columns2 className="w-3 h-3" />
-        </button>
-        <button
+        </IconBtn>
+        <IconBtn
           onClick={() => setSplitDir(splitDir === "vertical" ? null : "vertical")}
-          className={clsx(
-            "p-0.5 rounded",
-            splitDir === "vertical" ? "text-blue-400 bg-blue-500/10" : "text-gray-600 hover:text-gray-300"
-          )}
+          active={splitDir === "vertical"}
+          className="!w-6 !h-6"
           title="Split top/bottom"
         >
           <Rows2 className="w-3 h-3" />
-        </button>
-        <button
+        </IconBtn>
+        <IconBtn
           onClick={() => removePanel(panelId)}
-          className="p-0.5 text-gray-600 hover:text-gray-300 rounded"
+          className="!w-6 !h-6"
           title="Close panel"
         >
           <X className="w-3 h-3" />
-        </button>
+        </IconBtn>
       </div>
       {splitDir && (
         <SplitMenu
@@ -110,7 +108,7 @@ export default function LayoutRenderer({
 }) {
   if (node.type === "leaf") {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full bg-paper border-l border-hair-soft">
         <PanelTitleBar panelId={node.panelId} />
         <div className="flex-1 overflow-hidden">
           <PanelSlot panelId={node.panelId} />
@@ -125,11 +123,12 @@ export default function LayoutRenderer({
         <React.Fragment key={`${path.join("-")}-${i}`}>
           {i > 0 && (
             <PanelResizeHandle
-              className={
+              className={clsx(
+                "bg-hair-soft hover:bg-terracotta-tint transition-colors",
                 node.direction === "horizontal"
-                  ? "w-1 hover:bg-blue-500/50 bg-gray-800 transition-colors cursor-col-resize"
-                  : "h-1 hover:bg-blue-500/50 bg-gray-800 transition-colors cursor-row-resize"
-              }
+                  ? "w-px hover:w-1 cursor-col-resize"
+                  : "h-px hover:h-1 cursor-row-resize",
+              )}
             />
           )}
           <Panel defaultSize={child.size} minSize={5}>

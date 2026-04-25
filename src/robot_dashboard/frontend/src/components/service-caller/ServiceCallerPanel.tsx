@@ -11,6 +11,8 @@ import {
   Clock,
 } from "lucide-react";
 import clsx from "clsx";
+import { Button, Eyebrow, Textarea, Chip } from "../ui";
+import type { ChipState } from "../ui";
 
 interface ServiceInfo {
   name: string;
@@ -37,7 +39,6 @@ export default function ServiceCallerPanel() {
   const [history, setHistory] = useState<CallRecord[]>([]);
   const [nextId, setNextId] = useState(0);
 
-  // Fetch service names only (types are resolved on selection)
   useEffect(() => {
     if (!connected) return;
     const ros = getRos();
@@ -143,23 +144,35 @@ export default function ServiceCallerPanel() {
     );
   }, [selectedService, requestJson, nextId]);
 
-  // Resolve type lazily on selection, then apply template
   const handleSelectService = (svc: ServiceInfo) => {
     const applyTemplate = (resolved: ServiceInfo) => {
       const templates: Record<string, string> = {
         "robot_skills_msgs/srv/GetSkillDescriptions": JSON.stringify(
           { filter_categories: [], filter_tags: [], include_compounds: true, include_pddl: false },
-          null, 2
+          null,
+          2,
         ),
         "robot_skills_msgs/srv/ComposeTask": JSON.stringify(
           {
             task_name: "my_task",
             task_description: "",
-            steps: [{ skill_name: "move_to_named_config", parameters_json: '{"config_name":"home"}', input_blackboard_keys: [], output_blackboard_keys: [], retry_on_failure: false, max_retries: 0, condition_expression: "", description: "Go home" }],
+            steps: [
+              {
+                skill_name: "move_to_named_config",
+                parameters_json: '{"config_name":"home"}',
+                input_blackboard_keys: [],
+                output_blackboard_keys: [],
+                retry_on_failure: false,
+                max_retries: 0,
+                condition_expression: "",
+                description: "Go home",
+              },
+            ],
             sequential: true,
             add_precondition_checks: false,
           },
-          null, 2
+          null,
+          2,
         ),
       };
       setRequestJson(templates[resolved.type] || "{}");
@@ -169,7 +182,6 @@ export default function ServiceCallerPanel() {
       setSelectedService(svc);
       applyTemplate(svc);
     } else {
-      // Resolve type on first selection
       setSelectedService(svc);
       setRequestJson("{}");
       getRos().getServiceType(
@@ -177,34 +189,32 @@ export default function ServiceCallerPanel() {
         (type: string) => {
           const resolved = { ...svc, type };
           setSelectedService(resolved);
-          setServices((prev) =>
-            prev.map((s) => (s.name === svc.name ? resolved : s))
-          );
+          setServices((prev) => prev.map((s) => (s.name === svc.name ? resolved : s)));
           applyTemplate(resolved);
         },
-        () => {}
+        () => {},
       );
     }
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-paper">
       {/* Left: service list */}
-      <div className="w-80 border-r border-gray-800 flex flex-col shrink-0">
-        <div className="px-3 py-2 border-b border-gray-800">
+      <div className="w-80 border-r border-hair flex flex-col shrink-0">
+        <div className="px-4 py-3 border-b border-hair">
           <div className="flex items-center gap-2 mb-2">
-            <PhoneCall className="w-4 h-4 text-blue-400" />
-            <h2 className="text-sm font-semibold">Services</h2>
-            <span className="text-xs text-gray-500">{services.length}</span>
+            <PhoneCall className="w-4 h-4 text-terracotta" />
+            <h2 className="text-[14px] font-medium text-ink">Services</h2>
+            <Eyebrow size="sm" tone="muted">{services.length}</Eyebrow>
           </div>
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
             <input
               type="text"
-              placeholder="Filter services..."
+              placeholder="Filter services…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-7 pr-3 py-1 text-xs bg-gray-800 border border-gray-700 rounded focus:border-blue-500 focus:outline-none text-gray-200 placeholder-gray-500"
+              className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-paper border border-hair rounded-DEFAULT focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
             />
           </div>
         </div>
@@ -215,23 +225,23 @@ export default function ServiceCallerPanel() {
               key={svc.name}
               onClick={() => handleSelectService(svc)}
               className={clsx(
-                "px-3 py-1.5 border-b border-gray-800/50 cursor-pointer hover:bg-gray-800/50 transition-colors flex items-center gap-2",
-                selectedService?.name === svc.name && "bg-gray-800/80"
+                "px-3 py-2 border-b border-hair-soft border-l-2 cursor-pointer hover:bg-cream transition-colors flex items-center gap-2",
+                selectedService?.name === svc.name
+                  ? "border-l-terracotta bg-terracotta-tint"
+                  : "border-l-transparent",
               )}
             >
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-gray-200 truncate font-mono">
+                <div className="text-[11.5px] text-ink truncate font-mono tracking-[0.04em]">
                   {svc.name}
                 </div>
-                <div className="text-[9px] text-gray-500 truncate">
-                  {svc.type || "unknown"}
-                </div>
+                <div className="text-[10px] text-muted truncate">{svc.type || "unknown"}</div>
               </div>
-              <ChevronRight className="w-3 h-3 text-gray-700 shrink-0" />
+              <ChevronRight className="w-3 h-3 text-muted shrink-0" />
             </div>
           ))}
           {filtered.length === 0 && (
-            <p className="text-xs text-gray-600 text-center py-8">
+            <p className="text-[12px] text-muted text-center py-8">
               {connected ? "No services found" : "Not connected"}
             </p>
           )}
@@ -242,93 +252,84 @@ export default function ServiceCallerPanel() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {selectedService ? (
           <>
-            {/* Service header */}
-            <div className="px-4 py-2 border-b border-gray-800">
-              <div className="text-xs font-mono text-gray-200">
+            <div className="px-5 py-3 border-b border-hair">
+              <div className="text-[13px] font-mono text-ink truncate tracking-[0.04em]">
                 {selectedService.name}
               </div>
-              <div className="text-[10px] text-gray-500">
+              <div className="text-[11px] text-muted font-mono mt-0.5 tracking-[0.04em]">
                 {selectedService.type}
               </div>
             </div>
 
-            {/* Request editor */}
-            <div className="p-3 border-b border-gray-800">
-              <div className="text-[10px] text-gray-500 font-medium uppercase mb-1">
-                Request
-              </div>
-              <textarea
+            <div className="p-4 border-b border-hair-soft bg-cream-deep">
+              <Eyebrow size="sm" className="block mb-2">Request</Eyebrow>
+              <Textarea
                 value={requestJson}
                 onChange={(e) => setRequestJson(e.target.value)}
                 rows={6}
-                className="w-full px-2 py-1.5 text-[10px] font-mono bg-gray-800 border border-gray-700 rounded focus:border-blue-500 focus:outline-none text-gray-300 resize-y"
+                mono
+                className="resize-y"
               />
-              <button
+              <Button
                 onClick={handleCall}
                 disabled={calling}
-                className="mt-1.5 flex items-center gap-1.5 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white disabled:bg-gray-700 disabled:text-gray-400"
+                variant="primary"
+                size="sm"
+                leftIcon={
+                  calling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />
+                }
+                className="mt-3"
               >
-                {calling ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Play className="w-3 h-3" />
-                )}
                 Call Service
-              </button>
+              </Button>
             </div>
 
-            {/* History */}
-            <div className="flex-1 overflow-auto p-3 space-y-2">
-              <div className="text-[10px] text-gray-500 font-medium uppercase">
-                Call History
-              </div>
+            <div className="flex-1 overflow-auto p-4 space-y-2">
+              <Eyebrow size="sm" tone="muted" className="block">Call History</Eyebrow>
               {history
                 .filter((r) => r.service === selectedService.name)
-                .map((record) => (
-                  <div
-                    key={record.id}
-                    className={clsx(
-                      "p-2 rounded border text-[10px]",
-                      record.error
-                        ? "border-red-800/50 bg-red-950/20"
-                        : "border-gray-800 bg-gray-900/50"
-                    )}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-gray-500">
-                        {record.timestamp.toLocaleTimeString()}
-                      </span>
-                      {record.durationMs != null && (
-                        <span className="flex items-center gap-0.5 text-gray-500">
-                          <Clock className="w-2.5 h-2.5" />
-                          {record.durationMs}ms
-                        </span>
+                .map((record) => {
+                  const chipState: ChipState = record.error ? "failed" : "done";
+                  return (
+                    <div
+                      key={record.id}
+                      className={clsx(
+                        "p-3 border text-[11px]",
+                        record.error ? "border-err bg-err-soft" : "border-hair bg-paper",
                       )}
-                      <span
-                        className={
-                          record.error ? "text-red-400 font-bold" : "text-green-400 font-bold"
-                        }
-                      >
-                        {record.error ? "ERROR" : "OK"}
-                      </span>
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-muted font-mono tracking-[0.04em]">
+                          {record.timestamp.toLocaleTimeString()}
+                        </span>
+                        {record.durationMs != null && (
+                          <span className="flex items-center gap-1 text-muted font-mono tracking-[0.04em]">
+                            <Clock className="w-2.5 h-2.5" />
+                            {record.durationMs}ms
+                          </span>
+                        )}
+                        <Chip state={chipState}>{record.error ? "Error" : "OK"}</Chip>
+                      </div>
+                      {record.error && (
+                        <pre className="text-err whitespace-pre-wrap font-mono tracking-[0.02em]">
+                          {record.error}
+                        </pre>
+                      )}
+                      {record.response && (
+                        <pre className="sociius-code max-h-40 whitespace-pre-wrap text-[10.5px]">
+                          {record.response}
+                        </pre>
+                      )}
                     </div>
-                    {record.error && (
-                      <pre className="text-red-300 whitespace-pre-wrap">{record.error}</pre>
-                    )}
-                    {record.response && (
-                      <pre className="text-gray-300 whitespace-pre-wrap max-h-40 overflow-auto">
-                        {record.response}
-                      </pre>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+          <div className="flex flex-col items-center justify-center h-full text-muted bg-cream-deep">
             <PhoneCall className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">Select a service</p>
-            <p className="text-xs">Click a service to call it</p>
+            <p className="text-[14px] text-ink-soft">Select a service</p>
+            <p className="text-[12px]">Click a service to call it</p>
           </div>
         )}
       </div>

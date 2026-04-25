@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useSkillStore } from "../../stores/skill-store";
 import { useServiceCall } from "../../hooks/useServiceCall";
 import { useActionClient } from "../../hooks/useActionClient";
@@ -19,10 +19,26 @@ import {
   FileCode,
   Loader2,
   AlertTriangle,
-  CheckCircle,
   Rocket,
+  Search,
+  PanelRightOpen,
+  PanelRightClose,
+  GripVertical,
+  Pencil,
+  Check,
 } from "lucide-react";
 import clsx from "clsx";
+import {
+  Button,
+  Chip,
+  Eyebrow,
+  Input,
+  Textarea,
+  Banner,
+  TabBar,
+  IconBtn,
+} from "../ui";
+import type { ChipState } from "../ui";
 
 // Predefined trees with embedded XML from robot_behaviors/trees/
 const PRESET_TREES = [
@@ -136,97 +152,6 @@ const PRESET_TREES = [
 </root>`,
   },
   {
-    name: "FullDemo",
-    label: "Full Demo",
-    description: "Comprehensive demo: enable, scene setup, survey, pick, transport, place, cleanup — exercises all skills",
-    xml: `<root BTCPP_format="4" main_tree_to_execute="FullDemo">
-  <BehaviorTree ID="FullDemo">
-    <Sequence name="full_demo_main">
-      <SubTree ID="Startup" name="startup"/>
-      <SubTree ID="SetupScene" name="setup_scene"/>
-      <SubTree ID="Survey" name="survey"/>
-      <RetryUntilSuccessful name="pick_with_retry" num_attempts="2">
-        <SubTree ID="Pick" name="pick_object" detected_pose="{pick_pose}"/>
-      </RetryUntilSuccessful>
-      <SubTree ID="Transport" name="transport"/>
-      <SubTree ID="Place" name="place_object"/>
-      <SubTree ID="Cleanup" name="cleanup"/>
-    </Sequence>
-  </BehaviorTree>
-  <BehaviorTree ID="Startup">
-    <Sequence name="startup_seq">
-      <LogEvent name="log_start" event_name="demo_start" severity="info" message="Full demo starting"/>
-      <RobotEnable name="enable_robot" enable="true"/>
-      <SetVelocityOverride name="set_global_velocity" scaling="0.5" velocity_override="{velocity_override}"/>
-      <RecordRosbag name="start_recording" output_path="/tmp/demo_recording" duration_sec="300.0"/>
-      <MoveToNamedConfig name="go_home_initial" config_name="home" velocity_scaling="0.4"/>
-      <LogEvent name="log_startup_done" event_name="startup_complete" severity="info" message="Robot enabled and homed"/>
-    </Sequence>
-  </BehaviorTree>
-  <BehaviorTree ID="SetupScene">
-    <Sequence name="setup_scene_seq">
-      <SetPose name="set_table_pose" x="0.4" y="0.0" z="-0.01" frame_id="world" pose="{table_pose}"/>
-      <UpdatePlanningScene name="add_table" object_id="table" operation="add" pose="{table_pose}" shape_type="box"/>
-      <SetDigitalIO name="lights_on" pin_name="workspace_light" value="true"/>
-      <LogEvent name="log_scene_ready" event_name="scene_setup" severity="info" message="Planning scene and I/O configured"/>
-    </Sequence>
-  </BehaviorTree>
-  <BehaviorTree ID="Survey">
-    <Sequence name="survey_seq">
-      <MoveToNamedConfig name="go_observe" config_name="observe" velocity_scaling="0.5"/>
-      <GetCurrentPose name="read_eef_pose" frame_id="world" pose="{observe_eef_pose}"/>
-      <CapturePointCloud name="capture_cloud" timeout_sec="5.0" apply_filters="true"/>
-      <WaitForDuration name="settle" seconds="0.5"/>
-      <LogEvent name="log_survey_done" event_name="survey_complete" severity="info" message="Point cloud captured from observation pose"/>
-    </Sequence>
-  </BehaviorTree>
-  <BehaviorTree ID="Pick">
-    <Sequence name="pick_seq">
-      <DetectObject name="find_object" object_class="seed" confidence_threshold="0.7" max_detections="5" timeout_sec="8.0" require_pose="true" best_object_pose="{detected_pose}"/>
-      <TransformPose name="pose_to_world" input_pose="{detected_pose}" target_frame="world" output_pose="{pick_pose_world}"/>
-      <ComputePreGraspPose name="calc_pregrasp" input_pose="{pick_pose_world}" z_offset_m="0.06" output_pose="{pregrasp_pose}"/>
-      <GripperControl name="open_gripper" command="open"/>
-      <MoveToCartesianPose name="go_pregrasp" target_pose="{pregrasp_pose}" velocity_scaling="0.4"/>
-      <MoveCartesianLinear name="descend_linear" target_pose="{pick_pose_world}" velocity_scaling="0.05" step_size="0.002"/>
-      <GripperControl name="grasp_object" command="close" force_limit="8.0" object_grasped="{object_grasped}" final_position="{grasp_position}"/>
-      <CheckGraspSuccess name="verify_grasp" object_grasped="{object_grasped}" final_position="{grasp_position}" min_grasp_width="0.001"/>
-      <MoveToCartesianPose name="lift_object" target_pose="{pregrasp_pose}" velocity_scaling="0.15"/>
-      <LogEvent name="log_pick_done" event_name="pick_success" severity="info" message="Object grasped and lifted"/>
-    </Sequence>
-  </BehaviorTree>
-  <BehaviorTree ID="Transport">
-    <Sequence name="transport_seq">
-      <CheckCollision name="check_collision_before_transport"/>
-      <LookupTransform name="read_base_to_hand" source_frame="world" target_frame="panda_hand" pose="{hand_pose_before_transport}"/>
-      <MoveToNamedConfig name="go_ready" config_name="ready" velocity_scaling="0.3"/>
-      <MoveToJointConfig name="go_place_zone" joint_positions="0.0;-0.5;0.0;-2.0;0.0;1.5;0.7" velocity_scaling="0.3"/>
-      <LogEvent name="log_transport_done" event_name="transport_complete" severity="info" message="Object transported to place zone"/>
-    </Sequence>
-  </BehaviorTree>
-  <BehaviorTree ID="Place">
-    <Sequence name="place_seq">
-      <SetPose name="set_place_pose" x="0.4" y="0.2" z="0.05" frame_id="world" pose="{place_pose}"/>
-      <ComputePreGraspPose name="calc_pre_place" input_pose="{place_pose}" z_offset_m="0.08" output_pose="{pre_place_pose}"/>
-      <MoveToCartesianPose name="go_pre_place" target_pose="{pre_place_pose}" velocity_scaling="0.3"/>
-      <MoveCartesianLinear name="descend_to_place" target_pose="{place_pose}" velocity_scaling="0.05" step_size="0.002"/>
-      <GripperControl name="release_object" command="open"/>
-      <WaitForDuration name="settle_after_release" seconds="0.3"/>
-      <MoveToCartesianPose name="retreat_from_place" target_pose="{pre_place_pose}" velocity_scaling="0.3"/>
-      <LogEvent name="log_place_done" event_name="place_success" severity="info" message="Object placed and retreated"/>
-    </Sequence>
-  </BehaviorTree>
-  <BehaviorTree ID="Cleanup">
-    <Sequence name="cleanup_seq">
-      <UpdatePlanningScene name="remove_table" object_id="table" operation="remove"/>
-      <SetDigitalIO name="lights_off" pin_name="workspace_light" value="false"/>
-      <GripperControl name="open_gripper_final" command="open"/>
-      <MoveToNamedConfig name="go_home_final" config_name="home" velocity_scaling="0.3"/>
-      <LogEvent name="log_demo_complete" event_name="demo_complete" severity="info" message="Full demo completed successfully"/>
-    </Sequence>
-  </BehaviorTree>
-</root>`,
-  },
-  {
     name: "HumanInteractionDemo",
     label: "Human Interaction Demo",
     description: "Notification, warning, confirm, input, and task assignment — exercises all human interaction nodes",
@@ -241,18 +166,9 @@ const PRESET_TREES = [
       <HumanNotification name="notify_confirmed" title="Confirmed" message="Operator confirmed workspace is clear. Proceeding."/>
       <HumanInput name="select_target" title="Select Target Location" message="Where should the robot place the object?" input_type="choice" choices="Station A;Station B;Station C" timeout_sec="120" value="{target_station}"/>
       <HumanNotification name="notify_selection" title="Target Selected" message="Operator selected a target station. Proceeding to pick."/>
-      <LogEvent name="log_moving_observe" event_name="robot_move" message="Robot moving to observation position" severity="info" tags="human"/>
       <MoveToNamedConfig name="go_observe" config_name="observe" velocity_scaling="0.5"/>
-      <LogEvent name="log_picking" event_name="robot_action" message="Robot performing pick operation" severity="info" tags="human"/>
       <MoveToNamedConfig name="go_home_after_pick" config_name="home" velocity_scaling="0.3"/>
-      <LogEvent name="log_pick_done" event_name="robot_action" message="Robot returned home with object" severity="info" tags="human"/>
-      <Fallback name="inspection_with_recovery">
-        <HumanTask name="inspect_placement" title="Inspect Placement" message="Please visually inspect the placement area and confirm the object is correctly positioned. Press Done when verified or Failed if repositioning is needed." timeout_sec="300" completed="{inspection_ok}" notes="{inspection_notes}"/>
-        <Sequence name="handle_inspection_failure">
-          <HumanWarning name="warn_inspection_failed" title="Inspection Failed" message="Operator reported placement issue. Manual intervention may be needed." severity="error"/>
-          <HumanConfirm name="confirm_continue_anyway" title="Continue Anyway?" message="The inspection failed. Do you want to continue the demo, or reject to abort?" timeout_sec="120" confirmed="{continue_after_fail}"/>
-        </Sequence>
-      </Fallback>
+      <HumanTask name="inspect_placement" title="Inspect Placement" message="Please visually inspect the placement area and confirm the object is correctly positioned." timeout_sec="300" completed="{inspection_ok}" notes="{inspection_notes}"/>
       <HumanNotification name="notify_complete" title="Demo Complete" message="All human interaction nodes exercised successfully."/>
     </Sequence>
   </BehaviorTree>
@@ -269,9 +185,19 @@ interface StepEntry {
   description: string;
 }
 
+const STATUS_TO_CHIP: Record<string, ChipState> = {
+  idle: "idle",
+  pending: "running",
+  active: "running",
+  succeeded: "done",
+  failed: "failed",
+  cancelled: "neutral",
+};
+
+type Mode = "preset" | "compose" | "raw";
+
 export default function BehaviorExecutorPanel() {
   const serverTrees = useAvailableTrees();
-  // Use server-provided trees if available, fall back to hardcoded presets
   const presets = useMemo(() => {
     if (serverTrees.length > 0) {
       return serverTrees.map((t) => ({
@@ -284,16 +210,27 @@ export default function BehaviorExecutorPanel() {
     return PRESET_TREES;
   }, [serverTrees]);
 
-  const [mode, setMode] = useState<"preset" | "compose" | "raw">("preset");
+  const [mode, setMode] = useState<Mode>("preset");
   const [selectedPreset, setSelectedPreset] = useState<string>("");
+  const [presetSearch, setPresetSearch] = useState("");
   const [rawXml, setRawXml] = useState("");
   const [steps, setSteps] = useState<StepEntry[]>([]);
   const [composedXml, setComposedXml] = useState<string | null>(null);
   const [composeWarnings, setComposeWarnings] = useState<string[]>([]);
   const [taskName, setTaskName] = useState("my_task");
   const [executionLog, setExecutionLog] = useState<string[]>([]);
+  const [showDetails, setShowDetails] = useState(false);
+  // Tracks the most recent run's settled status (for the result banner) — separate from
+  // the live actionStatus so the banner persists after the action client returns to "idle".
+  const [lastResult, setLastResult] = useState<{
+    state: "succeeded" | "failed" | "cancelled";
+    name: string;
+    elapsedSec?: number;
+    message?: string;
+  } | null>(null);
 
   const skills = useSkillStore((s) => s.skills);
+  const logEndRef = useRef<HTMLDivElement>(null);
 
   const { call: composeTask, loading: composing } = useServiceCall<
     ComposeTaskRequest,
@@ -312,7 +249,47 @@ export default function BehaviorExecutorPanel() {
 
   const isRunning = actionStatus === "active" || actionStatus === "pending";
 
-  // Load preset tree XML directly from embedded definitions
+  // Auto-scroll execution log
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [executionLog]);
+
+  // Filtered preset list
+  const filteredPresets = useMemo(() => {
+    if (!presetSearch) return presets;
+    const q = presetSearch.toLowerCase();
+    return presets.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.label.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q),
+    );
+  }, [presets, presetSearch]);
+
+  const selectedPresetObj = useMemo(
+    () => presets.find((p) => p.name === selectedPreset),
+    [presets, selectedPreset],
+  );
+
+  // Determine what XML would run, and a friendly label for the run bar
+  const runnableXml = mode === "raw" ? rawXml : composedXml;
+  const runnableLabel =
+    mode === "preset"
+      ? selectedPresetObj?.label ?? null
+      : mode === "compose"
+        ? steps.length > 0
+          ? composedXml
+            ? taskName
+            : null
+          : null
+        : rawXml.trim()
+          ? "Raw BT XML"
+          : null;
+
+  const addLog = (msg: string) => {
+    setExecutionLog((prev) => [...prev.slice(-99), `[${new Date().toLocaleTimeString()}] ${msg}`]);
+  };
+
   const handleLoadPreset = useCallback(
     (presetName: string) => {
       setSelectedPreset(presetName);
@@ -322,17 +299,13 @@ export default function BehaviorExecutorPanel() {
         setRawXml(preset.xml);
         setTaskName(presetName);
         setComposeWarnings([]);
-        addLog(`Loaded preset: ${preset.label} (${preset.xml.length} chars)`);
+        setLastResult(null);
+        addLog(`Loaded ${preset.label}`);
       }
     },
-    [presets]
+    [presets],
   );
 
-  const addLog = (msg: string) => {
-    setExecutionLog((prev) => [...prev.slice(-49), `[${new Date().toLocaleTimeString()}] ${msg}`]);
-  };
-
-  // Add a step to the composer
   const addStep = () => {
     setSteps((prev) => [
       ...prev,
@@ -349,12 +322,12 @@ export default function BehaviorExecutorPanel() {
 
   const removeStep = (id: number) => {
     setSteps((prev) => prev.filter((s) => s.id !== id));
+    setComposedXml(null); // invalidate compose
   };
 
   const updateStep = (id: number, field: keyof StepEntry, value: any) => {
-    setSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s))
-    );
+    setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+    setComposedXml(null);
   };
 
   const moveStep = (id: number, dir: -1 | 1) => {
@@ -367,9 +340,9 @@ export default function BehaviorExecutorPanel() {
       [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
       return arr;
     });
+    setComposedXml(null);
   };
 
-  // Compose from steps
   const handleCompose = async () => {
     const taskSteps: TaskStep[] = steps.map((s) => ({
       skill_name: s.skill_name,
@@ -403,76 +376,97 @@ export default function BehaviorExecutorPanel() {
     }
   };
 
-  // Execute
   const handleExecute = async () => {
-    const xml = mode === "raw" ? rawXml : composedXml;
-    if (!xml) {
+    if (!runnableXml) {
       addLog("No BT XML to execute");
       return;
     }
-
-    addLog(`Executing '${taskName}'...`);
+    setLastResult(null);
+    const runName = mode === "preset" ? selectedPreset || taskName : taskName;
+    addLog(`▶ Running ${runName}…`);
     try {
       const result = await sendGoal({
-        tree_xml: xml,
-        tree_name: taskName,
+        tree_xml: runnableXml,
+        tree_name: runName,
         enable_groot_monitor: true,
         groot_zmq_port: 1666,
         tick_rate_hz: 10.0,
       });
-      addLog(
-        `Completed: ${result.final_status} in ${result.total_execution_time_sec?.toFixed(1)}s`
-      );
+      const elapsedSec = result.total_execution_time_sec ?? 0;
+      const final = String(result.final_status || "").toUpperCase();
+      const state =
+        final === "SUCCESS" ? "succeeded" : final === "CANCELLED" ? "cancelled" : "failed";
+      setLastResult({
+        state,
+        name: runName,
+        elapsedSec,
+        message: result.message,
+      });
+      addLog(`✓ ${final} in ${elapsedSec.toFixed(1)}s`);
     } catch (e: any) {
-      addLog(`Execution error: ${e.message}`);
+      setLastResult({ state: "failed", name: runName, message: e.message });
+      addLog(`✗ ${e.message}`);
     }
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-3">
-        <Rocket className="w-4 h-4 text-blue-400" />
-        <h2 className="text-sm font-semibold">Behavior Executor</h2>
+  const currentNode = (feedback as any)?.current_node_name as string | undefined;
+  const progress = (feedback as any)?.progress as number | undefined;
 
-        {/* Mode tabs */}
-        <div className="ml-4 flex gap-1">
-          {(["preset", "compose", "raw"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={clsx(
-                "px-2 py-0.5 rounded text-[10px] font-medium uppercase",
-                mode === m
-                  ? "bg-blue-500/20 text-blue-400"
-                  : "text-gray-500 hover:text-gray-300"
-              )}
-            >
-              {m}
-            </button>
-          ))}
+  return (
+    <div className="flex flex-col h-full bg-paper relative">
+      {/* Header — title + mode tabs (segmented) + details toggle */}
+      <div className="px-5 py-3 border-b border-hair flex items-center gap-4 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <Rocket className="w-4 h-4 text-terracotta" />
+          <h2 className="text-[14px] font-medium text-ink">Behavior Executor</h2>
         </div>
 
-        {/* Status */}
         <div className="ml-auto flex items-center gap-2">
-          {isRunning && feedback && (
-            <span className="text-[10px] text-blue-300 font-mono">
-              {(feedback as any).current_node_name || "running"}
-            </span>
-          )}
-          <StatusBadge status={actionStatus} />
+          <SegmentedControl
+            options={[
+              { id: "preset", label: "Preset" },
+              { id: "compose", label: "Compose" },
+              { id: "raw", label: "Raw" },
+            ]}
+            active={mode}
+            onSelect={(id) => setMode(id as Mode)}
+          />
+          <IconBtn
+            active={showDetails}
+            onClick={() => setShowDetails((v) => !v)}
+            title={showDetails ? "Hide XML & log" : "Show XML & log"}
+          >
+            {showDetails ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRightOpen className="w-3.5 h-3.5" />}
+          </IconBtn>
         </div>
       </div>
 
+      {/* Live running banner — replaces silent header chip */}
+      {isRunning && (
+        <RunningBanner
+          taskName={taskName}
+          currentNode={currentNode}
+          progress={progress}
+          onCancel={cancel}
+        />
+      )}
+
+      {/* Last-run result banner (shown when not running) */}
+      {!isRunning && lastResult && (
+        <ResultBanner result={lastResult} onDismiss={() => setLastResult(null)} />
+      )}
+
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: configuration */}
-        <div className="w-96 border-r border-gray-800 overflow-auto p-3 space-y-3 shrink-0">
+        {/* Main: mode-specific selection / composition */}
+        <div className="flex-1 flex flex-col overflow-hidden">
           {mode === "preset" && (
             <PresetMode
-              presets={presets}
+              presets={filteredPresets}
+              total={presets.length}
+              search={presetSearch}
+              onSearchChange={setPresetSearch}
               selected={selectedPreset}
               onSelect={handleLoadPreset}
-              loading={composing}
             />
           )}
 
@@ -481,153 +475,349 @@ export default function BehaviorExecutorPanel() {
               steps={steps}
               skills={skills}
               taskName={taskName}
-              onTaskNameChange={setTaskName}
+              composedXml={composedXml}
+              onTaskNameChange={(v) => {
+                setTaskName(v);
+                setComposedXml(null);
+              }}
               onAddStep={addStep}
               onRemoveStep={removeStep}
               onUpdateStep={updateStep}
               onMoveStep={moveStep}
               onCompose={handleCompose}
               composing={composing}
+              warnings={composeWarnings}
             />
           )}
 
-          {mode === "raw" && (
-            <RawMode xml={rawXml} onChange={setRawXml} />
-          )}
-
-          {/* Warnings */}
-          {composeWarnings.length > 0 && (
-            <div className="p-2 rounded bg-yellow-950/30 border border-yellow-800/40">
-              <div className="flex items-center gap-1 text-[10px] text-yellow-400 font-medium mb-1">
-                <AlertTriangle className="w-3 h-3" />
-                Warnings
-              </div>
-              {composeWarnings.map((w, i) => (
-                <p key={i} className="text-[10px] text-yellow-300">
-                  {w}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {/* Execute button */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleExecute}
-              disabled={isRunning || (!composedXml && !rawXml)}
-              className={clsx(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all",
-                isRunning
-                  ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-500 text-white"
-              )}
-            >
-              <Play className="w-3.5 h-3.5" />
-              Execute
-            </button>
-            {isRunning && (
-              <button
-                onClick={cancel}
-                className="px-3 py-2 rounded-lg text-xs font-semibold bg-red-700 hover:bg-red-600 text-white flex items-center gap-1"
-              >
-                <Square className="w-3 h-3" />
-                Cancel
-              </button>
-            )}
-          </div>
+          {mode === "raw" && <RawMode xml={rawXml} onChange={setRawXml} />}
         </div>
 
-        {/* Right: XML preview + execution log */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* XML Preview */}
-          <div className="flex-1 overflow-auto p-3 border-b border-gray-800">
-            <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-medium uppercase mb-2">
-              <FileCode className="w-3 h-3" />
-              Generated BT XML
-            </div>
-            <pre className="text-[10px] font-mono text-gray-400 leading-relaxed whitespace-pre-wrap">
-              {composedXml || rawXml || "No XML generated yet. Select a preset or compose a task."}
-            </pre>
-          </div>
+        {/* Right: details (XML preview + execution log) — collapsible */}
+        {showDetails && (
+          <DetailsPanel
+            xml={composedXml || rawXml || ""}
+            log={executionLog}
+            logEndRef={logEndRef}
+          />
+        )}
+      </div>
 
-          {/* Execution log */}
-          <div className="h-40 overflow-auto p-3 bg-gray-950/50 shrink-0">
-            <div className="text-[10px] text-gray-500 font-medium uppercase mb-1">
-              Execution Log
-            </div>
-            {executionLog.map((line, i) => (
-              <div key={i} className="text-[10px] font-mono text-gray-400">
-                {line}
-              </div>
-            ))}
-            {executionLog.length === 0 && (
-              <div className="text-[10px] text-gray-600 italic">
-                No activity yet
-              </div>
+      {/* Sticky bottom Run bar — single primary action */}
+      <RunBar
+        isRunning={isRunning}
+        canRun={Boolean(runnableXml) && !composing}
+        runLabel={runnableLabel}
+        mode={mode}
+        composing={composing}
+        composeReady={mode === "compose" && composedXml !== null}
+        onRun={handleExecute}
+        onCancel={cancel}
+        onCompose={handleCompose}
+      />
+    </div>
+  );
+}
+
+/* ─── Sub-components ──────────────────────────────────────────────── */
+
+function SegmentedControl<T extends string>({
+  options,
+  active,
+  onSelect,
+}: {
+  options: { id: T; label: string }[];
+  active: T;
+  onSelect: (id: T) => void;
+}) {
+  return (
+    <div className="inline-flex border border-hair rounded-sm overflow-hidden">
+      {options.map((opt, i) => {
+        const isActive = active === opt.id;
+        return (
+          <button
+            key={opt.id}
+            onClick={() => onSelect(opt.id)}
+            className={clsx(
+              "px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors",
+              i > 0 && "border-l border-hair",
+              isActive
+                ? "bg-terracotta text-paper"
+                : "bg-paper text-muted hover:text-ink-soft hover:bg-cream",
             )}
-          </div>
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RunningBanner({
+  taskName,
+  currentNode,
+  progress,
+  onCancel,
+}: {
+  taskName: string;
+  currentNode?: string;
+  progress?: number;
+  onCancel: () => void;
+}) {
+  const pct = typeof progress === "number" ? Math.round(progress * 100) : null;
+  return (
+    <div className="px-5 py-3 bg-running-soft border-b border-running flex items-center gap-4 shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="w-2 h-2 rounded-full bg-running animate-pulse" />
+        <Eyebrow size="sm" tone="ink" className="text-running">
+          Running
+        </Eyebrow>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] font-medium text-ink truncate">{taskName}</span>
+          {currentNode && (
+            <span className="text-[11px] font-mono text-running tracking-[0.04em] truncate">
+              ▸ {currentNode}
+            </span>
+          )}
+          {pct !== null && (
+            <span className="ml-auto text-[11px] font-mono text-running tracking-[0.06em]">
+              {pct}%
+            </span>
+          )}
         </div>
+        {pct !== null && (
+          <div className="h-[3px] bg-stone mt-1.5 overflow-hidden">
+            <div className="h-full bg-running transition-all duration-300" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+      </div>
+      <Button
+        onClick={onCancel}
+        variant="danger"
+        size="sm"
+        leftIcon={<Square className="w-3 h-3" />}
+        className="shrink-0"
+      >
+        Cancel
+      </Button>
+    </div>
+  );
+}
+
+function ResultBanner({
+  result,
+  onDismiss,
+}: {
+  result: { state: "succeeded" | "failed" | "cancelled"; name: string; elapsedSec?: number; message?: string };
+  onDismiss: () => void;
+}) {
+  const tone = result.state === "succeeded" ? "ok" : result.state === "cancelled" ? "neutral" : "err";
+  const icon = result.state === "succeeded" ? "✓" : result.state === "cancelled" ? "■" : "✗";
+  const label =
+    result.state === "succeeded" ? "Succeeded" : result.state === "cancelled" ? "Cancelled" : "Failed";
+  return (
+    <div
+      className={clsx(
+        "px-5 py-2.5 border-b flex items-center gap-3 shrink-0",
+        tone === "ok" && "bg-ok-soft border-ok",
+        tone === "err" && "bg-err-soft border-err",
+        tone === "neutral" && "bg-cream-deep border-hair",
+      )}
+    >
+      <span
+        className={clsx(
+          "font-mono font-bold text-[14px]",
+          tone === "ok" && "text-ok",
+          tone === "err" && "text-err",
+          tone === "neutral" && "text-muted",
+        )}
+      >
+        {icon}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2">
+          <Eyebrow
+            size="sm"
+            className={clsx(
+              tone === "ok" && "text-ok",
+              tone === "err" && "text-err",
+              tone === "neutral" && "text-muted",
+            )}
+          >
+            {label}
+          </Eyebrow>
+          <span className="text-[13px] text-ink truncate">{result.name}</span>
+          {typeof result.elapsedSec === "number" && (
+            <span className="text-[11px] font-mono text-muted tracking-[0.06em] ml-auto">
+              {result.elapsedSec.toFixed(1)}s
+            </span>
+          )}
+        </div>
+        {result.message && tone === "err" && (
+          <p className="text-[12px] text-err mt-0.5 truncate">{result.message}</p>
+        )}
+      </div>
+      <IconBtn onClick={onDismiss} className="!w-6 !h-6">
+        <Square className="w-2.5 h-2.5 rotate-45" />
+      </IconBtn>
+    </div>
+  );
+}
+
+function RunBar({
+  isRunning,
+  canRun,
+  runLabel,
+  mode,
+  composing,
+  composeReady,
+  onRun,
+  onCancel,
+  onCompose,
+}: {
+  isRunning: boolean;
+  canRun: boolean;
+  runLabel: string | null;
+  mode: Mode;
+  composing: boolean;
+  composeReady: boolean;
+  onRun: () => void;
+  onCancel: () => void;
+  onCompose: () => void;
+}) {
+  // In Compose mode, the workflow is two-step: build steps → compose XML → run.
+  // We surface a separate Compose action when there's no XML yet.
+  const showComposeButton = mode === "compose" && !composeReady && !composing;
+  return (
+    <div className="border-t border-hair bg-cream-deep px-5 py-3 shrink-0">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          {runLabel ? (
+            <>
+              <Eyebrow size="sm" tone="muted" className="block">
+                {isRunning ? "Now Running" : "Ready to Run"}
+              </Eyebrow>
+              <div className="text-[13px] font-medium text-ink truncate mt-0.5">{runLabel}</div>
+            </>
+          ) : (
+            <Eyebrow size="sm" tone="muted">
+              {mode === "preset"
+                ? "Select a preset to run"
+                : mode === "compose"
+                  ? "Add steps and compose to run"
+                  : "Paste BT XML to run"}
+            </Eyebrow>
+          )}
+        </div>
+
+        {showComposeButton && (
+          <Button
+            onClick={onCompose}
+            variant="secondary"
+            leftIcon={<FileCode className="w-3.5 h-3.5" />}
+          >
+            Compose
+          </Button>
+        )}
+
+        {isRunning ? (
+          <Button
+            onClick={onCancel}
+            variant="danger"
+            leftIcon={<Square className="w-3.5 h-3.5" />}
+            className="!px-6"
+          >
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            onClick={onRun}
+            disabled={!canRun}
+            variant="primary"
+            leftIcon={<Play className="w-3.5 h-3.5" fill="currentColor" />}
+            className="!px-7 !py-3 text-[15px]"
+          >
+            Run
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    idle: "text-gray-500",
-    pending: "text-yellow-400 animate-pulse",
-    active: "text-blue-400 animate-pulse",
-    succeeded: "text-green-400",
-    failed: "text-red-400",
-    cancelled: "text-yellow-400",
-  };
-  if (status === "idle") return null;
-  return (
-    <span className={clsx("text-[10px] font-bold uppercase", styles[status])}>
-      {status === "succeeded" && <CheckCircle className="w-3 h-3 inline mr-0.5" />}
-      {status}
-    </span>
-  );
-}
-
 function PresetMode({
   presets,
+  total,
+  search,
+  onSearchChange,
   selected,
   onSelect,
-  loading,
 }: {
-  presets: readonly { name: string; label: string; description: string }[];
+  presets: readonly { name: string; label: string; description: string; xml: string }[];
+  total: number;
+  search: string;
+  onSearchChange: (v: string) => void;
   selected: string;
   onSelect: (name: string) => void;
-  loading: boolean;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="text-[10px] text-gray-500 font-medium uppercase">
-        Preset Behaviors
-      </div>
-      {presets.map((p) => (
-        <button
-          key={p.name}
-          onClick={() => onSelect(p.name)}
-          disabled={loading}
-          className={clsx(
-            "w-full text-left p-2 rounded-lg border transition-all",
-            selected === p.name
-              ? "border-blue-500 bg-blue-950/30"
-              : "border-gray-800 hover:border-gray-600 bg-gray-900/50"
-          )}
-        >
-          <div className="text-xs font-semibold text-gray-200">{p.label}</div>
-          <div className="text-[10px] text-gray-400">{p.description}</div>
-        </button>
-      ))}
-      {loading && (
-        <div className="flex items-center gap-1 text-[10px] text-blue-400">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          Composing...
+    <div className="flex flex-col h-full">
+      <div className="px-5 pt-4 pb-3 border-b border-hair-soft shrink-0">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={`Search ${total} preset${total === 1 ? "" : "s"}…`}
+            className="w-full pl-9 pr-3 py-2 text-[13px] bg-paper border border-hair rounded-DEFAULT focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
+          />
         </div>
-      )}
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        {presets.length === 0 && (
+          <div className="px-5 py-12 text-center text-muted text-[12px]">
+            {total === 0 ? "No presets available" : "No presets match your search"}
+          </div>
+        )}
+        {presets.map((p) => {
+          const isSelected = selected === p.name;
+          return (
+            <button
+              key={p.name}
+              onClick={() => onSelect(p.name)}
+              className={clsx(
+                "w-full text-left px-5 py-3 border-b border-hair-soft border-l-2 transition-colors flex items-start gap-3",
+                isSelected
+                  ? "border-l-terracotta bg-terracotta-tint"
+                  : "border-l-transparent hover:bg-cream",
+              )}
+            >
+              <span
+                className={clsx(
+                  "shrink-0 mt-1 w-4 h-4 rounded-full border flex items-center justify-center",
+                  isSelected ? "border-terracotta bg-terracotta" : "border-hair bg-paper",
+                )}
+              >
+                {isSelected && <Check className="w-2.5 h-2.5 text-paper" strokeWidth={3} />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[14px] font-medium text-ink truncate">{p.label}</span>
+                  <span className="font-mono text-[10px] text-muted truncate tracking-[0.04em]">
+                    {p.name}
+                  </span>
+                </div>
+                <p className="text-[12.5px] text-ink-soft mt-0.5 line-clamp-2">{p.description}</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -636,6 +826,7 @@ function ComposeMode({
   steps,
   skills,
   taskName,
+  composedXml,
   onTaskNameChange,
   onAddStep,
   onRemoveStep,
@@ -643,10 +834,12 @@ function ComposeMode({
   onMoveStep,
   onCompose,
   composing,
+  warnings,
 }: {
   steps: StepEntry[];
   skills: SkillDescription[];
   taskName: string;
+  composedXml: string | null;
   onTaskNameChange: (v: string) => void;
   onAddStep: () => void;
   onRemoveStep: (id: number) => void;
@@ -654,129 +847,289 @@ function ComposeMode({
   onMoveStep: (id: number, dir: -1 | 1) => void;
   onCompose: () => void;
   composing: boolean;
+  warnings: string[];
 }) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+
   return (
-    <div className="space-y-2">
-      <div>
-        <label className="text-[10px] text-gray-500 font-medium uppercase">
-          Task Name
-        </label>
-        <input
-          type="text"
-          value={taskName}
-          onChange={(e) => onTaskNameChange(e.target.value)}
-          className="w-full mt-0.5 px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded focus:border-blue-500 focus:outline-none text-gray-200"
-        />
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-5 py-3 border-b border-hair-soft shrink-0">
+        <div className="flex items-center gap-3">
+          <Eyebrow size="sm" tone="muted" className="shrink-0">
+            Task
+          </Eyebrow>
+          <Input
+            type="text"
+            value={taskName}
+            onChange={(e) => onTaskNameChange(e.target.value)}
+            placeholder="my_task"
+            className="!py-1.5 max-w-xs"
+          />
+          <Eyebrow size="sm" tone="muted" className="ml-auto shrink-0">
+            {steps.length} step{steps.length === 1 ? "" : "s"}
+          </Eyebrow>
+        </div>
       </div>
 
-      <div className="text-[10px] text-gray-500 font-medium uppercase">
-        Steps ({steps.length})
-      </div>
+      <div className="flex-1 overflow-auto p-5 space-y-2">
+        {steps.length === 0 && (
+          <div className="text-center text-muted text-[13px] py-12">
+            No steps yet. Add a skill below to start composing a task.
+          </div>
+        )}
+        {steps.map((step, idx) => (
+          <ComposeStepRow
+            key={step.id}
+            idx={idx}
+            step={step}
+            skills={skills}
+            isEditing={editingId === step.id}
+            isFirst={idx === 0}
+            isLast={idx === steps.length - 1}
+            onToggleEdit={() => setEditingId(editingId === step.id ? null : step.id)}
+            onUpdate={(f, v) => onUpdateStep(step.id, f, v)}
+            onMove={(d) => onMoveStep(step.id, d)}
+            onRemove={() => onRemoveStep(step.id)}
+          />
+        ))}
 
-      {steps.map((step, idx) => (
-        <div
-          key={step.id}
-          className="p-2 rounded border border-gray-800 bg-gray-900/50 space-y-1.5"
+        <button
+          onClick={onAddStep}
+          className="w-full flex items-center justify-center gap-1.5 py-3 border border-dashed border-hair text-[13px] text-muted hover:text-terracotta hover:border-terracotta hover:bg-cream transition-colors"
         >
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-gray-500 w-4">{idx + 1}.</span>
+          <Plus className="w-3.5 h-3.5" />
+          Add Step
+        </button>
+
+        {warnings.length > 0 && (
+          <Banner tone="info" title="Compose Warnings" icon={<AlertTriangle className="w-4 h-4" />}>
+            <ul className="text-[12px] space-y-0.5">
+              {warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </Banner>
+        )}
+
+        {steps.length > 0 && composedXml && !composing && (
+          <div className="flex items-center gap-2 text-[12px] text-ok pt-1">
+            <Check className="w-3.5 h-3.5" />
+            BT XML composed — open Run to execute, or edit a step to recompose.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ComposeStepRow({
+  idx,
+  step,
+  skills,
+  isEditing,
+  isFirst,
+  isLast,
+  onToggleEdit,
+  onUpdate,
+  onMove,
+  onRemove,
+}: {
+  idx: number;
+  step: StepEntry;
+  skills: SkillDescription[];
+  isEditing: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  onToggleEdit: () => void;
+  onUpdate: (field: keyof StepEntry, value: any) => void;
+  onMove: (dir: -1 | 1) => void;
+  onRemove: () => void;
+}) {
+  const skill = skills.find((s) => s.name === step.skill_name);
+  const skillLabel = skill?.display_name || step.skill_name || "(unset)";
+
+  return (
+    <div className={clsx("border bg-paper", isEditing ? "border-terracotta" : "border-hair")}>
+      {/* Compact row */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="font-mono text-[11px] text-muted w-5 tracking-[0.04em] shrink-0">
+          {String(idx + 1).padStart(2, "0")}
+        </span>
+        <GripVertical className="w-3 h-3 text-muted shrink-0" />
+        <div className="flex-1 min-w-0 flex items-baseline gap-2">
+          <span className="text-[13px] font-medium text-ink truncate">{skillLabel}</span>
+          {step.parameters_json && step.parameters_json !== "{}" && (
+            <span className="font-mono text-[11px] text-muted truncate tracking-[0.02em]">
+              {step.parameters_json}
+            </span>
+          )}
+          {step.retry_on_failure && (
+            <span className="font-mono text-[10px] text-terracotta tracking-[0.06em] shrink-0">
+              ↻ {step.max_retries}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <IconBtn
+            onClick={() => onMove(-1)}
+            disabled={isFirst}
+            className="!w-6 !h-6"
+            title="Move up"
+          >
+            <ChevronUp className="w-3 h-3" />
+          </IconBtn>
+          <IconBtn
+            onClick={() => onMove(1)}
+            disabled={isLast}
+            className="!w-6 !h-6"
+            title="Move down"
+          >
+            <ChevronDown className="w-3 h-3" />
+          </IconBtn>
+          <IconBtn onClick={onToggleEdit} active={isEditing} className="!w-6 !h-6" title="Edit">
+            <Pencil className="w-3 h-3" />
+          </IconBtn>
+          <IconBtn
+            onClick={onRemove}
+            className="!w-6 !h-6 hover:!bg-err-soft hover:!text-err"
+            title="Remove"
+          >
+            <Trash2 className="w-3 h-3" />
+          </IconBtn>
+        </div>
+      </div>
+
+      {/* Expanded editor */}
+      {isEditing && (
+        <div className="border-t border-hair-soft bg-cream-deep px-3 py-3 space-y-2">
+          <div>
+            <Eyebrow size="sm" tone="muted" className="block mb-1">
+              Skill
+            </Eyebrow>
             <select
               value={step.skill_name}
-              onChange={(e) => onUpdateStep(step.id, "skill_name", e.target.value)}
-              className="flex-1 px-1 py-0.5 text-[10px] bg-gray-800 border border-gray-700 rounded text-gray-200"
+              onChange={(e) => onUpdate("skill_name", e.target.value)}
+              className="w-full px-2 py-1.5 text-[12.5px] bg-paper border border-hair text-ink-soft rounded-DEFAULT focus:border-terracotta focus:outline-none"
             >
+              <option value="">— select skill —</option>
               {skills.map((s) => (
                 <option key={s.name} value={s.name}>
                   {s.display_name || s.name}
                 </option>
               ))}
             </select>
-            <button onClick={() => onMoveStep(step.id, -1)} className="p-0.5 text-gray-500 hover:text-gray-300">
-              <ChevronUp className="w-3 h-3" />
-            </button>
-            <button onClick={() => onMoveStep(step.id, 1)} className="p-0.5 text-gray-500 hover:text-gray-300">
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            <button onClick={() => onRemoveStep(step.id)} className="p-0.5 text-red-500 hover:text-red-300">
-              <Trash2 className="w-3 h-3" />
-            </button>
+            {skill?.description && (
+              <p className="text-[11px] text-muted mt-1">{skill.description}</p>
+            )}
           </div>
-          <input
-            type="text"
-            value={step.parameters_json}
-            onChange={(e) => onUpdateStep(step.id, "parameters_json", e.target.value)}
-            placeholder='{"param": "value"}'
-            className="w-full px-1.5 py-0.5 text-[10px] font-mono bg-gray-800 border border-gray-700 rounded text-gray-300"
-          />
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1 text-[9px] text-gray-500">
+
+          <div>
+            <Eyebrow size="sm" tone="muted" className="block mb-1">
+              Parameters (JSON)
+            </Eyebrow>
+            <Textarea
+              value={step.parameters_json}
+              onChange={(e) => onUpdate("parameters_json", e.target.value)}
+              placeholder='{"param": "value"}'
+              rows={3}
+              mono
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-[12px] text-ink-soft">
               <input
                 type="checkbox"
                 checked={step.retry_on_failure}
-                onChange={(e) => onUpdateStep(step.id, "retry_on_failure", e.target.checked)}
-                className="rounded-sm"
+                onChange={(e) => onUpdate("retry_on_failure", e.target.checked)}
+                className="accent-terracotta"
               />
-              Retry
+              Retry on failure
             </label>
             {step.retry_on_failure && (
-              <input
-                type="number"
-                value={step.max_retries}
-                onChange={(e) => onUpdateStep(step.id, "max_retries", parseInt(e.target.value) || 0)}
-                className="w-12 px-1 py-0 text-[10px] bg-gray-800 border border-gray-700 rounded text-gray-300"
-                min={0}
-                max={10}
-              />
+              <label className="flex items-center gap-1.5 text-[12px] text-ink-soft">
+                Max retries
+                <input
+                  type="number"
+                  value={step.max_retries}
+                  onChange={(e) => onUpdate("max_retries", parseInt(e.target.value) || 0)}
+                  className="w-14 px-2 py-0.5 text-[11px] font-mono bg-paper border border-hair text-ink-soft rounded-DEFAULT focus:border-terracotta focus:outline-none"
+                  min={0}
+                  max={10}
+                />
+              </label>
             )}
           </div>
         </div>
-      ))}
-
-      <button
-        onClick={onAddStep}
-        className="w-full flex items-center justify-center gap-1 py-1.5 rounded border border-dashed border-gray-700 text-xs text-gray-500 hover:text-gray-300 hover:border-gray-500"
-      >
-        <Plus className="w-3 h-3" />
-        Add Step
-      </button>
-
-      {steps.length > 0 && (
-        <button
-          onClick={onCompose}
-          disabled={composing}
-          className="w-full flex items-center justify-center gap-1 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-200 font-medium"
-        >
-          {composing ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <FileCode className="w-3 h-3" />
-          )}
-          Compose BT XML
-        </button>
       )}
     </div>
   );
 }
 
-function RawMode({
-  xml,
-  onChange,
-}: {
-  xml: string;
-  onChange: (xml: string) => void;
-}) {
+function RawMode({ xml, onChange }: { xml: string; onChange: (xml: string) => void }) {
   return (
-    <div className="space-y-2">
-      <div className="text-[10px] text-gray-500 font-medium uppercase">
+    <div className="flex flex-col h-full p-5">
+      <Eyebrow size="sm" tone="muted" className="block mb-2">
         Raw BT XML
-      </div>
-      <textarea
+      </Eyebrow>
+      <Textarea
         value={xml}
         onChange={(e) => onChange(e.target.value)}
-        rows={20}
-        placeholder="Paste BehaviorTree.CPP v4 XML here..."
-        className="w-full px-2 py-1.5 text-[10px] font-mono bg-gray-800 border border-gray-700 rounded focus:border-blue-500 focus:outline-none text-gray-300 resize-y"
+        placeholder={`<root BTCPP_format="4" main_tree_to_execute="MyTree">\n  <BehaviorTree ID="MyTree">\n    …\n  </BehaviorTree>\n</root>`}
+        mono
+        className="flex-1 !h-full resize-none"
       />
+    </div>
+  );
+}
+
+function DetailsPanel({
+  xml,
+  log,
+  logEndRef,
+}: {
+  xml: string;
+  log: string[];
+  logEndRef: React.RefObject<HTMLDivElement>;
+}) {
+  return (
+    <div className="w-[400px] border-l border-hair flex flex-col shrink-0 bg-paper">
+      <div className="flex-1 overflow-auto border-b border-hair-soft">
+        <div className="px-4 pt-3 pb-2 flex items-center gap-2 sticky top-0 bg-paper border-b border-hair-soft">
+          <FileCode className="w-3 h-3 text-muted" />
+          <Eyebrow size="sm" tone="muted">
+            BT XML
+          </Eyebrow>
+          {xml && (
+            <span className="ml-auto font-mono text-[10px] text-muted tracking-[0.04em]">
+              {xml.length} chars
+            </span>
+          )}
+        </div>
+        {xml ? (
+          <pre className="sociius-code mx-4 my-3 text-[11px] whitespace-pre-wrap">{xml}</pre>
+        ) : (
+          <p className="px-4 py-6 text-[12px] text-muted italic">No XML yet</p>
+        )}
+      </div>
+
+      <div className="h-44 overflow-auto px-4 py-3 bg-cream-deep shrink-0">
+        <Eyebrow size="sm" tone="muted" className="block mb-1.5 sticky top-0 bg-cream-deep">
+          Execution Log
+        </Eyebrow>
+        {log.map((line, i) => (
+          <div
+            key={i}
+            className="text-[11px] font-mono text-ink-soft leading-relaxed tracking-[0.02em]"
+          >
+            {line}
+          </div>
+        ))}
+        {log.length === 0 && (
+          <div className="text-[11px] text-muted italic">No activity yet</div>
+        )}
+        <div ref={logEndRef} />
+      </div>
     </div>
   );
 }

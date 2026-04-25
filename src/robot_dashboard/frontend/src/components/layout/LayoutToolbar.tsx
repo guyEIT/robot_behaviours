@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useLayoutStore, collectPanelIds } from "../../stores/layout-store";
 import { PRESET_LAYOUTS } from "../../stores/layout-presets";
 import { PANELS } from "./PanelRegistry";
-import type { PanelId } from "../../stores/layout-types";
 import {
   LayoutGrid,
   Plus,
@@ -12,6 +11,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import clsx from "clsx";
+import { Eyebrow, Input } from "../ui";
 
 export default function LayoutToolbar() {
   const layout = useLayoutStore((s) => s.layout);
@@ -38,29 +38,28 @@ export default function LayoutToolbar() {
 
   return (
     <div className="flex items-center gap-1.5">
-      {/* Preset buttons */}
       {Object.keys(PRESET_LAYOUTS).map((name) => (
         <button
           key={name}
           onClick={() => applyPreset(name)}
           className={clsx(
-            "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+            "px-2.5 py-1 rounded-sm font-mono text-[10px] uppercase tracking-[0.08em] font-semibold transition-colors",
             activePresetName === name
-              ? "bg-blue-500/20 text-blue-400"
-              : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+              ? "bg-terracotta-tint text-terracotta"
+              : "text-muted hover:text-ink-soft hover:bg-cream",
           )}
         >
           {name}
         </button>
       ))}
 
-      <div className="w-px h-4 bg-gray-700 mx-1" />
+      <div className="w-px h-4 bg-hair mx-1.5" />
 
       {/* Panel selector */}
       <div className="relative">
         <button
           onClick={() => { setShowPanels(!showPanels); setShowSave(false); }}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+          className="flex items-center gap-1 px-2 py-1 rounded-sm font-mono text-[10px] uppercase tracking-[0.08em] text-muted hover:text-ink-soft hover:bg-cream transition-colors"
         >
           <Plus className="w-3 h-3" />
           Panels
@@ -68,12 +67,12 @@ export default function LayoutToolbar() {
         </button>
 
         {showPanels && (
-          <div className="absolute top-full right-0 mt-1 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-2">
+          <div className="absolute top-full left-0 mt-1 w-64 bg-paper border border-hair z-50 p-3">
             {groups.map((group) => (
-              <div key={group.key} className="mb-2">
-                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider px-1 mb-1">
+              <div key={group.key} className="mb-3 last:mb-0">
+                <Eyebrow size="sm" tone="muted" className="block mb-1.5">
                   {group.label}
-                </div>
+                </Eyebrow>
                 {PANELS.filter((p) => p.group === group.key).map((panel) => {
                   const active = activePanelIds.has(panel.id);
                   return (
@@ -84,19 +83,23 @@ export default function LayoutToolbar() {
                         else addPanel(panel.id);
                       }}
                       className={clsx(
-                        "w-full flex items-center gap-2 px-2 py-1 rounded text-[10px] transition-colors",
+                        "w-full flex items-center gap-2 px-1.5 py-1 text-[12px] transition-colors",
                         active
-                          ? "bg-blue-500/10 text-blue-400"
-                          : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+                          ? "text-terracotta"
+                          : "text-ink-soft hover:bg-cream",
                       )}
                     >
-                      <span className={clsx(
-                        "w-3 h-3 rounded border flex items-center justify-center text-[8px]",
-                        active ? "border-blue-400 bg-blue-500/20" : "border-gray-600"
-                      )}>
+                      <span
+                        className={clsx(
+                          "w-3.5 h-3.5 rounded-sm border flex items-center justify-center text-[9px] font-mono font-bold shrink-0",
+                          active
+                            ? "border-terracotta bg-terracotta text-paper"
+                            : "border-hair",
+                        )}
+                      >
                         {active && "✓"}
                       </span>
-                      {panel.icon}
+                      <span className="text-muted shrink-0">{panel.icon}</span>
                       {panel.label}
                     </button>
                   );
@@ -111,7 +114,7 @@ export default function LayoutToolbar() {
       <div className="relative">
         <button
           onClick={() => { setShowSave(!showSave); setShowPanels(false); }}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+          className="flex items-center gap-1 px-2 py-1 rounded-sm font-mono text-[10px] uppercase tracking-[0.08em] text-muted hover:text-ink-soft hover:bg-cream transition-colors"
         >
           <LayoutGrid className="w-3 h-3" />
           Layouts
@@ -119,15 +122,14 @@ export default function LayoutToolbar() {
         </button>
 
         {showSave && (
-          <div className="absolute top-full right-0 mt-1 w-56 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 p-2">
-            {/* Save form */}
-            <div className="flex gap-1 mb-2">
-              <input
+          <div className="absolute top-full left-0 mt-1 w-64 bg-paper border border-hair z-50 p-3">
+            <div className="flex gap-1.5 mb-3">
+              <Input
                 type="text"
                 value={saveName}
                 onChange={(e) => setSaveName(e.target.value)}
-                placeholder="Layout name..."
-                className="flex-1 px-2 py-1 text-[10px] bg-gray-800 border border-gray-700 rounded text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+                placeholder="Layout name…"
+                className="!py-1.5 !px-2 text-[12px]"
               />
               <button
                 onClick={() => {
@@ -137,33 +139,37 @@ export default function LayoutToolbar() {
                   }
                 }}
                 disabled={!saveName.trim()}
-                className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-[10px] text-white disabled:bg-gray-700 disabled:text-gray-500"
+                className={clsx(
+                  "px-2 rounded-sm border transition-colors",
+                  saveName.trim()
+                    ? "bg-terracotta border-terracotta text-paper hover:bg-terracotta-hover"
+                    : "bg-stone border-hair text-muted cursor-not-allowed",
+                )}
               >
-                <Save className="w-3 h-3" />
+                <Save className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {/* Saved layouts list */}
             {savedLayouts.length > 0 ? (
               <div className="space-y-0.5">
-                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider px-1 mb-1">
+                <Eyebrow size="sm" tone="muted" className="block mb-1.5">
                   Saved
-                </div>
+                </Eyebrow>
                 {savedLayouts.map((saved) => (
                   <div
                     key={saved.name}
-                    className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-gray-800 group"
+                    className="flex items-center gap-1 px-1.5 py-1 hover:bg-cream group transition-colors"
                   >
                     <button
                       onClick={() => { loadSavedLayout(saved.name); setShowSave(false); }}
-                      className="flex items-center gap-1.5 flex-1 text-[10px] text-gray-300"
+                      className="flex items-center gap-2 flex-1 text-[12px] text-ink-soft text-left"
                     >
-                      <FolderOpen className="w-3 h-3 text-gray-500" />
+                      <FolderOpen className="w-3 h-3 text-muted" />
                       {saved.name}
                     </button>
                     <button
                       onClick={() => deleteSavedLayout(saved.name)}
-                      className="p-0.5 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100"
+                      className="p-0.5 text-muted hover:text-err opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -171,7 +177,9 @@ export default function LayoutToolbar() {
                 ))}
               </div>
             ) : (
-              <p className="text-[10px] text-gray-600 text-center py-2">No saved layouts</p>
+              <p className="text-[11px] text-muted text-center py-2 font-mono uppercase tracking-[0.1em]">
+                No saved layouts
+              </p>
             )}
           </div>
         )}

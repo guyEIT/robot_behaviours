@@ -1,12 +1,31 @@
-import { TreePine, Wifi, WifiOff, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 import { useLayoutStore } from "../../stores/layout-store";
 import { useRobotSelectorStore } from "../../stores/robot-selector-store";
 import PanelHost from "./PanelHost";
 import LayoutRenderer from "./LayoutRenderer";
 import LayoutToolbar from "./LayoutToolbar";
+import { Chip, Eyebrow, IconBtn } from "../ui";
+import clsx from "clsx";
 
 interface Props {
   connected: boolean;
+}
+
+function BrandMark() {
+  return (
+    <div className="flex items-center gap-2.5 shrink-0">
+      <span
+        aria-hidden
+        className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full bg-terracotta text-paper font-mono font-bold text-[12px]"
+      >
+        S
+      </span>
+      <span className="text-[14px] font-medium text-ink tracking-[0.02em]">Sociius</span>
+      <span className="text-[12px] font-mono text-muted uppercase tracking-[0.1em] hidden sm:inline">
+        Robot Dashboard
+      </span>
+    </div>
+  );
 }
 
 export default function DashboardShell({ connected }: Props) {
@@ -15,54 +34,40 @@ export default function DashboardShell({ connected }: Props) {
     useRobotSelectorStore();
 
   return (
-    <div className="h-screen flex flex-col bg-gray-950 text-gray-100">
+    <div className="h-screen flex flex-col bg-cream text-ink-soft">
       {/* Top bar */}
-      <header className="h-10 flex items-center px-4 border-b border-gray-800 bg-gray-900/50 shrink-0">
-        <div className="flex items-center gap-2 text-sm font-bold text-gray-200 shrink-0">
-          <TreePine className="w-4 h-4 text-blue-400" />
-          Robot Dashboard
-        </div>
+      <header className="h-12 flex items-center px-5 border-b border-hair bg-paper shrink-0">
+        <BrandMark />
 
-        {/* Layout controls */}
         <div className="ml-6 flex-1 flex items-center">
           <LayoutToolbar />
         </div>
 
-        {/* Robot selector — only shown when multiple robots are registered */}
         {availableRobots.length > 0 && (
-          <div className="ml-4 flex items-center gap-1">
-            <Bot className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-            <div className="flex items-center gap-0.5">
+          <div className="ml-4 flex items-center gap-2">
+            <Bot className="w-3.5 h-3.5 text-muted shrink-0" />
+            <Eyebrow size="sm" tone="muted">Robot</Eyebrow>
+            <div className="flex items-center gap-1">
               {availableRobots.map((robotId) => (
-                <button
+                <IconBtn
                   key={robotId}
+                  active={selectedRobotId === robotId}
                   onClick={() => setSelectedRobotId(robotId)}
-                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                    selectedRobotId === robotId
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200"
-                  }`}
+                  className="!w-auto px-2.5 !h-7 font-mono text-[11px] uppercase tracking-[0.06em]"
+                  title={robotId}
                 >
                   {robotId}
-                </button>
+                </IconBtn>
               ))}
             </div>
           </div>
         )}
 
         {/* Connection indicator */}
-        <div className="ml-auto flex items-center gap-1.5 text-xs shrink-0">
-          {connected ? (
-            <>
-              <Wifi className="w-3.5 h-3.5 text-green-400" />
-              <span className="text-green-400">Connected</span>
-            </>
-          ) : (
-            <>
-              <WifiOff className="w-3.5 h-3.5 text-red-400" />
-              <span className="text-red-400">Disconnected</span>
-            </>
-          )}
+        <div className={clsx("ml-auto shrink-0")}>
+          <Chip state={connected ? "done" : "failed"} showDot>
+            {connected ? "Connected" : "Offline"}
+          </Chip>
         </div>
       </header>
 

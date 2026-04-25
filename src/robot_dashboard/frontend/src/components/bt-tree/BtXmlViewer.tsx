@@ -11,10 +11,10 @@ export default function BtXmlViewer({ xml }: Props) {
   if (!xml) return null;
 
   return (
-    <div className="border-t border-gray-800">
+    <div className="border-t border-hair">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition-colors"
+        className="flex items-center gap-2 w-full px-4 py-2 text-[11px] font-mono uppercase tracking-[0.1em] font-semibold text-muted hover:text-terracotta hover:bg-cream transition-colors"
       >
         <Code className="w-3.5 h-3.5" />
         BT XML
@@ -25,7 +25,7 @@ export default function BtXmlViewer({ xml }: Props) {
         )}
       </button>
       {open && (
-        <pre className="px-3 pb-3 text-[10px] leading-relaxed text-gray-400 overflow-auto max-h-60 whitespace-pre-wrap">
+        <pre className="sociius-code mx-4 mb-4 max-h-60 whitespace-pre-wrap">
           {xml}
         </pre>
       )}

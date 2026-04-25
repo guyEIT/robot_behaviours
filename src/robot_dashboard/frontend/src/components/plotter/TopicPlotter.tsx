@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -14,7 +14,7 @@ import { getRos } from "../../lib/rosbridge-client";
 import { useConnectionStore } from "../../stores/connection-store";
 import { useTopicStore } from "../../stores/topic-store";
 import {
-  LineChartIcon,
+  LineChart as LineChartIcon,
   Plus,
   Trash2,
   Play,
@@ -22,10 +22,17 @@ import {
   Settings,
 } from "lucide-react";
 import clsx from "clsx";
+import { Eyebrow, IconBtn, Button } from "../ui";
 
+// Sociius warm-leaning palette for series differentiation
 const COLORS = [
-  "#3b82f6", "#22c55e", "#ef4444", "#f59e0b", "#8b5cf6",
-  "#ec4899", "#06b6d4", "#f97316",
+  "#A96D4B", // terracotta
+  "#51748C", // running
+  "#2f7d5f", // ok
+  "#1E1E1E", // ink-soft
+  "#A17258", // terracotta-soft
+  "#9a8f83", // muted
+  "#9B2C2C", // err
 ];
 
 const MAX_POINTS = 200;
@@ -33,7 +40,7 @@ const MAX_POINTS = 200;
 interface PlotSeries {
   id: number;
   topicName: string;
-  fieldPath: string; // e.g. "position[0]" or "linear.x"
+  fieldPath: string;
   color: string;
   active: boolean;
 }
@@ -54,7 +61,6 @@ export default function TopicPlotter() {
   const startTimeRef = useRef<number>(Date.now());
   const nextId = useRef(0);
 
-  // Subscribe to topics as series are added
   useEffect(() => {
     if (!connected) return;
 
@@ -62,7 +68,6 @@ export default function TopicPlotter() {
       series.filter((s) => s.active).map((s) => s.topicName)
     );
 
-    // Remove stale subscriptions
     for (const [name, topic] of subsRef.current) {
       if (!activeTopics.has(name)) {
         topic.unsubscribe();
@@ -70,7 +75,6 @@ export default function TopicPlotter() {
       }
     }
 
-    // Add new subscriptions
     for (const topicName of activeTopics) {
       if (subsRef.current.has(topicName)) continue;
 
@@ -81,7 +85,7 @@ export default function TopicPlotter() {
         ros: getRos(),
         name: topicName,
         messageType: topicInfo.type,
-        throttle_rate: 50, // 20 Hz
+        throttle_rate: 50,
       });
 
       rosTopic.subscribe((msg: any) => {
@@ -101,7 +105,6 @@ export default function TopicPlotter() {
 
         setData((prev) => {
           const next = [...prev, point];
-          // Trim to window
           const cutoff = time - windowSec;
           const trimmed = next.filter((p) => p.time >= cutoff);
           return trimmed.slice(-MAX_POINTS);
@@ -147,19 +150,18 @@ export default function TopicPlotter() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-3">
-        <LineChartIcon className="w-4 h-4 text-blue-400" />
-        <h2 className="text-sm font-semibold">Topic Plotter</h2>
+    <div className="flex flex-col h-full bg-paper">
+      <div className="px-5 py-3 border-b border-hair flex items-center gap-3">
+        <LineChartIcon className="w-4 h-4 text-terracotta" />
+        <h2 className="text-[14px] font-medium text-ink">Topic Plotter</h2>
 
-        <div className="ml-auto flex items-center gap-2">
-          <label className="flex items-center gap-1 text-[10px] text-gray-400">
-            Window:
+        <div className="ml-auto flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-[11px] text-muted font-mono uppercase tracking-[0.08em]">
+            Window
             <select
               value={windowSec}
               onChange={(e) => setWindowSec(parseInt(e.target.value))}
-              className="px-1 py-0 text-[10px] bg-gray-800 border border-gray-700 rounded text-gray-300"
+              className="px-2 py-0.5 text-[11px] bg-paper border border-hair text-ink-soft rounded-DEFAULT focus:border-terracotta focus:outline-none"
             >
               <option value={5}>5s</option>
               <option value={10}>10s</option>
@@ -168,50 +170,43 @@ export default function TopicPlotter() {
             </select>
           </label>
 
-          <button
+          <IconBtn
             onClick={() => setPaused(!paused)}
-            className={clsx(
-              "p-1 rounded",
-              paused ? "text-yellow-400" : "text-gray-400 hover:text-gray-200"
-            )}
+            active={paused}
             title={paused ? "Resume" : "Pause"}
           >
             {paused ? <Play className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-          </button>
+          </IconBtn>
 
-          <button
-            onClick={clearData}
-            className="p-1 rounded text-gray-400 hover:text-gray-200"
-            title="Clear"
-          >
+          <IconBtn onClick={clearData} title="Clear">
             <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          </IconBtn>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Chart */}
-        <div className="flex-1 p-3">
+        <div className="flex-1 p-4 bg-cream-deep">
           {series.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e1e2e" />
+                <CartesianGrid strokeDasharray="2 4" stroke="#EEEEEE" />
                 <XAxis
                   dataKey="time"
-                  stroke="#4b5563"
+                  stroke="#9a8f83"
                   fontSize={10}
                   tickFormatter={(v) => `${v.toFixed(1)}s`}
                 />
-                <YAxis stroke="#4b5563" fontSize={10} />
+                <YAxis stroke="#9a8f83" fontSize={10} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#1e1e2e",
-                    border: "1px solid #313244",
-                    borderRadius: 8,
-                    fontSize: 10,
+                    backgroundColor: "#FFFFFF",
+                    border: "1px solid #D7D7D7",
+                    borderRadius: 0,
+                    fontSize: 11,
+                    color: "#1E1E1E",
                   }}
                 />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
+                <Legend wrapperStyle={{ fontSize: 11, color: "#1E1E1E" }} />
                 {series
                   .filter((s) => s.active)
                   .map((s) => (
@@ -229,27 +224,26 @@ export default function TopicPlotter() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <div className="flex flex-col items-center justify-center h-full text-muted">
               <LineChartIcon className="w-8 h-8 mb-2 opacity-30" />
-              <p className="text-sm">No series configured</p>
-              <p className="text-xs">Add a series to start plotting</p>
+              <p className="text-[14px] text-ink-soft">No series configured</p>
+              <p className="text-[12px]">Add a series to start plotting</p>
             </div>
           )}
         </div>
 
-        {/* Series config sidebar */}
-        <div className="w-72 border-l border-gray-800 overflow-auto p-3 space-y-2 shrink-0">
-          <div className="flex items-center gap-1 text-[10px] text-gray-500 font-medium uppercase">
+        <div className="w-72 border-l border-hair overflow-auto p-4 space-y-3 shrink-0">
+          <div className="flex items-center gap-1.5 text-muted">
             <Settings className="w-3 h-3" />
-            Series
+            <Eyebrow size="sm" tone="muted">Series</Eyebrow>
           </div>
 
           {series.map((s) => (
             <div
               key={s.id}
-              className="p-2 rounded border border-gray-800 bg-gray-900/50 space-y-1.5"
+              className="p-3 border border-hair bg-paper space-y-2"
             >
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: s.color }}
@@ -257,7 +251,7 @@ export default function TopicPlotter() {
                 <select
                   value={s.topicName}
                   onChange={(e) => updateSeries(s.id, "topicName", e.target.value)}
-                  className="flex-1 px-1 py-0.5 text-[10px] bg-gray-800 border border-gray-700 rounded text-gray-200 truncate"
+                  className="flex-1 px-2 py-0.5 text-[11px] bg-paper border border-hair text-ink-soft rounded-DEFAULT truncate focus:border-terracotta focus:outline-none"
                 >
                   {topics.map((t) => (
                     <option key={t.name} value={t.name}>
@@ -265,43 +259,41 @@ export default function TopicPlotter() {
                     </option>
                   ))}
                 </select>
-                <button
+                <IconBtn
                   onClick={() => removeSeries(s.id)}
-                  className="p-0.5 text-red-500 hover:text-red-300"
+                  className="!w-6 !h-6 hover:!bg-err-soft hover:!text-err"
                 >
                   <Trash2 className="w-3 h-3" />
-                </button>
+                </IconBtn>
               </div>
               <input
                 type="text"
                 value={s.fieldPath}
                 onChange={(e) => updateSeries(s.id, "fieldPath", e.target.value)}
                 placeholder="field.path or position[0]"
-                className="w-full px-1.5 py-0.5 text-[10px] font-mono bg-gray-800 border border-gray-700 rounded text-gray-300"
+                className="w-full px-2 py-1 text-[11px] font-mono bg-paper border border-hair text-ink-soft rounded-DEFAULT focus:border-terracotta focus:outline-none tracking-[0.02em]"
               />
-              <div className="text-[8px] text-gray-600">
+              <div className="text-[10px] text-muted font-mono tracking-[0.04em]">
                 Examples: data, position[0], linear.x, twist.angular.z
               </div>
             </div>
           ))}
 
-          <button
+          <Button
             onClick={addSeries}
-            className="w-full flex items-center justify-center gap-1 py-1.5 rounded border border-dashed border-gray-700 text-xs text-gray-500 hover:text-gray-300 hover:border-gray-500"
+            variant="ghost"
+            size="sm"
+            leftIcon={<Plus className="w-3 h-3" />}
+            className="w-full !border-dashed"
           >
-            <Plus className="w-3 h-3" />
             Add Series
-          </button>
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-/**
- * Extract a nested field from a ROS message object.
- * Supports dot notation ("linear.x") and array indexing ("position[2]").
- */
 function extractField(obj: any, path: string): number | null {
   try {
     const parts = path.split(/[.\[\]]+/).filter(Boolean);

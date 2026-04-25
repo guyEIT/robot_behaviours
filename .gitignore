@@ -51,6 +51,19 @@ htmlcov/
 # Pixi
 .pixi/
 
+# Node / Vite (dashboard frontend)
+node_modules/
+.vite/
+*.tsbuildinfo
+# `dist/` is already ignored above (Python section), which also covers
+# the dashboard's vite build output at src/robot_dashboard/frontend/dist/.
+# Stale build outputs from manual rebuilds:
+src/robot_dashboard/frontend/dist_old/
+src/robot_dashboard/frontend/.vite/
+# Local-only env injection produced at launch time
+src/robot_dashboard/frontend/public/env-config.js
+src/robot_dashboard/frontend/dist/env-config.js
+
 # Provider workspace build artifacts (each subtree is its own colcon/pixi workspace)
 providers/*/build/
 providers/*/install/

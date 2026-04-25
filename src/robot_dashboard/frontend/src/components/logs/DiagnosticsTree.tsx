@@ -3,11 +3,8 @@ import { useLogStore } from "../../stores/log-store";
 import DiagnosticItem from "./DiagnosticItem";
 import type { DiagnosticStatus } from "../../types/ros";
 import { HeartPulse } from "lucide-react";
+import { Eyebrow } from "../ui";
 
-/**
- * Group diagnostics by path prefix (e.g. "/Skill Atoms/MoveToNamedConfig").
- * The diagnostics aggregator uses "/" separated hierarchical names.
- */
 function groupDiagnostics(statuses: DiagnosticStatus[]) {
   const groups = new Map<string, DiagnosticStatus[]>();
   for (const s of statuses) {
@@ -25,20 +22,20 @@ export default function DiagnosticsTree() {
 
   if (diagnostics.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-500 py-12">
+      <div className="flex flex-col items-center justify-center h-full text-muted py-12 bg-cream-deep">
         <HeartPulse className="w-6 h-6 mb-2 opacity-30" />
-        <p className="text-xs">No diagnostics data</p>
-        <p className="text-[10px]">Waiting for /diagnostics_agg</p>
+        <p className="text-[13px] text-ink-soft">No diagnostics data</p>
+        <p className="text-[11px] font-mono uppercase tracking-[0.08em]">Waiting for /diagnostics_agg</p>
       </div>
     );
   }
 
   return (
-    <div className="divide-y divide-gray-800/30">
+    <div className="bg-paper">
       {Array.from(groups.entries()).map(([group, statuses]) => (
         <div key={group}>
-          <div className="px-3 py-1.5 bg-gray-800/30 text-[10px] font-bold uppercase text-gray-500 tracking-wider">
-            {group}
+          <div className="px-4 py-2 bg-cream-deep border-b border-hair">
+            <Eyebrow size="sm" tone="terracotta">{group}</Eyebrow>
           </div>
           {statuses.map((s) => (
             <DiagnosticItem key={s.name} status={s} />

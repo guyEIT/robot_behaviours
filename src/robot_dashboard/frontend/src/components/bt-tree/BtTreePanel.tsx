@@ -4,13 +4,11 @@ import BtTreeGraph from "./BtTreeGraph";
 import BtLegend from "./BtLegend";
 import BtXmlViewer from "./BtXmlViewer";
 import { TreePine, Locate } from "lucide-react";
-import clsx from "clsx";
+import { Chip, Eyebrow, IconBtn } from "../ui";
+import type { ChipState } from "../ui";
 
-// Stable empty-list sentinel for the Zustand selectors below. See comment
-// in BtTreePanel for why this matters.
 const EMPTY_LIST: readonly string[] = Object.freeze([]);
 
-// Demo tree for when no task is running
 const DEMO_XML = `<root BTCPP_format="4" main_tree_to_execute="Demo">
   <BehaviorTree ID="Demo">
     <Sequence name="demo_sequence">
@@ -20,22 +18,20 @@ const DEMO_XML = `<root BTCPP_format="4" main_tree_to_execute="Demo">
   </BehaviorTree>
 </root>`;
 
+const STATUS_TO_CHIP: Record<string, ChipState> = {
+  RUNNING: "running",
+  SUCCESS: "done",
+  FAILURE: "failed",
+  IDLE: "idle",
+  CANCELLED: "neutral",
+};
+
 export default function BtTreePanel() {
   const taskName = useTaskStore((s) => s.taskState?.task_name ?? null);
   const taskStatus = useTaskStore((s) => s.taskState?.status ?? null);
   const activeNodeName = useTaskStore((s) =>
     s.taskState?.status === "RUNNING" ? s.taskState.current_bt_node : null
   );
-  // Past-completed and past-failed skill names — keep them rendered green/red
-  // so the operator can see the BT's progress trail, not just the live frame.
-  // Critical for fast actions (Hamilton/Liconic complete in ms — without this
-  // the highlight pulses too briefly to see).
-  //
-  // IMPORTANT: returning `?? []` from a Zustand selector creates a new array
-  // every render (Zustand uses Object.is for change detection, so new []
-  // never compares equal). That triggers an infinite re-render loop in
-  // BtTreeGraph's useEffect, which silently breaks highlighting. Reuse a
-  // module-level frozen sentinel instead.
   const completedNodeNames = useTaskStore(
     (s) => s.taskState?.completed_skills ?? EMPTY_LIST,
   );
@@ -49,60 +45,46 @@ export default function BtTreePanel() {
   const xml = activeBtXml || DEMO_XML;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-800">
-        <TreePine className="w-4 h-4 text-blue-400" />
-        <h2 className="text-sm font-semibold">Behavior Tree</h2>
+    <div className="flex flex-col h-full bg-paper">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-hair">
+        <TreePine className="w-4 h-4 text-terracotta" />
+        <h2 className="text-[14px] font-medium text-ink">Behavior Tree</h2>
 
         {hasHistory && taskName && (
-          <div className="ml-4 text-xs text-gray-400">
-            Task:{" "}
-            <span className="text-gray-200">{taskName}</span>
+          <div className="ml-4 flex items-center gap-2 text-[12px] text-muted">
+            <Eyebrow size="sm" tone="muted">Task</Eyebrow>
+            <span className="text-ink-soft font-medium">{taskName}</span>
             {taskStatus && (
-              <span
-                className={
-                  taskStatus === "RUNNING"
-                    ? "ml-2 text-blue-400"
-                    : taskStatus === "SUCCESS"
-                    ? "ml-2 text-green-400"
-                    : taskStatus === "FAILURE"
-                    ? "ml-2 text-red-400"
-                    : "ml-2 text-gray-400"
-                }
-              >
-                [{taskStatus}]
-              </span>
+              <Chip state={STATUS_TO_CHIP[taskStatus] ?? "idle"} showDot>
+                {taskStatus}
+              </Chip>
             )}
           </div>
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <button
+          <IconBtn
             onClick={() => setFollowActive(!followActive)}
-            className={clsx(
-              "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
-              followActive
-                ? "bg-blue-500/20 text-blue-400"
-                : "text-gray-500 hover:text-gray-300"
-            )}
+            active={followActive}
+            className="!w-auto !h-7 px-2 gap-1 font-mono text-[10px] uppercase tracking-[0.08em]"
             title="Auto-follow active node during execution"
           >
             <Locate className="w-3 h-3" />
             Follow
-          </button>
+          </IconBtn>
           <BtLegend />
         </div>
       </div>
 
-      {/* Tree graph */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative bg-cream-deep">
         {!activeBtXml && (
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-            <div className="text-center text-gray-500 text-sm">
+            <div className="text-center text-muted">
               <TreePine className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p>No active task</p>
-              <p className="text-xs">Showing demo tree. Execute a behavior tree to see live visualization.</p>
+              <p className="text-[14px] text-ink-soft font-medium">No active task</p>
+              <p className="text-[12px]">
+                Showing demo tree. Execute a behavior tree to see live visualisation.
+              </p>
             </div>
           </div>
         )}
@@ -115,7 +97,6 @@ export default function BtTreePanel() {
         />
       </div>
 
-      {/* XML viewer */}
       <BtXmlViewer xml={activeBtXml} />
     </div>
   );

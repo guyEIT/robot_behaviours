@@ -1,48 +1,8 @@
-import { useState, useMemo } from "react";
-import {
-  ChevronRight,
-  ChevronDown,
-  Copy,
-  Check,
-  Braces,
-  Hash,
-  Type,
-  ToggleLeft,
-  List,
-  Clock,
-} from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, ChevronDown, Braces, List } from "lucide-react";
 import clsx from "clsx";
-
-// ── Sparkline: tiny inline chart of recent numeric values ──────────────────
-
-function Sparkline({ values, width = 60, height = 16 }: { values: number[]; width?: number; height?: number }) {
-  if (values.length < 2) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const points = values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * width;
-      const y = height - ((v - min) / range) * (height - 2) - 1;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg width={width} height={height} className="inline-block ml-1.5 align-middle">
-      <polyline
-        points={points}
-        fill="none"
-        stroke="#3b82f6"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-// ── Type-specific renderers ────────────────────────────────────────────────
+import { Eyebrow, Chip } from "../ui";
+import type { ChipState } from "../ui";
 
 function JointStateRenderer({ msg }: { msg: any }) {
   const names: string[] = msg.name || [];
@@ -50,38 +10,43 @@ function JointStateRenderer({ msg }: { msg: any }) {
   const velocities: number[] = msg.velocity || [];
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <SectionLabel label="Joint States" count={names.length} />
-      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 gap-y-0.5 text-[10px]">
-        <span className="text-gray-500 font-medium">Joint</span>
-        <span className="text-gray-500 font-medium text-right">Position</span>
-        <span className="text-gray-500 font-medium text-right">Degrees</span>
-        <span className="text-gray-500 font-medium text-right">Velocity</span>
-        {names.map((name, i) => {
-          const pos = positions[i] ?? 0;
-          const vel = velocities[i] ?? 0;
-          const deg = (pos * 180) / Math.PI;
-          const barWidth = Math.min(Math.abs(pos) / 3.14 * 100, 100);
-          return (
-            <div key={name} className="contents">
-              <span className="text-gray-300 font-mono truncate">{name}</span>
-              <div className="text-right flex items-center justify-end gap-1">
-                <div className="w-12 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className={clsx("h-full rounded-full", pos >= 0 ? "bg-blue-500" : "bg-orange-500")}
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </div>
-                <span className="text-blue-300 font-mono w-16 text-right">{pos.toFixed(3)}</span>
-              </div>
-              <span className="text-gray-400 font-mono text-right">{deg.toFixed(1)}&deg;</span>
-              <span className={clsx("font-mono text-right", Math.abs(vel) > 0.01 ? "text-yellow-400" : "text-gray-600")}>
-                {vel.toFixed(3)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr>
+            <th className="text-left px-2 py-1 bg-cream font-mono text-[10px] uppercase tracking-[0.1em] text-terracotta border-b border-hair">Joint</th>
+            <th className="text-right px-2 py-1 bg-cream font-mono text-[10px] uppercase tracking-[0.1em] text-terracotta border-b border-hair">Position</th>
+            <th className="text-right px-2 py-1 bg-cream font-mono text-[10px] uppercase tracking-[0.1em] text-terracotta border-b border-hair">Degrees</th>
+            <th className="text-right px-2 py-1 bg-cream font-mono text-[10px] uppercase tracking-[0.1em] text-terracotta border-b border-hair">Velocity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {names.map((name, i) => {
+            const pos = positions[i] ?? 0;
+            const vel = velocities[i] ?? 0;
+            const deg = (pos * 180) / Math.PI;
+            const barWidth = Math.min((Math.abs(pos) / 3.14) * 100, 100);
+            return (
+              <tr key={name} className="border-b border-hair-soft hover:bg-cream">
+                <td className="px-2 py-1 font-mono text-ink-soft tracking-[0.04em] truncate">{name}</td>
+                <td className="px-2 py-1 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <div className="w-12 h-1 bg-stone overflow-hidden">
+                      <div className="h-full bg-terracotta" style={{ width: `${barWidth}%` }} />
+                    </div>
+                    <span className="text-ink font-mono w-16 text-right tracking-[0.04em]">{pos.toFixed(3)}</span>
+                  </div>
+                </td>
+                <td className="px-2 py-1 font-mono text-ink-soft text-right tracking-[0.04em]">{deg.toFixed(1)}°</td>
+                <td className={clsx("px-2 py-1 font-mono text-right tracking-[0.04em]", Math.abs(vel) > 0.01 ? "text-terracotta" : "text-muted")}>
+                  {vel.toFixed(3)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -89,37 +54,28 @@ function JointStateRenderer({ msg }: { msg: any }) {
 function TFMessageRenderer({ msg }: { msg: any }) {
   const transforms: any[] = msg.transforms || [];
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <SectionLabel label="Transforms" count={transforms.length} />
       {transforms.map((tf: any, i: number) => {
         const t = tf.transform?.translation || {};
         const r = tf.transform?.rotation || {};
         return (
-          <div key={i} className="p-2 rounded border border-gray-800/50 bg-gray-900/30 space-y-1">
-            <div className="flex items-center gap-1 text-[10px]">
-              <span className="text-gray-400 font-mono">{tf.header?.frame_id}</span>
-              <span className="text-gray-600">&rarr;</span>
-              <span className="text-blue-300 font-mono">{tf.child_frame_id}</span>
+          <div key={i} className="p-3 border border-hair bg-paper space-y-1">
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-ink-soft font-mono tracking-[0.04em]">{tf.header?.frame_id}</span>
+              <span className="text-muted">→</span>
+              <span className="text-terracotta font-mono tracking-[0.04em]">{tf.child_frame_id}</span>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-[9px]">
-              <div>
-                <span className="text-gray-500">x: </span>
-                <span className="text-red-400 font-mono">{(t.x ?? 0).toFixed(4)}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">y: </span>
-                <span className="text-green-400 font-mono">{(t.y ?? 0).toFixed(4)}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">z: </span>
-                <span className="text-blue-400 font-mono">{(t.z ?? 0).toFixed(4)}</span>
-              </div>
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
+              <KvPair label="x" value={(t.x ?? 0).toFixed(4)} accent="err" />
+              <KvPair label="y" value={(t.y ?? 0).toFixed(4)} accent="ok" />
+              <KvPair label="z" value={(t.z ?? 0).toFixed(4)} accent="running" />
             </div>
-            <div className="grid grid-cols-4 gap-2 text-[9px]">
-              <div><span className="text-gray-600">qx:</span> <span className="text-gray-400 font-mono">{(r.x ?? 0).toFixed(3)}</span></div>
-              <div><span className="text-gray-600">qy:</span> <span className="text-gray-400 font-mono">{(r.y ?? 0).toFixed(3)}</span></div>
-              <div><span className="text-gray-600">qz:</span> <span className="text-gray-400 font-mono">{(r.z ?? 0).toFixed(3)}</span></div>
-              <div><span className="text-gray-600">qw:</span> <span className="text-gray-400 font-mono">{(r.w ?? 0).toFixed(3)}</span></div>
+            <div className="grid grid-cols-4 gap-2 text-[10px]">
+              <KvPair label="qx" value={(r.x ?? 0).toFixed(3)} />
+              <KvPair label="qy" value={(r.y ?? 0).toFixed(3)} />
+              <KvPair label="qz" value={(r.z ?? 0).toFixed(3)} />
+              <KvPair label="qw" value={(r.w ?? 0).toFixed(3)} />
             </div>
           </div>
         );
@@ -128,41 +84,38 @@ function TFMessageRenderer({ msg }: { msg: any }) {
   );
 }
 
-function TaskStateRenderer({ msg }: { msg: any }) {
-  const statusColors: Record<string, string> = {
-    IDLE: "bg-gray-700 text-gray-300",
-    RUNNING: "bg-blue-600 text-blue-100",
-    SUCCESS: "bg-green-700 text-green-100",
-    FAILURE: "bg-red-700 text-red-100",
-    CANCELLED: "bg-yellow-700 text-yellow-100",
-  };
-  const pct = Math.round((msg.progress ?? 0) * 100);
+const STATUS_TO_CHIP: Record<string, ChipState> = {
+  IDLE: "idle",
+  RUNNING: "running",
+  SUCCESS: "done",
+  FAILURE: "failed",
+  CANCELLED: "neutral",
+};
 
+function TaskStateRenderer({ msg }: { msg: any }) {
+  const pct = Math.round((msg.progress ?? 0) * 100);
+  const fill = msg.status === "FAILURE" ? "bg-err" : msg.status === "SUCCESS" ? "bg-ok" : "bg-terracotta";
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-gray-200">{msg.task_name || "—"}</span>
-        <span className={clsx("px-1.5 py-0.5 rounded text-[9px] font-bold uppercase", statusColors[msg.status] || statusColors.IDLE)}>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[14px] font-medium text-ink">{msg.task_name || "—"}</span>
+        <Chip state={STATUS_TO_CHIP[msg.status] ?? "idle"} showDot>
           {msg.status}
-        </span>
-        <span className="text-[10px] text-gray-500 font-mono">{msg.task_id}</span>
+        </Chip>
+        <span className="text-[10px] text-muted font-mono tracking-[0.04em]">{msg.task_id}</span>
       </div>
 
-      {/* Progress bar */}
       <div>
-        <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+        <div className="flex justify-between text-[11px] text-muted mb-1 font-mono tracking-[0.04em]">
           <span>Progress</span>
           <span>{pct}%</span>
         </div>
-        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className={clsx("h-full rounded-full transition-all", msg.status === "FAILURE" ? "bg-red-500" : "bg-blue-500")}
-            style={{ width: `${pct}%` }}
-          />
+        <div className="h-1.5 bg-stone overflow-hidden">
+          <div className={clsx("h-full transition-all", fill)} style={{ width: `${pct}%` }} />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-[10px]">
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
         <KvRow label="Current skill" value={msg.current_skill} />
         <KvRow label="Current node" value={msg.current_bt_node} />
         <KvRow label="Elapsed" value={`${(msg.elapsed_sec ?? 0).toFixed(1)}s`} />
@@ -171,18 +124,20 @@ function TaskStateRenderer({ msg }: { msg: any }) {
 
       {(msg.completed_skills ?? []).length > 0 && (
         <div>
-          <span className="text-[9px] text-gray-500 uppercase font-medium">Completed</span>
-          <div className="flex flex-wrap gap-1 mt-0.5">
+          <Eyebrow size="sm" tone="muted" className="block mb-1">Completed</Eyebrow>
+          <div className="flex flex-wrap gap-1">
             {msg.completed_skills.map((s: string, i: number) => (
-              <span key={i} className="text-[9px] px-1 py-0 rounded bg-green-900/30 text-green-300 border border-green-800/40">{s}</span>
+              <span key={i} className="font-mono text-[10px] px-1.5 py-0.5 border border-ok text-ok tracking-[0.04em]">
+                {s}
+              </span>
             ))}
           </div>
         </div>
       )}
 
       {msg.error_message && (
-        <div className="p-1.5 rounded bg-red-950/30 border border-red-800/40 text-[10px] text-red-300">
-          {msg.error_skill && <span className="font-bold">{msg.error_skill}: </span>}
+        <div className="p-3 border border-err bg-err-soft text-[12px] text-err">
+          {msg.error_skill && <span className="font-semibold">{msg.error_skill}: </span>}
           {msg.error_message}
         </div>
       )}
@@ -192,27 +147,27 @@ function TaskStateRenderer({ msg }: { msg: any }) {
 
 function DiagnosticArrayRenderer({ msg }: { msg: any }) {
   const statuses: any[] = msg.status || [];
-  const levelIcon = (level: number) => {
-    if (level === 0) return <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />;
-    if (level === 1) return <span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />;
-    if (level === 2) return <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />;
-    return <span className="w-2 h-2 rounded-full bg-gray-500 inline-block" />;
+  const dot = (level: number) => {
+    if (level === 0) return "bg-ok";
+    if (level === 1) return "bg-terracotta";
+    if (level === 2) return "bg-err";
+    return "bg-muted";
   };
 
   return (
     <div className="space-y-1">
       <SectionLabel label="Diagnostics" count={statuses.length} />
       {statuses.map((s: any, i: number) => (
-        <div key={i} className="flex items-start gap-2 py-0.5 text-[10px]">
-          {levelIcon(s.level)}
+        <div key={i} className="flex items-start gap-2 py-1 text-[11px]">
+          <span className={clsx("w-1.5 h-1.5 rounded-full inline-block mt-1", dot(s.level))} />
           <div className="flex-1 min-w-0">
-            <span className="text-gray-300 font-medium">{s.name}</span>
-            {s.message && <span className="text-gray-500 ml-1.5">— {s.message}</span>}
+            <span className="text-ink font-medium">{s.name}</span>
+            {s.message && <span className="text-muted ml-2">— {s.message}</span>}
             {(s.values ?? []).length > 0 && (
               <div className="mt-0.5 space-y-0">
                 {s.values.map((v: any, j: number) => (
-                  <div key={j} className="text-[9px] text-gray-500 pl-2">
-                    <span className="text-gray-400">{v.key}:</span> {v.value}
+                  <div key={j} className="text-[10px] text-muted pl-2 font-mono tracking-[0.04em]">
+                    <span className="text-ink-soft">{v.key}:</span> {v.value}
                   </div>
                 ))}
               </div>
@@ -228,22 +183,24 @@ function PoseStampedRenderer({ msg }: { msg: any }) {
   const p = msg.pose?.position || msg.position || {};
   const o = msg.pose?.orientation || msg.orientation || {};
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <SectionLabel label="Pose" />
       {msg.header?.frame_id && (
-        <div className="text-[10px] text-gray-500">frame: <span className="text-gray-300 font-mono">{msg.header.frame_id}</span></div>
+        <div className="text-[11px] text-muted">
+          frame: <span className="text-ink-soft font-mono tracking-[0.04em]">{msg.header.frame_id}</span>
+        </div>
       )}
-      <div className="grid grid-cols-3 gap-2 text-[10px]">
-        <div><span className="text-gray-500">x: </span><span className="text-red-400 font-mono">{(p.x ?? 0).toFixed(4)}</span></div>
-        <div><span className="text-gray-500">y: </span><span className="text-green-400 font-mono">{(p.y ?? 0).toFixed(4)}</span></div>
-        <div><span className="text-gray-500">z: </span><span className="text-blue-400 font-mono">{(p.z ?? 0).toFixed(4)}</span></div>
+      <div className="grid grid-cols-3 gap-2 text-[11px]">
+        <KvPair label="x" value={(p.x ?? 0).toFixed(4)} accent="err" />
+        <KvPair label="y" value={(p.y ?? 0).toFixed(4)} accent="ok" />
+        <KvPair label="z" value={(p.z ?? 0).toFixed(4)} accent="running" />
       </div>
       {(o.x !== undefined || o.w !== undefined) && (
-        <div className="grid grid-cols-4 gap-2 text-[9px]">
-          <div><span className="text-gray-600">qx:</span> <span className="text-gray-400 font-mono">{(o.x ?? 0).toFixed(3)}</span></div>
-          <div><span className="text-gray-600">qy:</span> <span className="text-gray-400 font-mono">{(o.y ?? 0).toFixed(3)}</span></div>
-          <div><span className="text-gray-600">qz:</span> <span className="text-gray-400 font-mono">{(o.z ?? 0).toFixed(3)}</span></div>
-          <div><span className="text-gray-600">qw:</span> <span className="text-gray-400 font-mono">{(o.w ?? 0).toFixed(3)}</span></div>
+        <div className="grid grid-cols-4 gap-2 text-[10px]">
+          <KvPair label="qx" value={(o.x ?? 0).toFixed(3)} />
+          <KvPair label="qy" value={(o.y ?? 0).toFixed(3)} />
+          <KvPair label="qz" value={(o.z ?? 0).toFixed(3)} />
+          <KvPair label="qw" value={(o.w ?? 0).toFixed(3)} />
         </div>
       )}
     </div>
@@ -252,7 +209,6 @@ function PoseStampedRenderer({ msg }: { msg: any }) {
 
 function StringRenderer({ msg }: { msg: any }) {
   const data = msg.data ?? "";
-  // Try to parse as JSON for pretty display
   try {
     const parsed = JSON.parse(data);
     return (
@@ -263,19 +219,19 @@ function StringRenderer({ msg }: { msg: any }) {
     );
   } catch {
     return (
-      <div>
+      <div className="space-y-1">
         <SectionLabel label="String" />
-        <div className="text-xs text-gray-300 bg-gray-900/50 rounded p-2 whitespace-pre-wrap break-all">{data}</div>
+        <div className="text-[12px] text-ink-soft bg-cream-deep border border-hair p-3 whitespace-pre-wrap break-all font-mono tracking-[0.02em]">
+          {data}
+        </div>
       </div>
     );
   }
 }
 
-// ── Structured tree view for generic messages ──────────────────────────────
-
 function StructuredTreeView({ data, path, depth = 0 }: { data: any; path: string; depth?: number }) {
   if (data === null || data === undefined) {
-    return <span className="text-gray-600 italic">null</span>;
+    return <span className="text-muted italic">null</span>;
   }
 
   if (typeof data === "number") {
@@ -284,14 +240,14 @@ function StructuredTreeView({ data, path, depth = 0 }: { data: any; path: string
 
   if (typeof data === "boolean") {
     return (
-      <span className={clsx("font-mono text-[10px]", data ? "text-green-400" : "text-red-400")}>
+      <span className={clsx("font-mono text-[11px] tracking-[0.04em]", data ? "text-ok" : "text-err")}>
         {data.toString()}
       </span>
     );
   }
 
   if (typeof data === "string") {
-    return <span className="text-yellow-300 text-[10px] font-mono">"{data}"</span>;
+    return <span className="text-terracotta text-[11px] font-mono tracking-[0.04em]">"{data}"</span>;
   }
 
   if (Array.isArray(data)) {
@@ -302,33 +258,32 @@ function StructuredTreeView({ data, path, depth = 0 }: { data: any; path: string
     return <ObjectView data={data} path={path} depth={depth} />;
   }
 
-  return <span className="text-gray-400 text-[10px] font-mono">{String(data)}</span>;
+  return <span className="text-ink-soft text-[11px] font-mono">{String(data)}</span>;
 }
 
 function NumericValue({ value }: { value: number }) {
   const isInt = Number.isInteger(value);
   const formatted = isInt ? value.toString() : value.toFixed(6).replace(/0+$/, "0");
-  return <span className="text-cyan-400 text-[10px] font-mono">{formatted}</span>;
+  return <span className="text-running text-[11px] font-mono tracking-[0.04em]">{formatted}</span>;
 }
 
 function ObjectView({ data, path, depth }: { data: Record<string, any>; path: string; depth: number }) {
   const [collapsed, setCollapsed] = useState(depth > 2);
   const keys = Object.keys(data);
 
-  // Render small objects (≤3 keys, all primitives) inline
   const isSmall = keys.length <= 3 && keys.every((k) => typeof data[k] !== "object" || data[k] === null);
   if (isSmall && depth > 0) {
     return (
-      <span className="text-[10px]">
-        <span className="text-gray-600">{"{ "}</span>
+      <span className="text-[11px]">
+        <span className="text-muted">{"{ "}</span>
         {keys.map((k, i) => (
           <span key={k}>
-            <span className="text-gray-500">{k}: </span>
+            <span className="text-muted">{k}: </span>
             <StructuredTreeView data={data[k]} path={`${path}.${k}`} depth={depth + 1} />
-            {i < keys.length - 1 && <span className="text-gray-600">, </span>}
+            {i < keys.length - 1 && <span className="text-muted">, </span>}
           </span>
         ))}
-        <span className="text-gray-600">{" }"}</span>
+        <span className="text-muted">{" }"}</span>
       </span>
     );
   }
@@ -337,17 +292,17 @@ function ObjectView({ data, path, depth }: { data: Record<string, any>; path: st
     <div>
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center gap-0.5 text-gray-500 hover:text-gray-300"
+        className="flex items-center gap-1 text-muted hover:text-ink-soft transition-colors"
       >
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         <Braces className="w-3 h-3" />
-        <span className="text-[9px]">{keys.length} fields</span>
+        <span className="text-[10px] font-mono uppercase tracking-[0.06em]">{keys.length} fields</span>
       </button>
       {!collapsed && (
-        <div className="ml-3 border-l border-gray-800 pl-2 space-y-0.5 mt-0.5">
+        <div className="ml-3 border-l border-hair-soft pl-3 space-y-0.5 mt-1">
           {keys.map((key) => (
-            <div key={key} className="flex items-start gap-1">
-              <span className="text-gray-400 text-[10px] font-mono shrink-0">{key}:</span>
+            <div key={key} className="flex items-start gap-1.5">
+              <span className="text-ink-soft text-[11px] font-mono shrink-0 tracking-[0.04em]">{key}:</span>
               <StructuredTreeView data={data[key]} path={`${path}.${key}`} depth={depth + 1} />
             </div>
           ))}
@@ -360,17 +315,18 @@ function ObjectView({ data, path, depth }: { data: Record<string, any>; path: st
 function ArrayView({ data, path, depth }: { data: any[]; path: string; depth: number }) {
   const [collapsed, setCollapsed] = useState(depth > 2 && data.length > 5);
 
-  // Render numeric arrays as a compact bar/list
   if (data.length > 0 && data.every((v) => typeof v === "number")) {
     return <NumericArrayView data={data} />;
   }
 
-  // Render string arrays as tags
   if (data.length > 0 && data.every((v) => typeof v === "string")) {
     return (
       <div className="flex flex-wrap gap-1">
         {data.map((v, i) => (
-          <span key={i} className="text-[9px] px-1 py-0 rounded bg-gray-800 text-yellow-300 font-mono">
+          <span
+            key={i}
+            className="text-[10px] px-1.5 py-0.5 border border-hair text-terracotta font-mono tracking-[0.04em]"
+          >
             {v}
           </span>
         ))}
@@ -382,17 +338,17 @@ function ArrayView({ data, path, depth }: { data: any[]; path: string; depth: nu
     <div>
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center gap-0.5 text-gray-500 hover:text-gray-300"
+        className="flex items-center gap-1 text-muted hover:text-ink-soft transition-colors"
       >
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         <List className="w-3 h-3" />
-        <span className="text-[9px]">{data.length} items</span>
+        <span className="text-[10px] font-mono uppercase tracking-[0.06em]">{data.length} items</span>
       </button>
       {!collapsed && (
-        <div className="ml-3 border-l border-gray-800 pl-2 space-y-0.5 mt-0.5">
+        <div className="ml-3 border-l border-hair-soft pl-3 space-y-0.5 mt-1">
           {data.map((item, i) => (
-            <div key={i} className="flex items-start gap-1">
-              <span className="text-gray-600 text-[9px] font-mono shrink-0">[{i}]</span>
+            <div key={i} className="flex items-start gap-1.5">
+              <span className="text-muted text-[10px] font-mono shrink-0 tracking-[0.04em]">[{i}]</span>
               <StructuredTreeView data={item} path={`${path}[${i}]`} depth={depth + 1} />
             </div>
           ))}
@@ -408,19 +364,22 @@ function NumericArrayView({ data }: { data: number[] }) {
   const range = max - min || 1;
 
   return (
-    <div className="space-y-0.5">
-      <div className="flex items-center gap-1 text-[9px] text-gray-500">
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 text-[10px] text-muted font-mono tracking-[0.04em]">
         <span>[{data.length}]</span>
-        <span>min: <span className="text-cyan-400 font-mono">{min.toFixed(3)}</span></span>
-        <span>max: <span className="text-cyan-400 font-mono">{max.toFixed(3)}</span></span>
+        <span>min: <span className="text-running">{min.toFixed(3)}</span></span>
+        <span>max: <span className="text-running">{max.toFixed(3)}</span></span>
       </div>
-      <div className="flex gap-px">
+      <div className="flex gap-px items-end" style={{ height: 24 }}>
         {data.map((v, i) => {
-          const h = Math.max(((v - min) / range) * 20 + 2, 2);
+          const h = Math.max(((v - min) / range) * 22 + 2, 2);
           return (
-            <div key={i} className="flex flex-col items-center justify-end" style={{ height: 22 }} title={`[${i}] ${v.toFixed(4)}`}>
-              <div className="w-2 rounded-t bg-blue-500/60 hover:bg-blue-400 transition-colors" style={{ height: h }} />
-            </div>
+            <div
+              key={i}
+              className="w-2 bg-terracotta hover:bg-terracotta-hover transition-colors"
+              style={{ height: h }}
+              title={`[${i}] ${v.toFixed(4)}`}
+            />
           );
         })}
       </div>
@@ -428,37 +387,58 @@ function NumericArrayView({ data }: { data: number[] }) {
   );
 }
 
-// ── Utilities ───────────────────────────────────────────────────────────────
-
 function SectionLabel({ label, count }: { label: string; count?: number }) {
   return (
-    <div className="flex items-center gap-1.5 text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">
-      {label}
-      {count !== undefined && <span className="text-gray-600">({count})</span>}
+    <div className="flex items-center gap-1.5 mb-2">
+      <Eyebrow size="sm">{label}</Eyebrow>
+      {count !== undefined && (
+        <span className="text-[10px] text-muted font-mono tracking-[0.04em]">({count})</span>
+      )}
     </div>
   );
 }
 
 function KvRow({ label, value }: { label: string; value: any }) {
   return (
-    <div className="text-[10px]">
-      <span className="text-gray-500">{label}: </span>
-      <span className="text-gray-300 font-mono">{value ?? "—"}</span>
+    <div className="text-[11px]">
+      <span className="text-muted">{label}: </span>
+      <span className="text-ink-soft font-mono tracking-[0.04em]">{value ?? "—"}</span>
     </div>
   );
 }
 
-// ── Main entry point: picks the best renderer for the message type ─────────
+function KvPair({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: "err" | "ok" | "running";
+}) {
+  const accentClass =
+    accent === "err"
+      ? "text-err"
+      : accent === "ok"
+        ? "text-ok"
+        : accent === "running"
+          ? "text-running"
+          : "text-ink-soft";
+  return (
+    <div>
+      <span className="text-muted">{label}: </span>
+      <span className={clsx("font-mono tracking-[0.04em]", accentClass)}>{value}</span>
+    </div>
+  );
+}
 
 interface Props {
   type: string;
   msg: any;
-  messages: any[]; // history for sparklines
+  messages: any[];
 }
 
-/** Map message type to the best specialized renderer, falling back to tree view */
-export default function MessageRenderer({ type, msg, messages }: Props) {
-  // Match by ROS type string
+export default function MessageRenderer({ type, msg }: Props) {
   const shortType = type.split("/").pop() || type;
 
   if (shortType === "JointState") return <JointStateRenderer msg={msg} />;
@@ -467,11 +447,9 @@ export default function MessageRenderer({ type, msg, messages }: Props) {
   if (shortType === "DiagnosticArray") return <DiagnosticArrayRenderer msg={msg} />;
   if (shortType === "String") return <StringRenderer msg={msg} />;
 
-  // Check for pose-like structure
   if (msg.pose?.position || (msg.position && msg.orientation)) {
     return <PoseStampedRenderer msg={msg} />;
   }
 
-  // Fallback: structured tree view
   return <StructuredTreeView data={msg} path="" />;
 }

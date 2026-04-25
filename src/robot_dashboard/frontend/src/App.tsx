@@ -33,12 +33,15 @@ export default function App() {
       <HumanPromptOverlay />
       <Toaster
         position="bottom-right"
-        theme="dark"
-        richColors
+        theme="light"
         toastOptions={{
           style: {
-            background: "#1a1a2e",
-            border: "1px solid #374151",
+            background: "#FFFFFF",
+            border: "1px solid #D7D7D7",
+            color: "#1E1E1E",
+            borderRadius: "6px",
+            fontFamily: '"Source Sans 3", "Helvetica Neue", system-ui, sans-serif',
+            fontSize: "14px",
           },
         }}
       />

@@ -12,18 +12,25 @@ import {
 import type { BtGraphNode, BtNodeState } from "../../types/bt";
 import clsx from "clsx";
 
-const STATE_COLORS: Record<BtNodeState, string> = {
-  idle: "border-gray-600 bg-gray-800",
-  running: "border-blue-500 bg-blue-950 ring-2 ring-blue-500/40",
-  success: "border-green-500 bg-green-950",
-  failure: "border-red-500 bg-red-950",
+const STATE_BORDER: Record<BtNodeState, string> = {
+  idle: "border-hair bg-paper",
+  running: "border-running border-[1.5px] bg-running-soft",
+  success: "border-ok bg-ok-soft",
+  failure: "border-err bg-err-soft",
 };
 
 const STATE_DOT: Record<BtNodeState, string> = {
-  idle: "bg-gray-500",
-  running: "bg-blue-400 animate-pulse",
-  success: "bg-green-400",
-  failure: "bg-red-400",
+  idle: "bg-muted",
+  running: "bg-running animate-pulse",
+  success: "bg-ok",
+  failure: "bg-err",
+};
+
+const STATE_TYPE_TEXT: Record<BtNodeState, string> = {
+  idle: "text-muted",
+  running: "text-running",
+  success: "text-ok",
+  failure: "text-err",
 };
 
 function nodeIcon(btNodeType: string, category: string) {
@@ -34,8 +41,7 @@ function nodeIcon(btNodeType: string, category: string) {
         return <GitBranch className={cls} />;
       return <Workflow className={cls} />;
     case "decorator":
-      if (btNodeType.includes("Retry"))
-        return <RotateCcw className={cls} />;
+      if (btNodeType.includes("Retry")) return <RotateCcw className={cls} />;
       return <Play className={cls} />;
     case "condition":
       return <Diamond className={cls} />;
@@ -52,33 +58,33 @@ function BtNodeComponent({ data }: NodeProps & { data: BtGraphNode }) {
   return (
     <div
       className={clsx(
-        "rounded-lg border px-3 py-2 min-w-[160px] max-w-[220px] shadow-lg transition-all duration-200",
-        STATE_COLORS[state]
+        "border px-3 py-2 min-w-[160px] max-w-[220px] transition-colors duration-200",
+        STATE_BORDER[state],
       )}
     >
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-gray-500 !w-2 !h-2 !border-0"
+        className="!bg-paper !border !border-hair !w-2 !h-2"
       />
 
-      {/* Header row */}
       <div className="flex items-center gap-1.5 mb-0.5">
-        {nodeIcon(btNodeType, category)}
-        <span className="text-[10px] font-medium uppercase text-gray-400 truncate">
+        <span className={STATE_TYPE_TEXT[state]}>{nodeIcon(btNodeType, category)}</span>
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted truncate">
           {btNodeType}
         </span>
         <span className={clsx("ml-auto w-2 h-2 rounded-full", STATE_DOT[state])} />
       </div>
 
-      {/* Node name */}
-      <div className="text-xs font-semibold text-gray-100 truncate" title={name}>
+      <div className="text-[12.5px] font-medium text-ink truncate" title={name}>
         {name}
       </div>
 
-      {/* Show key params */}
       {Object.keys(params).length > 0 && (
-        <div className="mt-1 text-[10px] text-gray-400 truncate" title={JSON.stringify(params)}>
+        <div
+          className="mt-1 font-mono text-[10px] text-ink-2 truncate tracking-[0.04em]"
+          title={JSON.stringify(params)}
+        >
           {Object.entries(params)
             .slice(0, 2)
             .map(([k, v]) => `${k}=${v}`)
@@ -89,7 +95,7 @@ function BtNodeComponent({ data }: NodeProps & { data: BtGraphNode }) {
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-gray-500 !w-2 !h-2 !border-0"
+        className="!bg-paper !border !border-hair !w-2 !h-2"
       />
     </div>
   );

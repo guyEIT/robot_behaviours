@@ -15,8 +15,8 @@ function BtEdgeComponent(props: EdgeProps) {
       id={props.id}
       path={edgePath}
       style={{
-        stroke: props.animated ? "#3b82f6" : "#4b5563",
-        strokeWidth: props.animated ? 2 : 1.5,
+        stroke: props.animated ? "#A96D4B" : "#D7D7D7",
+        strokeWidth: props.animated ? 1.75 : 1.25,
       }}
       markerEnd={props.markerEnd}
     />

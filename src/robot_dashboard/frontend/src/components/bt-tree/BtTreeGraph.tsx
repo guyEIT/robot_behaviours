@@ -25,9 +25,7 @@ const edgeTypes = { btEdge: BtEdgeComponent };
 interface Props {
   xml: string;
   activeNodeName: string | null;
-  /** Names of skills that have completed in the running task — rendered green */
   completedNodeNames?: readonly string[];
-  /** Names of skills that have failed in the running task — rendered red */
   failedNodeNames?: readonly string[];
   followActive?: boolean;
 }
@@ -59,16 +57,6 @@ function BtTreeGraphInner({
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges as Edge[]);
 
-  // Update node states from active / completed / failed sets. Failed wins
-  // over completed (so a node that failed mid-retry stays red), and active
-  // wins over both (a node that finished + got retried will pulse blue
-  // again on the second attempt).
-  //
-  // Note: do NOT include `nodes` in the deps array. Each setNodes() call
-  // mutates `nodes`, retriggering this effect — which then setNodes()
-  // again, looping forever. We read live node positions inside the
-  // setNodes callback instead so the closure stays fresh without listing
-  // `nodes` as a dependency.
   useEffect(() => {
     const activeId = activeNodeName ? nameIndex.get(activeNodeName) ?? null : null;
     const completedIds = new Set(
@@ -99,7 +87,6 @@ function BtTreeGraphInner({
       }),
     );
 
-    // Animate edges leading to the active node
     setEdges((prev) =>
       prev.map((edge) => ({
         ...edge,
@@ -107,7 +94,6 @@ function BtTreeGraphInner({
       })),
     );
 
-    // Follow the active node
     if (followActive && activeNodePosition) {
       const p: { x: number; y: number; w: number; h: number } = activeNodePosition;
       setCenter(p.x + p.w / 2, p.y + p.h / 2, { duration: 300, zoom: 1.2 });
@@ -123,7 +109,6 @@ function BtTreeGraphInner({
     setCenter,
   ]);
 
-  // Re-layout when XML changes
   useEffect(() => {
     setNodes(layoutNodes as Node[]);
     setEdges(layoutEdges as Edge[]);
@@ -147,12 +132,12 @@ function BtTreeGraphInner({
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
     >
-      <Background color="#1e1e2e" gap={20} />
+      <Background color="#D7D7D7" gap={24} size={1} />
       <Controls showInteractive={false} />
       <MiniMap
-        nodeColor={() => "#4b5563"}
-        maskColor="rgba(0,0,0,0.6)"
-        style={{ background: "#111118" }}
+        nodeColor={() => "#9a8f83"}
+        maskColor="rgba(246,244,236,0.6)"
+        style={{ background: "#FBF9F5", border: "1px solid #D7D7D7" }}
       />
     </ReactFlow>
   );

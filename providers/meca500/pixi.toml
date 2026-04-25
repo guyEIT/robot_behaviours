@@ -35,9 +35,10 @@ test               = { cmd = "colcon test --event-handlers console_direct+", des
 [feature.tools.dependencies]
 python = ">=3.11"
 numpy = "*"
+trimesh = "*"
 
 [feature.tools.tasks]
-optimize-mecatable = { cmd = "python tools/optimize_mecatable.py", description = "Optimize mecatable STL mesh." }
+fix-mecatable = { cmd = "python tools/fix_mecatable.py", description = "Repair the mecatable STL mesh (weld vertices, drop degenerates, fix winding)." }
 
 [environments]
 default = { solve-group = "default" }

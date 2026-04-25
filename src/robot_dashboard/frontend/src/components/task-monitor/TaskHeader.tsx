@@ -1,4 +1,5 @@
-import clsx from "clsx";
+import { Chip } from "../ui";
+import type { ChipState } from "../ui";
 
 interface Props {
   taskId: string;
@@ -6,30 +7,26 @@ interface Props {
   status: string;
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  IDLE: "bg-gray-700 text-gray-300",
-  RUNNING: "bg-blue-600 text-blue-100 animate-pulse",
-  SUCCESS: "bg-green-700 text-green-100",
-  FAILURE: "bg-red-700 text-red-100",
-  CANCELLED: "bg-yellow-700 text-yellow-100",
+const STATUS_TO_CHIP: Record<string, ChipState> = {
+  IDLE: "idle",
+  RUNNING: "running",
+  SUCCESS: "done",
+  FAILURE: "failed",
+  CANCELLED: "neutral",
 };
 
 export default function TaskHeader({ taskId, taskName, status }: Props) {
+  const chipState = STATUS_TO_CHIP[status] ?? "idle";
   return (
     <div className="flex items-center gap-3">
-      <h3 className="text-sm font-semibold text-gray-100 truncate">
+      <h3 className="text-[15px] font-medium text-ink truncate">
         {taskName || "No Task"}
       </h3>
-      <span
-        className={clsx(
-          "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-          STATUS_STYLES[status] ?? STATUS_STYLES.IDLE
-        )}
-      >
+      <Chip state={chipState} showDot>
         {status}
-      </span>
+      </Chip>
       {taskId && (
-        <span className="text-[10px] text-gray-500 font-mono">{taskId}</span>
+        <span className="text-[10px] text-muted font-mono tracking-[0.06em]">{taskId}</span>
       )}
     </div>
   );

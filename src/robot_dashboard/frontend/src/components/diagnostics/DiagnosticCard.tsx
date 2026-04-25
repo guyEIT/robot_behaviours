@@ -5,10 +5,10 @@ import { ChevronRight, ChevronDown } from "lucide-react";
 import clsx from "clsx";
 
 const LEVEL_DOT: Record<number, string> = {
-  [DIAG_LEVELS.OK]: "bg-green-500",
-  [DIAG_LEVELS.WARN]: "bg-yellow-500",
-  [DIAG_LEVELS.ERROR]: "bg-red-500",
-  [DIAG_LEVELS.STALE]: "bg-gray-500",
+  [DIAG_LEVELS.OK]: "bg-ok",
+  [DIAG_LEVELS.WARN]: "bg-terracotta",
+  [DIAG_LEVELS.ERROR]: "bg-err",
+  [DIAG_LEVELS.STALE]: "bg-muted",
 };
 
 const LEVEL_LABEL: Record<number, string> = {
@@ -19,13 +19,19 @@ const LEVEL_LABEL: Record<number, string> = {
 };
 
 const LEVEL_TEXT: Record<number, string> = {
-  [DIAG_LEVELS.OK]: "text-green-400",
-  [DIAG_LEVELS.WARN]: "text-yellow-400",
-  [DIAG_LEVELS.ERROR]: "text-red-400",
-  [DIAG_LEVELS.STALE]: "text-gray-500",
+  [DIAG_LEVELS.OK]: "text-ok",
+  [DIAG_LEVELS.WARN]: "text-terracotta",
+  [DIAG_LEVELS.ERROR]: "text-err",
+  [DIAG_LEVELS.STALE]: "text-muted",
 };
 
-/** Short name: strip group prefix, e.g. "/Skill Atoms/GripperControl" → "GripperControl" */
+const LEVEL_LEFT_BORDER: Record<number, string> = {
+  [DIAG_LEVELS.OK]: "border-l-transparent",
+  [DIAG_LEVELS.WARN]: "border-l-terracotta",
+  [DIAG_LEVELS.ERROR]: "border-l-err",
+  [DIAG_LEVELS.STALE]: "border-l-transparent",
+};
+
 function shortName(fullName: string): string {
   const parts = fullName.split("/").filter(Boolean);
   return parts.length > 1 ? parts.slice(1).join("/") : parts[0] || fullName;
@@ -46,24 +52,18 @@ export default function DiagnosticCard({
     <div
       className={clsx(
         "border-l-2 ml-2",
-        level === DIAG_LEVELS.ERROR
-          ? "border-red-500/60"
-          : level === DIAG_LEVELS.WARN
-          ? "border-yellow-500/40"
-          : "border-transparent"
+        LEVEL_LEFT_BORDER[level] ?? "border-l-transparent",
+        level >= DIAG_LEVELS.ERROR && "bg-err-soft",
       )}
     >
-      {/* Header row */}
       <button
         onClick={() => hasValues && setExpanded(!expanded)}
         className={clsx(
-          "w-full flex items-center gap-2 px-2 py-1.5 text-left transition-colors",
-          hasValues ? "hover:bg-gray-800/40 cursor-pointer" : "cursor-default",
-          level >= DIAG_LEVELS.ERROR && "bg-red-950/20"
+          "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
+          hasValues ? "hover:bg-cream cursor-pointer" : "cursor-default",
         )}
       >
-        {/* Expand chevron */}
-        <span className="w-3 shrink-0 text-gray-600">
+        <span className="w-3 shrink-0 text-muted">
           {hasValues ? (
             expanded ? (
               <ChevronDown className="w-3 h-3" />
@@ -73,23 +73,20 @@ export default function DiagnosticCard({
           ) : null}
         </span>
 
-        {/* Status dot */}
         <span
           className={clsx(
-            "w-2 h-2 rounded-full shrink-0",
+            "w-1.5 h-1.5 rounded-full shrink-0",
             LEVEL_DOT[level] ?? LEVEL_DOT[DIAG_LEVELS.STALE]
           )}
         />
 
-        {/* Name */}
-        <span className="text-[11px] text-gray-200 truncate min-w-0 flex-1 font-mono">
+        <span className="font-mono text-[11.5px] text-ink truncate min-w-0 flex-1 tracking-[0.04em]">
           {shortName(status.name)}
         </span>
 
-        {/* Level badge */}
         <span
           className={clsx(
-            "text-[9px] font-bold uppercase shrink-0",
+            "font-mono text-[10px] font-semibold uppercase shrink-0 tracking-[0.08em]",
             LEVEL_TEXT[level] ?? LEVEL_TEXT[DIAG_LEVELS.STALE]
           )}
         >
@@ -97,20 +94,18 @@ export default function DiagnosticCard({
         </span>
       </button>
 
-      {/* Message (always visible if present) */}
       {status.message && (
-        <div className="pl-9 pr-2 pb-0.5">
-          <span className="text-[10px] text-gray-500 italic">{status.message}</span>
+        <div className="pl-9 pr-3 pb-1">
+          <span className="text-[11px] text-muted italic">{status.message}</span>
         </div>
       )}
 
-      {/* Key-value pairs (expanded) */}
       {expanded && hasValues && (
-        <div className="pl-9 pr-2 pb-2 space-y-0.5">
+        <div className="pl-9 pr-3 pb-3 space-y-0.5">
           {status.values.map((v) => (
-            <div key={v.key} className="flex gap-2 text-[10px] font-mono">
-              <span className="text-gray-500 shrink-0">{v.key}:</span>
-              <span className="text-gray-300 truncate">{v.value}</span>
+            <div key={v.key} className="flex gap-2 text-[11px] font-mono tracking-[0.04em]">
+              <span className="text-muted shrink-0">{v.key}:</span>
+              <span className="text-ink-soft truncate">{v.value}</span>
             </div>
           ))}
         </div>

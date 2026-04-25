@@ -11,21 +11,17 @@ import {
   MessageSquareMore,
 } from "lucide-react";
 import clsx from "clsx";
+import { Button, Eyebrow, Input } from "../ui";
 
-/**
- * Full-screen overlay that appears when blocking prompts are active.
- * Ensures the operator can't miss a confirm/input/task request.
- */
 export default function HumanPromptOverlay() {
   const activePrompts = useHumanPromptStore((s) => s.activePrompts);
 
   if (activePrompts.length === 0) return null;
 
-  // Show the oldest prompt first
   const prompt = activePrompts[0];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-soft/45">
       <OverlayCard prompt={prompt} queueCount={activePrompts.length} />
     </div>
   );
@@ -56,58 +52,50 @@ function OverlayCard({
     removePrompt(prompt.prompt_id);
   };
 
-  const accentColor =
-    prompt.prompt_type === "task" ? "orange" :
-    prompt.prompt_type === "confirm" ? "blue" : "purple";
-
-  const borderClass =
-    accentColor === "orange" ? "border-orange-500" :
-    accentColor === "blue" ? "border-blue-500" : "border-purple-500";
+  const eyebrowLabel =
+    prompt.prompt_type === "task"
+      ? "Task Assigned"
+      : prompt.prompt_type === "confirm"
+        ? "Confirmation Required"
+        : "Input Required";
 
   return (
-    <div className={clsx(
-      "w-full max-w-md mx-4 rounded-2xl border-2 bg-gray-900 shadow-2xl p-6 space-y-4",
-      borderClass
-    )}>
-      {/* Header */}
+    <div className="w-full max-w-md mx-4 bg-paper border border-hair border-l-2 border-l-terracotta p-7 space-y-4">
       <div className="flex items-center gap-3">
-        {prompt.prompt_type === "task" && <ClipboardCheck className="w-6 h-6 text-orange-400" />}
-        {prompt.prompt_type === "confirm" && <AlertTriangle className="w-6 h-6 text-blue-400" />}
-        {prompt.prompt_type === "input" && <MessageSquareMore className="w-6 h-6 text-purple-400" />}
+        {prompt.prompt_type === "task" && <ClipboardCheck className="w-6 h-6 text-terracotta" />}
+        {prompt.prompt_type === "confirm" && <AlertTriangle className="w-6 h-6 text-running" />}
+        {prompt.prompt_type === "input" && <MessageSquareMore className="w-6 h-6 text-terracotta" />}
         <div>
-          <div className="text-[10px] text-gray-500 uppercase font-bold">
-            {prompt.prompt_type === "task" ? "Task Assigned" :
-             prompt.prompt_type === "confirm" ? "Confirmation Required" :
-             "Input Required"}
-          </div>
-          <h3 className="text-lg font-bold text-gray-100">{prompt.title}</h3>
+          <Eyebrow size="sm" className="block mb-1">
+            {eyebrowLabel}
+          </Eyebrow>
+          <h3 className="text-[20px] font-medium text-ink leading-tight">{prompt.title}</h3>
         </div>
       </div>
 
-      {/* Message */}
-      <p className="text-sm text-gray-300 leading-relaxed">{prompt.message}</p>
+      <p className="text-[14.5px] text-ink-soft leading-relaxed">{prompt.message}</p>
 
-      {/* Confirm buttons */}
       {prompt.prompt_type === "confirm" && (
         <div className="flex gap-3 pt-2">
-          <button
+          <Button
             onClick={() => respond(true)}
-            className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
+            variant="primary"
+            leftIcon={<CheckCircle className="w-4 h-4" />}
+            className="flex-1"
           >
-            <CheckCircle className="w-4 h-4" />
             Confirm
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => respond(false)}
-            className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
+            variant="ghost"
+            leftIcon={<XCircle className="w-4 h-4" />}
+            className="flex-1"
           >
-            <XCircle className="w-4 h-4" />
             Reject
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* Input form */}
       {prompt.prompt_type === "input" && (
         <div className="space-y-3 pt-2">
           {prompt.input_type === "choice" && prompt.choices.length > 0 ? (
@@ -116,10 +104,10 @@ function OverlayCard({
                 <label
                   key={c}
                   className={clsx(
-                    "flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all text-sm",
+                    "flex items-center gap-3 p-3 border-l-2 border cursor-pointer transition-colors text-[14px]",
                     inputValue === c
-                      ? "border-purple-500 bg-purple-950/30 text-white"
-                      : "border-gray-700 text-gray-400 hover:border-gray-500"
+                      ? "border-l-terracotta border-hair bg-terracotta-tint text-ink"
+                      : "border-l-transparent border-hair text-ink-soft hover:bg-cream",
                   )}
                 >
                   <input
@@ -128,84 +116,74 @@ function OverlayCard({
                     value={c}
                     checked={inputValue === c}
                     onChange={() => setInputValue(c)}
-                    className="accent-purple-500"
+                    className="accent-terracotta"
                   />
                   {c}
                 </label>
               ))}
             </div>
           ) : (
-            <input
+            <Input
               type={prompt.input_type === "number" ? "number" : "text"}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Enter value..."
+              placeholder="Enter value…"
               autoFocus
-              className="w-full px-3 py-2.5 text-sm bg-gray-800 border border-gray-600 rounded-lg focus:border-purple-500 focus:outline-none text-gray-200"
             />
           )}
           <div className="flex gap-3">
-            <button
+            <Button
               onClick={() => respond(true, inputValue)}
               disabled={!inputValue}
-              className={clsx(
-                "flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all",
-                inputValue
-                  ? "bg-purple-600 hover:bg-purple-500 text-white"
-                  : "bg-gray-800 text-gray-600 cursor-not-allowed"
-              )}
+              variant="primary"
+              leftIcon={<Send className="w-4 h-4" />}
+              className="flex-1"
             >
-              <Send className="w-4 h-4" />
               Submit
-            </button>
-            <button
-              onClick={() => respond(false)}
-              className="px-5 py-2.5 rounded-xl bg-gray-700 hover:bg-gray-600 text-sm text-gray-300 font-medium"
-            >
+            </Button>
+            <Button onClick={() => respond(false)} variant="ghost">
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Task buttons */}
       {prompt.prompt_type === "task" && (
         <div className="space-y-3 pt-2">
-          <input
+          <Input
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Optional notes..."
-            className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg focus:border-orange-500 focus:outline-none text-gray-300"
+            placeholder="Optional notes…"
           />
           <div className="flex gap-3">
-            <button
+            <Button
               onClick={() => respond(true, notes)}
-              className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
+              variant="primary"
+              leftIcon={<CheckCircle className="w-4 h-4" />}
+              className="flex-1"
             >
-              <CheckCircle className="w-4 h-4" />
               Done
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => respond(false, notes)}
-              className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
+              variant="ghost"
+              leftIcon={<XCircle className="w-4 h-4" />}
+              className="flex-1"
             >
-              <XCircle className="w-4 h-4" />
               Failed
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Queue indicator */}
       {queueCount > 1 && (
-        <div className="text-center text-[10px] text-gray-600">
+        <div className="text-center font-mono text-[10px] text-muted uppercase tracking-[0.1em]">
           +{queueCount - 1} more prompt{queueCount > 2 ? "s" : ""} waiting
         </div>
       )}
 
-      {/* Source node */}
-      <div className="text-[10px] text-gray-600 text-center">
+      <div className="text-center font-mono text-[10px] text-muted tracking-[0.06em] pt-1 border-t border-hair-soft">
         From BT node: {prompt.bt_node_name}
       </div>
     </div>

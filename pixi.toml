@@ -147,6 +147,9 @@ ros-jazzy-tf2-ros               = "*"
 ros-jazzy-tf2-geometry-msgs     = "*"
 ros-jazzy-diagnostic-aggregator = "*"
 ros-jazzy-rviz2                 = "*"
+# record_rosbag skill shells out to `ros2 bag record`
+ros-jazzy-ros2bag                          = "*"
+ros-jazzy-rosbag2-storage-default-plugins  = "*"
 
 [feature.real-native.tasks]
 real-native-run   = { cmd = "ros2 launch robot_skill_server skill_server.launch.py hardware_mode:=real use_rviz:=false use_rosboard:=false", description = "Launch real stack natively (pixi auto-builds on install; connects to host MoveIt2)" }
@@ -177,6 +180,9 @@ ros-jazzy-rosbridge-suite       = "*"
 ros-jazzy-tf2                   = "*"
 ros-jazzy-tf2-ros               = "*"
 ros-jazzy-diagnostic-aggregator = "*"
+# record_rosbag skill (in robot_skill_atoms) shells out to `ros2 bag record`
+ros-jazzy-ros2bag                          = "*"
+ros-jazzy-rosbag2-storage-default-plugins  = "*"
 
 [feature.orchestrator.tasks]
 orchestrator-run   = { cmd = "ros2 launch robot_skill_server skill_server.launch.py hardware_mode:=real use_rviz:=false use_rosboard:=false", description = "Run skill_server + dashboard only; atoms must run on their own host PCs (see meca500-host, provider-liconic tasks)" }
@@ -375,6 +381,9 @@ ros-jazzy-tf2                              = "*"
 ros-jazzy-tf2-ros                          = "*"
 ros-jazzy-tf2-geometry-msgs                = "*"
 ros-jazzy-diagnostic-aggregator            = "*"
+# record_rosbag skill (in robot_skill_atoms) shells out to `ros2 bag record`
+ros-jazzy-ros2bag                          = "*"
+ros-jazzy-rosbag2-storage-default-plugins  = "*"
 
 [feature.lab-sim.pypi-dependencies]
 pylabrobot = { version = "*", extras = ["usb"] }

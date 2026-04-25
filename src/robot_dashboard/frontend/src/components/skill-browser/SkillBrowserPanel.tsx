@@ -6,6 +6,7 @@ import SkillCard from "./SkillCard";
 import SkillDetailDrawer from "./SkillDetailDrawer";
 import { Puzzle, Search, Loader2 } from "lucide-react";
 import type { SkillDescription } from "../../types/ros";
+import { Eyebrow, Banner } from "../ui";
 
 export default function SkillBrowserPanel() {
   const { skills, loading, error } = useSkillStore();
@@ -16,7 +17,6 @@ export default function SkillBrowserPanel() {
 
   const filtered = useMemo(() => {
     return skills.filter((s) => {
-      // Filter by active robot when one is selected
       if (selectedRobotId && s.robot_id && s.robot_id !== selectedRobotId)
         return false;
       if (selectedCategories.size > 0 && !selectedCategories.has(s.category))
@@ -35,46 +35,43 @@ export default function SkillBrowserPanel() {
   }, [skills, selectedRobotId, selectedCategories, search]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-800 space-y-2">
+    <div className="flex flex-col h-full bg-paper">
+      <div className="px-5 py-3 border-b border-hair space-y-3">
         <div className="flex items-center gap-2">
-          <Puzzle className="w-4 h-4 text-blue-400" />
-          <h2 className="text-sm font-semibold">Skill Registry</h2>
-          <span className="text-xs text-gray-500">{skills.length} skills</span>
-          {loading && <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin ml-auto" />}
+          <Puzzle className="w-4 h-4 text-terracotta" />
+          <h2 className="text-[14px] font-medium text-ink">Skill Registry</h2>
+          <Eyebrow size="sm" tone="muted" className="ml-1">
+            {skills.length} skills
+          </Eyebrow>
+          {loading && <Loader2 className="w-3.5 h-3.5 text-running animate-spin ml-auto" />}
         </div>
 
-        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
           <input
             type="text"
-            placeholder="Search skills..."
+            placeholder="Search skills…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-7 pr-3 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded focus:border-blue-500 focus:outline-none text-gray-200 placeholder-gray-500"
+            className="w-full pl-9 pr-3 py-2 text-[13px] bg-paper border border-hair rounded-DEFAULT focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
           />
         </div>
 
-        {/* Category filter */}
         <CategoryFilter
           selected={selectedCategories}
           onChange={setSelectedCategories}
         />
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="px-4 py-2 text-xs text-red-400 bg-red-950/30 border-b border-gray-800">
-          {error}
+        <div className="px-5 py-3 border-b border-hair-soft">
+          <Banner tone="err">{error}</Banner>
         </div>
       )}
 
-      {/* Skill list */}
-      <div className="flex-1 overflow-auto p-3 space-y-2">
+      <div className="flex-1 overflow-auto p-4 space-y-2 bg-cream-deep">
         {filtered.length === 0 && !loading && (
-          <p className="text-xs text-gray-500 text-center py-8">
+          <p className="text-[12px] text-muted text-center py-8">
             {skills.length === 0
               ? "No skills registered. Start the skill server."
               : "No skills match your filters."}
@@ -89,7 +86,6 @@ export default function SkillBrowserPanel() {
         ))}
       </div>
 
-      {/* Detail drawer */}
       {selectedSkill && (
         <SkillDetailDrawer
           skill={selectedSkill}

@@ -1,4 +1,5 @@
-import { CheckCircle, XCircle } from "lucide-react";
+import { StepDot } from "../ui";
+import { Eyebrow } from "../ui";
 
 interface Props {
   completedSkills: string[];
@@ -16,41 +17,52 @@ export default function SkillTimeline({
     ...failedSkills.map((s) => ({ name: s, status: "failed" as const })),
   ];
 
+  let stepCount = 0;
   return (
-    <div className="space-y-1">
-      <h4 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+    <div>
+      <Eyebrow size="sm" tone="muted" className="block mb-3">
         Skill Timeline
-      </h4>
+      </Eyebrow>
 
-      {currentSkill && (
-        <div className="flex items-center gap-2 text-xs">
-          <div className="w-4 h-4 rounded-full border-2 border-blue-500 flex items-center justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+      <div className="space-y-2">
+        {allSkills.map((skill, i) => {
+          stepCount++;
+          return (
+            <div key={`${skill.name}-${i}`} className="flex items-center gap-3">
+              <StepDot
+                size="sm"
+                state={skill.status === "completed" ? "done" : "failed"}
+              >
+                {stepCount}
+              </StepDot>
+              <span
+                className={
+                  skill.status === "completed"
+                    ? "text-[13px] text-ink-soft"
+                    : "text-[13px] text-err"
+                }
+              >
+                {skill.name}
+              </span>
+            </div>
+          );
+        })}
+
+        {currentSkill && (
+          <div className="flex items-center gap-3">
+            <StepDot size="sm" state="running">
+              {stepCount + 1}
+            </StepDot>
+            <span className="text-[13px] text-running">{currentSkill}</span>
+            <span className="text-[10px] text-muted font-mono uppercase tracking-[0.1em]">
+              running
+            </span>
           </div>
-          <span className="text-blue-300">{currentSkill}</span>
-          <span className="text-[10px] text-gray-500">running</span>
-        </div>
-      )}
-
-      {allSkills.map((skill, i) => (
-        <div key={`${skill.name}-${i}`} className="flex items-center gap-2 text-xs">
-          {skill.status === "completed" ? (
-            <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
-          ) : (
-            <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-          )}
-          <span
-            className={
-              skill.status === "completed" ? "text-gray-300" : "text-red-300"
-            }
-          >
-            {skill.name}
-          </span>
-        </div>
-      ))}
+        )}
+      </div>
 
       {allSkills.length === 0 && !currentSkill && (
-        <p className="text-xs text-gray-600 italic">No skills executed yet</p>
+        <p className="text-[12px] text-muted italic">No skills executed yet</p>
       )}
     </div>
   );

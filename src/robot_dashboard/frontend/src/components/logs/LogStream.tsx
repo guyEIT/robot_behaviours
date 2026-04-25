@@ -4,7 +4,6 @@ import { useLogStore } from "../../stores/log-store";
 import LogFilterBar from "./LogFilterBar";
 import {
   logLevelName,
-  LOG_LEVELS,
   type RosLog,
   type SkillLogEvent,
   type LogLevelName,
@@ -13,19 +12,19 @@ import { Trash2, User, Wrench } from "lucide-react";
 import clsx from "clsx";
 
 const LEVEL_COLORS: Record<LogLevelName, string> = {
-  DEBUG: "text-gray-500",
-  INFO: "text-blue-400",
-  WARN: "text-yellow-400",
-  ERROR: "text-red-400",
-  FATAL: "text-red-300 font-bold",
+  DEBUG: "text-muted",
+  INFO: "text-ink-soft",
+  WARN: "text-terracotta",
+  ERROR: "text-err",
+  FATAL: "text-err font-bold",
 };
 
 const SEV_COLORS: Record<string, string> = {
-  info: "text-blue-400",
-  warn: "text-yellow-400",
-  warning: "text-yellow-400",
-  error: "text-red-400",
-  critical: "text-red-300 font-bold",
+  info: "text-running",
+  warn: "text-terracotta",
+  warning: "text-terracotta",
+  error: "text-err",
+  critical: "text-err font-bold",
 };
 
 type ViewMode = "all" | "human";
@@ -65,7 +64,6 @@ export default function LogStream() {
     });
   }, []);
 
-  // Filtered ROS logs (all mode)
   const filteredRos = useMemo(() => {
     if (viewMode !== "all") return [];
     const nodeLower = nodeFilter.toLowerCase();
@@ -79,7 +77,6 @@ export default function LogStream() {
     });
   }, [logs, activeLevels, nodeFilter, textFilter, viewMode]);
 
-  // Filtered skill logs (human mode: only "human" tagged; all mode: all skill logs)
   const filteredSkill = useMemo(() => {
     const textLower = textFilter.toLowerCase();
     return skillLogs.filter((log) => {
@@ -90,10 +87,6 @@ export default function LogStream() {
     });
   }, [skillLogs, textFilter, viewMode]);
 
-  // Combined view: in "all" mode show both, in "human" mode show only skill logs
-  const totalItems = viewMode === "human" ? filteredSkill.length : filteredRos.length + filteredSkill.length;
-
-  // Merge by timestamp for "all" mode
   type MergedEntry =
     | { type: "ros"; log: RosLog }
     | { type: "skill"; log: SkillLogEvent };
@@ -102,7 +95,6 @@ export default function LogStream() {
     if (viewMode === "human") {
       return filteredSkill.map((l) => ({ type: "skill" as const, log: l }));
     }
-    // Merge both by timestamp
     const rosEntries: MergedEntry[] = filteredRos.map((l) => ({ type: "ros" as const, log: l }));
     const skillEntries: MergedEntry[] = filteredSkill.map((l) => ({ type: "skill" as const, log: l }));
     return [...rosEntries, ...skillEntries].sort((a, b) => {
@@ -120,59 +112,68 @@ export default function LogStream() {
 
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const entry = merged[index];
+    const stripeBg = index % 2 === 0 ? "bg-paper" : "bg-cream-deep";
     if (entry.type === "ros") {
       const log = entry.log;
       const levelName = logLevelName(log.level);
       return (
-        <div style={style} className="flex items-baseline gap-2 px-3 text-[10px] font-mono hover:bg-gray-800/50">
-          <span className="text-gray-600 shrink-0 w-16">
+        <div
+          style={style}
+          className={clsx(
+            "flex items-baseline gap-2 px-3 text-[11px] font-mono hover:bg-cream tracking-[0.02em]",
+            stripeBg,
+          )}
+        >
+          <span className="text-muted shrink-0 w-16">
             {new Date(log.stamp.sec * 1000).toLocaleTimeString()}
           </span>
-          <span className={clsx("shrink-0 w-10 font-bold", LEVEL_COLORS[levelName])}>
+          <span className={clsx("shrink-0 w-10 font-semibold", LEVEL_COLORS[levelName])}>
             {levelName}
           </span>
-          <span className="text-gray-500 shrink-0 w-28 truncate" title={log.name}>
+          <span className="text-muted shrink-0 w-28 truncate" title={log.name}>
             {log.name}
           </span>
-          <span className="text-gray-300 truncate">{log.msg}</span>
+          <span className="text-ink-soft truncate">{log.msg}</span>
         </div>
       );
     }
-    // Skill log
     const log = entry.log;
     const isHuman = log.tags.includes("human");
-    const sevColor = SEV_COLORS[log.severity] || "text-gray-400";
+    const sevColor = SEV_COLORS[log.severity] || "text-ink-soft";
     return (
-      <div style={style} className={clsx(
-        "flex items-baseline gap-2 px-3 text-[10px] font-mono hover:bg-gray-800/50",
-        isHuman && "bg-purple-950/20"
-      )}>
-        <span className="text-gray-600 shrink-0 w-16">
+      <div
+        style={style}
+        className={clsx(
+          "flex items-baseline gap-2 px-3 text-[11px] font-mono hover:bg-cream tracking-[0.02em]",
+          stripeBg,
+          isHuman && "border-l-2 border-l-terracotta",
+        )}
+      >
+        <span className="text-muted shrink-0 w-16">
           {new Date(log.stamp.sec * 1000).toLocaleTimeString()}
         </span>
-        <span className={clsx("shrink-0 w-10 font-bold uppercase", sevColor)}>
+        <span className={clsx("shrink-0 w-10 font-semibold uppercase", sevColor)}>
           {log.severity.slice(0, 5)}
         </span>
-        <span className="text-purple-400 shrink-0 w-28 truncate" title={log.skill_name}>
+        <span className="text-terracotta shrink-0 w-28 truncate" title={log.skill_name}>
           {isHuman ? "\u{1F464} " : ""}{log.skill_name || log.event_name}
         </span>
-        <span className="text-gray-200 truncate">{log.message}</span>
+        <span className="text-ink truncate">{log.message}</span>
       </div>
     );
   };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-2">
-        {/* View mode toggle */}
-        <div className="flex gap-0.5 shrink-0">
+      <div className="px-3 py-2 border-b border-hair-soft flex items-center gap-2 bg-cream-deep">
+        <div className="flex shrink-0">
           <button
             onClick={() => setViewMode("human")}
             className={clsx(
-              "px-2 py-0.5 rounded-l text-[10px] font-bold border transition-all flex items-center gap-1",
+              "px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] border transition-colors flex items-center gap-1",
               viewMode === "human"
-                ? "text-purple-400 border-purple-600 bg-purple-950/30"
-                : "text-gray-600 border-gray-800 hover:text-gray-400"
+                ? "bg-terracotta border-terracotta text-paper"
+                : "border-hair text-muted hover:text-ink-soft",
             )}
             title="Show human-readable logs only"
           >
@@ -182,10 +183,10 @@ export default function LogStream() {
           <button
             onClick={() => setViewMode("all")}
             className={clsx(
-              "px-2 py-0.5 rounded-r text-[10px] font-bold border transition-all flex items-center gap-1",
+              "px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] border-y border-r transition-colors flex items-center gap-1",
               viewMode === "all"
-                ? "text-blue-400 border-blue-600 bg-blue-950/30"
-                : "text-gray-600 border-gray-800 hover:text-gray-400"
+                ? "bg-terracotta border-terracotta text-paper"
+                : "border-hair text-muted hover:text-ink-soft",
             )}
             title="Show all system logs"
           >
@@ -207,32 +208,32 @@ export default function LogStream() {
         {viewMode === "human" && (
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search…"
             value={textFilter}
             onChange={(e) => setTextFilter(e.target.value)}
-            className="px-2 py-0.5 text-[10px] bg-gray-800 border border-gray-700 rounded flex-1 min-w-[80px] focus:border-purple-500 focus:outline-none text-gray-200 placeholder-gray-500"
+            className="px-2 py-0.5 text-[11px] bg-paper border border-hair rounded-DEFAULT flex-1 min-w-[80px] focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
           />
         )}
 
-        <label className="flex items-center gap-1 text-[10px] text-gray-500 shrink-0">
+        <label className="flex items-center gap-1 text-[11px] text-muted shrink-0 font-mono uppercase tracking-[0.08em]">
           <input
             type="checkbox"
             checked={autoScroll}
             onChange={(e) => setAutoScroll(e.target.checked)}
-            className="rounded-sm"
+            className="accent-terracotta"
           />
           Auto
         </label>
         <button
           onClick={clearLogs}
-          className="p-1 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300 shrink-0"
+          className="p-1 hover:bg-cream text-muted hover:text-terracotta shrink-0 transition-colors"
           title="Clear logs"
         >
           <Trash2 className="w-3 h-3" />
         </button>
       </div>
 
-      <div className="flex-1" ref={containerRef}>
+      <div className="flex-1 bg-paper" ref={containerRef}>
         <List
           ref={listRef}
           height={containerHeight}

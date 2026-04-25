@@ -1,5 +1,6 @@
 import type { SkillDescription } from "../../types/ros";
 import { X, Server, FileCode, Shield, Zap } from "lucide-react";
+import { Eyebrow, IconBtn } from "../ui";
 
 interface Props {
   skill: SkillDescription;
@@ -15,63 +16,72 @@ export default function SkillDetailDrawer({ skill, onClose }: Props) {
   } catch {}
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[420px] bg-gray-900 border-l border-gray-700 shadow-2xl z-50 overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 sticky top-0 bg-gray-900">
-        <h3 className="text-sm font-bold text-gray-100">
+    <div className="fixed inset-y-0 right-0 w-[440px] bg-paper border-l-2 border-l-terracotta border border-hair z-50 overflow-auto">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-hair sticky top-0 bg-paper">
+        <h3 className="text-[16px] font-medium text-ink truncate">
           {skill.display_name || skill.name}
         </h3>
-        <button
-          onClick={onClose}
-          className="p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200"
-        >
+        <IconBtn onClick={onClose} title="Close">
           <X className="w-4 h-4" />
-        </button>
+        </IconBtn>
       </div>
 
-      <div className="p-4 space-y-4">
-        {/* Description */}
-        <p className="text-xs text-gray-300 leading-relaxed">
+      <div className="p-5 space-y-5">
+        <p className="text-[14px] text-ink-soft leading-relaxed">
           {skill.description}
         </p>
 
-        {/* Action server */}
         <Section icon={<Server className="w-3.5 h-3.5" />} title="Action Server">
-          <code className="text-[10px] text-blue-300 break-all">
+          <code className="block font-mono text-[11px] text-terracotta break-all tracking-[0.04em]">
             {skill.action_server_name}
           </code>
-          <div className="text-[10px] text-gray-500 mt-0.5">
+          <div className="font-mono text-[10px] text-muted mt-1 tracking-[0.04em]">
             {skill.action_type}
           </div>
         </Section>
 
-        {/* Parameters */}
         {paramsSchema?.properties && (
           <Section icon={<FileCode className="w-3.5 h-3.5" />} title="Parameters">
-            <div className="space-y-1.5">
-              {Object.entries(paramsSchema.properties).map(([key, val]: [string, any]) => (
-                <div key={key} className="text-[10px]">
-                  <span className="font-mono text-blue-300">{key}</span>
-                  <span className="text-gray-500 ml-1">
-                    ({val.type || "any"})
-                  </span>
-                  {val.description && (
-                    <span className="text-gray-400 ml-1">
-                      — {val.description}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+            <table className="w-full border-collapse border border-hair text-[12px]">
+              <thead>
+                <tr>
+                  <th className="text-left bg-cream font-mono text-[10px] uppercase tracking-[0.12em] text-terracotta font-semibold px-3 py-2 border-b border-hair">
+                    Name
+                  </th>
+                  <th className="text-left bg-cream font-mono text-[10px] uppercase tracking-[0.12em] text-terracotta font-semibold px-3 py-2 border-b border-hair">
+                    Type
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(paramsSchema.properties).map(([key, val]: [string, any]) => (
+                  <tr key={key} className="border-b border-hair-soft last:border-b-0">
+                    <td className="px-3 py-2 align-top">
+                      <div className="font-mono text-[11px] text-ink-soft tracking-[0.04em]">
+                        {key}
+                      </div>
+                      {val.description && (
+                        <div className="text-[11px] text-muted mt-0.5">{val.description}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[11px] text-muted tracking-[0.04em] align-top whitespace-nowrap">
+                      {val.type || "any"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </Section>
         )}
 
-        {/* Preconditions / Postconditions */}
         {skill.preconditions.length > 0 && (
           <Section icon={<Shield className="w-3.5 h-3.5" />} title="Preconditions">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {skill.preconditions.map((p) => (
-                <span key={p} className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-900/30 text-yellow-300 border border-yellow-800/40">
+                <span
+                  key={p}
+                  className="font-mono text-[10px] px-2 py-0.5 border border-terracotta text-terracotta tracking-[0.06em]"
+                >
                   {p}
                 </span>
               ))}
@@ -81,9 +91,12 @@ export default function SkillDetailDrawer({ skill, onClose }: Props) {
 
         {skill.postconditions.length > 0 && (
           <Section icon={<Zap className="w-3.5 h-3.5" />} title="Postconditions">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {skill.postconditions.map((p) => (
-                <span key={p} className="text-[10px] px-1.5 py-0.5 rounded bg-green-900/30 text-green-300 border border-green-800/40">
+                <span
+                  key={p}
+                  className="font-mono text-[10px] px-2 py-0.5 border border-ok text-ok tracking-[0.06em]"
+                >
                   {p}
                 </span>
               ))}
@@ -91,30 +104,26 @@ export default function SkillDetailDrawer({ skill, onClose }: Props) {
           </Section>
         )}
 
-        {/* PDDL */}
         {skill.pddl_action && (
           <Section icon={<FileCode className="w-3.5 h-3.5" />} title="PDDL Action">
-            <pre className="text-[10px] text-gray-300 bg-gray-950 rounded p-2 overflow-auto max-h-40 whitespace-pre-wrap">
-              {skill.pddl_action}
-            </pre>
+            <pre className="sociius-code max-h-40 whitespace-pre-wrap">{skill.pddl_action}</pre>
           </Section>
         )}
 
-        {/* BT XML for compound skills */}
         {skill.bt_xml && (
           <Section icon={<FileCode className="w-3.5 h-3.5" />} title="BT XML">
-            <pre className="text-[10px] text-gray-300 bg-gray-950 rounded p-2 overflow-auto max-h-60 whitespace-pre-wrap">
-              {skill.bt_xml}
-            </pre>
+            <pre className="sociius-code max-h-60 whitespace-pre-wrap">{skill.bt_xml}</pre>
           </Section>
         )}
 
-        {/* Component skills */}
         {skill.component_skills.length > 0 && (
           <Section icon={<Zap className="w-3.5 h-3.5" />} title="Component Skills">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {skill.component_skills.map((s) => (
-                <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-300">
+                <span
+                  key={s}
+                  className="font-mono text-[10px] px-2 py-0.5 bg-cream-deep border border-hair text-ink-soft tracking-[0.04em]"
+                >
                   {s}
                 </span>
               ))}
@@ -137,9 +146,9 @@ function Section({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase text-gray-500 mb-1.5">
+      <div className="flex items-center gap-1.5 mb-2 text-muted">
         {icon}
-        {title}
+        <Eyebrow size="sm">{title}</Eyebrow>
       </div>
       {children}
     </div>

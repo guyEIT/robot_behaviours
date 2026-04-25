@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { useTaskStore } from "../../stores/task-store";
-import { useServiceCall } from "../../hooks/useServiceCall";
 import { useActionClient } from "../../hooks/useActionClient";
 import {
   OctagonX,
@@ -9,45 +8,41 @@ import {
   Home,
   Hand,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
   Loader2,
   ShieldAlert,
 } from "lucide-react";
 import clsx from "clsx";
+import { Button, Chip, Eyebrow, Banner } from "../ui";
+import type { ChipState } from "../ui";
 
-/**
- * Human intervention panel — always-visible controls for:
- *   - Emergency stop
- *   - Cancel current task
- *   - Quick recovery actions (open gripper, move home)
- *   - Task status summary with error details
- */
+const STATUS_TO_CHIP: Record<string, ChipState> = {
+  IDLE: "idle",
+  RUNNING: "running",
+  SUCCESS: "done",
+  FAILURE: "failed",
+  CANCELLED: "neutral",
+};
+
 export default function InterventionPanel() {
   const taskState = useTaskStore((s) => s.taskState);
   const isRunning = taskState?.status === "RUNNING";
   const isFailed = taskState?.status === "FAILURE";
-  const isIdle = !taskState || taskState.status === "IDLE" || taskState.status === "SUCCESS";
 
-  // Cancel current task via action
   const { cancel } = useActionClient<any, any, any>(
     "/skill_server/execute_behavior_tree",
     "robot_skills_msgs/action/ExecuteBehaviorTree"
   );
 
-  // Quick recovery: open gripper
   const { sendGoal: sendGripper, status: gripperStatus } = useActionClient<any, any, any>(
     "/skill_atoms/gripper_control",
     "robot_skills_msgs/action/GripperControl"
   );
 
-  // Quick recovery: move home
   const { sendGoal: sendMoveHome, status: moveHomeStatus } = useActionClient<any, any, any>(
     "/skill_atoms/move_to_named_config",
     "robot_skills_msgs/action/MoveToNamedConfig"
   );
 
-  // Robot enable/disable
   const { sendGoal: sendRobotEnable, status: enableStatus } = useActionClient<any, any, any>(
     "/skill_atoms/robot_enable",
     "robot_skills_msgs/action/RobotEnable"
@@ -101,109 +96,89 @@ export default function InterventionPanel() {
     enableStatus === "active" || enableStatus === "pending";
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
-        <ShieldAlert className="w-4 h-4 text-orange-400" />
-        <h2 className="text-sm font-semibold">Intervention</h2>
+    <div className="flex flex-col h-full bg-paper">
+      <div className="px-5 py-3 border-b border-hair flex items-center gap-2">
+        <ShieldAlert className="w-4 h-4 text-terracotta" />
+        <h2 className="text-[14px] font-medium text-ink">Intervention</h2>
       </div>
 
-      <div className="flex-1 overflow-auto p-3 space-y-4">
-        {/* ── Emergency Stop ─────────────────────────────────── */}
+      <div className="flex-1 overflow-auto p-5 space-y-5">
+        {/* Emergency Stop — semantic override: estop is always red-fill */}
         <button
           onClick={handleEStop}
-          className="w-full py-4 rounded-xl bg-red-700 hover:bg-red-600 active:bg-red-800 text-white font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-lg shadow-red-900/30 border-2 border-red-500/50"
+          className="w-full py-4 bg-err hover:bg-err/90 active:opacity-80 text-paper font-mono font-semibold text-[16px] uppercase tracking-[0.16em] flex items-center justify-center gap-3 transition-colors border border-err"
         >
           <OctagonX className="w-6 h-6" />
-          EMERGENCY STOP
+          Emergency Stop
         </button>
 
-        {/* ── Current Status ─────────────────────────────────── */}
-        <div className={clsx(
-          "p-3 rounded-lg border",
-          isFailed ? "bg-red-950/30 border-red-800/50" :
-          isRunning ? "bg-blue-950/30 border-blue-800/50" :
-          "bg-gray-900/50 border-gray-800"
-        )}>
+        {/* Current status */}
+        <div className="border border-hair p-4 bg-cream-deep">
           <div className="flex items-center gap-2 mb-2">
-            {isRunning && <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />}
-            {isFailed && <XCircle className="w-4 h-4 text-red-400" />}
-            {taskState?.status === "SUCCESS" && <CheckCircle className="w-4 h-4 text-green-400" />}
-            {isIdle && !taskState?.status && <div className="w-4 h-4 rounded-full bg-gray-700" />}
-            <span className={clsx(
-              "text-xs font-bold uppercase",
-              isFailed ? "text-red-400" :
-              isRunning ? "text-blue-400" :
-              taskState?.status === "SUCCESS" ? "text-green-400" :
-              "text-gray-500"
-            )}>
-              {taskState?.status || "IDLE"}
+            <Eyebrow size="sm" tone="muted">Status</Eyebrow>
+            <span className="ml-auto">
+              <Chip state={STATUS_TO_CHIP[taskState?.status ?? "IDLE"] ?? "idle"} showDot>
+                {taskState?.status ?? "IDLE"}
+              </Chip>
             </span>
-            {taskState?.task_name && (
-              <span className="text-xs text-gray-400 truncate ml-auto">
-                {taskState.task_name}
-              </span>
-            )}
           </div>
+          {taskState?.task_name && (
+            <div className="text-[13px] text-ink-soft truncate mb-2">
+              {taskState.task_name}
+            </div>
+          )}
 
-          {/* Progress */}
           {isRunning && taskState && (
             <div className="space-y-1">
-              <div className="flex justify-between text-[10px] text-gray-400">
-                <span>{taskState.current_skill || taskState.current_bt_node}</span>
+              <div className="flex justify-between text-[11px] text-muted font-mono tracking-[0.04em]">
+                <span className="truncate">{taskState.current_skill || taskState.current_bt_node}</span>
                 <span>{Math.round(taskState.progress * 100)}%</span>
               </div>
-              <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="h-1 bg-stone overflow-hidden">
                 <div
-                  className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                  className="h-full bg-terracotta transition-all duration-300"
                   style={{ width: `${taskState.progress * 100}%` }}
                 />
               </div>
             </div>
           )}
 
-          {/* Error details */}
-          {isFailed && taskState && (
-            <div className="mt-2 space-y-1">
-              {taskState.error_skill && (
-                <div className="flex items-center gap-1.5 text-xs text-red-400">
-                  <AlertTriangle className="w-3 h-3 shrink-0" />
-                  <span className="font-medium">Failed at: {taskState.error_skill}</span>
-                </div>
-              )}
-              {taskState.error_message && (
-                <p className="text-[11px] text-red-300/80 pl-[18px]">{taskState.error_message}</p>
-              )}
+          {isFailed && taskState?.error_message && (
+            <Banner
+              tone="err"
+              title={taskState.error_skill ? `Failed at: ${taskState.error_skill}` : "Failure"}
+              icon={<AlertTriangle className="w-4 h-4" />}
+              className="mt-3"
+            >
+              <p>{taskState.error_message}</p>
               {taskState.failed_skills && taskState.failed_skills.length > 0 && (
-                <div className="text-[10px] text-gray-500 pl-[18px]">
+                <p className="mt-1 text-[11px] font-mono tracking-[0.04em] opacity-80">
                   Failed nodes: {taskState.failed_skills.join(", ")}
-                </div>
+                </p>
               )}
-            </div>
+            </Banner>
           )}
         </div>
 
-        {/* ── Task Control ───────────────────────────────────── */}
+        {/* Task control */}
         {isRunning && (
           <div>
-            <div className="text-[10px] text-gray-500 font-medium uppercase mb-2">
-              Task Control
-            </div>
-            <button
+            <Eyebrow size="sm" className="block mb-2">Task Control</Eyebrow>
+            <Button
               onClick={handleCancel}
-              className="w-full py-2 rounded-lg bg-yellow-700/80 hover:bg-yellow-600/80 text-yellow-100 text-xs font-semibold flex items-center justify-center gap-2 transition-all"
+              variant="secondary"
+              size="sm"
+              leftIcon={<Hand className="w-3.5 h-3.5" />}
+              className="w-full"
             >
-              <Hand className="w-3.5 h-3.5" />
               Cancel Task
-            </button>
+            </Button>
           </div>
         )}
 
-        {/* ── Recovery Actions ────────────────────────────────── */}
+        {/* Recovery actions */}
         <div>
-          <div className="text-[10px] text-gray-500 font-medium uppercase mb-2">
-            Recovery Actions
-          </div>
+          <Eyebrow size="sm" className="block mb-2">Recovery Actions</Eyebrow>
           <div className="grid grid-cols-2 gap-2">
             <RecoveryButton
               onClick={handleOpenGripper}
@@ -254,11 +229,11 @@ function RecoveryButton({
       onClick={onClick}
       disabled={disabled}
       className={clsx(
-        "py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all",
+        "py-2 px-3 text-[12px] font-medium border rounded-sm flex items-center justify-center gap-1.5 transition-colors",
         disabled
-          ? "bg-gray-800 text-gray-600 cursor-not-allowed"
-          : "bg-gray-700 hover:bg-gray-600 text-gray-200",
-        className
+          ? "border-hair bg-stone text-muted cursor-not-allowed"
+          : "border-hair bg-paper text-ink-soft hover:bg-cream hover:border-terracotta",
+        className,
       )}
     >
       {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icon}

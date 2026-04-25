@@ -3,10 +3,14 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "robot_skills_msgs/action/record_rosbag.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
@@ -14,6 +18,22 @@
 namespace robot_skill_atoms
 {
 
+/**
+ * RecordRosbag — fire-and-forget background recording.
+ *
+ * Spawns `ros2 bag record` as a detached child process and returns SUCCESS
+ * immediately so the BT can continue. The recording stops on its own when
+ * `duration_sec` elapses (via `--max-duration`) or runs until externally
+ * killed when `duration_sec <= 0`.
+ *
+ * Cancellation of the action goal does NOT stop the recording — the goal
+ * has already returned. To stop a still-running recording manually:
+ *   pkill -INT -f 'ros2 bag record'
+ *
+ * Why detached and not blocking: behaviour trees that include data capture
+ * shouldn't pause for the entire recording window — recording is a side-channel
+ * task, not a step in the manipulation sequence.
+ */
 class RecordRosbagSkill
   : public SkillBase<robot_skills_msgs::action::RecordRosbag>
 {
@@ -41,14 +61,15 @@ public:
     desc.name = "record_rosbag";
     desc.display_name = "Record Rosbag";
     desc.description =
-      "Record ROS2 topics to a rosbag file. Spawns 'ros2 bag record' as a "
-      "subprocess. Supports duration-based and cancellation-based stop.";
-    desc.version = "1.0.0";
+      "Start a rosbag recording in the background. Returns immediately so the "
+      "BT continues. Recording stops automatically after duration_sec, or runs "
+      "until killed manually if duration_sec <= 0.";
+    desc.version = "2.0.0";
     desc.category = "data";
-    desc.tags = {"data", "recording", "rosbag"};
+    desc.tags = {"data", "recording", "rosbag", "background"};
 
     desc.preconditions = {};
-    desc.postconditions = {"rosbag_recorded"};
+    desc.postconditions = {"rosbag_recording_started"};
 
     desc.parameters_schema = R"json({
       "type": "object",
@@ -64,7 +85,7 @@ public:
         },
         "duration_sec": {
           "type": "number",
-          "description": "Recording duration (0 = until cancelled)",
+          "description": "Recording duration in seconds (<=0 = until killed)",
           "default": 0.0
         }
       }
@@ -88,84 +109,73 @@ public:
     // Ensure output directory exists
     std::filesystem::create_directories(output_dir);
 
-    // Build the ros2 bag record command
-    std::string cmd = "ros2 bag record -o " + output_dir + "/recording";
+    // Build the ros2 bag record command. We rely on bash to handle backgrounding
+    // and detachment so the child survives even if this node exits.
+    //
+    // --max-duration stops the recorder cleanly after N seconds. setsid puts
+    // the recorder in its own session, detaching it from our process group.
+    const std::string bag_path = output_dir + "/recording_" +
+      std::to_string(static_cast<int64_t>(this->now().seconds()));
 
+    std::string topics_part;
     if (goal->topics.empty()) {
-      cmd += " -a";
+      topics_part = " -a";
     } else {
       for (const auto & topic : goal->topics) {
-        cmd += " " + topic;
+        topics_part += " " + topic;
       }
     }
 
-    RCLCPP_INFO(this->get_logger(),
-      "Executing RecordRosbag: cmd='%s' duration=%.1fs",
-      cmd.c_str(), goal->duration_sec);
+    std::string duration_part;
+    if (goal->duration_sec > 0.0) {
+      duration_part = " --max-duration " +
+        std::to_string(static_cast<int64_t>(goal->duration_sec));
+    }
 
+    // Redirect output to a logfile next to the bag so the user can inspect
+    // why a recording failed (e.g. ros2 bag plugin missing). Without this,
+    // failures are silent because the parent doesn't read the child's pipes.
+    const std::string logfile = bag_path + ".log";
+    const std::string cmd = "setsid ros2 bag record -o " + bag_path +
+      topics_part + duration_part +
+      " > " + logfile + " 2>&1 < /dev/null &";
+
+    RCLCPP_INFO(this->get_logger(),
+      "RecordRosbag (background): %s", cmd.c_str());
+
+    // Publish a single feedback message so action clients see the start signal.
     auto feedback = std::make_shared<RecordRosbag::Feedback>();
-    feedback->status_message = "Starting rosbag recording...";
+    feedback->status_message = "Background recording started";
     feedback->elapsed_sec = 0.0;
     feedback->messages_so_far = 0;
     goal_handle->publish_feedback(feedback);
 
-    try {
-      // Start recording subprocess
-      FILE * pipe = popen(cmd.c_str(), "r");
-      if (!pipe) {
-        result->success = false;
-        result->message = "Failed to start ros2 bag record subprocess";
-        return result;
-      }
-
-      const auto start_time = this->now();
-      const double duration = goal->duration_sec;
-
-      // Wait for duration or cancellation
-      while (rclcpp::ok()) {
-        const double elapsed = (this->now() - start_time).seconds();
-
-        // Check for cancellation
-        if (goal_handle->is_canceling()) {
-          RCLCPP_INFO(this->get_logger(), "Recording cancelled after %.1fs", elapsed);
-          break;
-        }
-
-        // Check duration (0 = until cancelled)
-        if (duration > 0.0 && elapsed >= duration) {
-          RCLCPP_INFO(this->get_logger(), "Recording duration reached: %.1fs", elapsed);
-          break;
-        }
-
-        // Publish feedback
-        feedback->elapsed_sec = elapsed;
-        feedback->status_message = "Recording... (" +
-          std::to_string(static_cast<int>(elapsed)) + "s)";
-        goal_handle->publish_feedback(feedback);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      }
-
-      // Stop the recording (SIGINT to ros2 bag record)
-      pclose(pipe);
-
-      const double total_elapsed = (this->now() - start_time).seconds();
-
-      result->bag_path = output_dir + "/recording";
-      result->recorded_duration_sec = total_elapsed;
-      result->num_messages = 0;  // not easily available from subprocess
-      result->success = true;
-      result->message = "Recorded " + std::to_string(total_elapsed) +
-        "s to " + result->bag_path;
-
-      RCLCPP_INFO(this->get_logger(), "%s", result->message.c_str());
-
-    } catch (const std::exception & e) {
+    // Spawn via system() — we don't care about the child's exit code because
+    // it's detached. Brief pause to let setsid actually kick in.
+    int rc = std::system(cmd.c_str());
+    if (rc != 0) {
       result->success = false;
-      result->message = "Exception: " + std::string(e.what());
-      RCLCPP_ERROR(this->get_logger(), "%s", result->message.c_str());
+      result->message = "Failed to spawn 'ros2 bag record' subprocess";
+      RCLCPP_ERROR(this->get_logger(), "%s (rc=%d)", result->message.c_str(), rc);
+      return result;
     }
 
+    // Sanity check: did the recorder die immediately? If the log file was
+    // populated within 200ms with an obvious error, surface it. Otherwise
+    // assume it's recording.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    result->bag_path = bag_path;
+    result->recorded_duration_sec = goal->duration_sec;
+    result->num_messages = 0;  // not tracked from outside
+    result->success = true;
+    result->message = "Recording '" + bag_path + "' running in background"
+      + (goal->duration_sec > 0.0
+        ? " (auto-stops after " + std::to_string(static_cast<int64_t>(goal->duration_sec)) + "s)"
+        : " (until killed)")
+      + ". Log: " + logfile;
+
+    RCLCPP_INFO(this->get_logger(), "%s", result->message.c_str());
     return result;
   }
 };

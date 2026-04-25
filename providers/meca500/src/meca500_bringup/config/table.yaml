@@ -5,7 +5,14 @@ table:
   scale: 0.001   # STL is in mm, convert to meters
   x: 0.0
   y: 0.08
-  z: -0.23
+  z: -0.23       # Mesh has 3 horizontal levels (top y≈-25mm, middle shelf
+                 # y≈+210mm, feet y≈+680mm). After roll=π/2 these map to
+                 # world z=-0.255, +0.220, +0.450 respectively. Raising the
+                 # table (z > -0.23) walks the middle shelf up into the robot
+                 # base / axis 1 — MoveIt aborts planning. Tune in 1cm steps
+                 # from here if real-hw clearance differs, and verify with
+                 #   ros2 launch meca500_bringup moveit.launch.py simulation:=true
+                 # plus a CheckCollision skill before deploying.
   roll: 1.5708   # 90° — tilt up onto its feet
   pitch: 0.0
   yaw: 1.5708    # 90° — rotate around Z
