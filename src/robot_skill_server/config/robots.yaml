@@ -37,6 +37,32 @@ robots:
       min_z: -0.05
       max_z: 0.7
 
+  # Lab-sim "robot" — launched by sim_lab.launch.py. Same hardware shape as
+  # meca500 (same SRDF planning group, same controllers when running against
+  # mock_components/GenericSystem) but with NO namespace, so atoms register
+  # under bare `/skill_atoms/<name>` paths. That way every preset BT in the
+  # repo (full_demo, human_interaction_demo, pick_and_place, seed_*, etc.)
+  # works in lab-sim without per-tree `server_name=` overrides.
+  #
+  # Real-hardware deployments still use the namespaced `meca500` entry above
+  # so multi-robot setups stay unambiguous.
+  lab_sim:
+    namespace: ""
+    planning_group: "meca500_arm"
+    velocity_scaling: 0.1
+    arm_controller_action: "/joint_trajectory_controller/follow_joint_trajectory"
+    allowed_named_configs: ["home"]
+    has_gripper: true
+    local: true
+    check_systems: ["move_group", "joint_states", "arm_controller", "gripper_controller"]
+    workspace:
+      min_x: -0.6
+      max_x: 0.6
+      min_y: -0.6
+      max_y: 0.6
+      min_z: -0.05
+      max_z: 0.7
+
   # Uncomment when the Franka PC is ready.
   # The Franka's MoveIt2 runs on its own PC; skill atoms are launched there
   # via: ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=franka
