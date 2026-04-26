@@ -767,11 +767,13 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/zlib-ng-2.3.3-hceb46e0_1.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zziplib-0.13.69-he45264a_2.conda
+      - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: providers/meca500/src/meca500_bringup
       - conda: providers/meca500/src/meca500_description
       - conda: providers/meca500/src/meca500_hardware
       - conda: providers/meca500/src/meca500_moveit
+      - conda: providers/meca500/src/meca500_skill_server
       - conda: providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup
       - conda: providers/pbi_liconic/ros2_ws/src/hamilton_star_msgs
       - conda: providers/pbi_liconic/ros2_ws/src/hamilton_star_ros
@@ -1053,6 +1055,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/yaml-cpp-0.8.0-h3f2d84a_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/zipp-3.23.1-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
+      - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup
       - conda: providers/pbi_liconic/ros2_ws/src/hamilton_star_msgs
@@ -1676,6 +1679,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/zlib-ng-2.3.3-hceb46e0_1.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zziplib-0.13.69-he45264a_2.conda
+      - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: src/robot_behaviors
       - conda: src/robot_dashboard
@@ -2316,6 +2320,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/yaml-cpp-0.8.0-h3f2d84a_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/zipp-3.23.1-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
+      - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: src/robot_skill_server
       - pypi: https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl
@@ -3021,11 +3026,13 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/zlib-1.3.2-h25fd6f3_2.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zziplib-0.13.69-he45264a_2.conda
+      - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: providers/meca500/src/meca500_bringup
       - conda: providers/meca500/src/meca500_description
       - conda: providers/meca500/src/meca500_hardware
       - conda: providers/meca500/src/meca500_moveit
+      - conda: providers/meca500/src/meca500_skill_server
       - conda: src/robot_skill_atoms
       - conda: src/robot_skill_server
   orchestrator:
@@ -3338,6 +3345,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/zipp-3.23.1-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zlib-ng-2.3.3-hceb46e0_1.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
+      - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: providers/pbi_liconic/ros2_ws/src/hamilton_star_msgs
       - conda: providers/pbi_liconic/ros2_ws/src/liconic_msgs
@@ -3894,6 +3902,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/zlib-ng-2.3.3-hceb46e0_1.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zziplib-0.13.69-he45264a_2.conda
+      - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: src/robot_behaviors
       - conda: src/robot_dashboard
@@ -6680,6 +6689,7 @@ packages:
   - ros-jazzy-builtin-interfaces
   - hamilton_star_msgs
   - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-robot-skill-advertise
   - ros2-distro-mutex
   - ros2-distro-mutex >=0.14.0,<0.15.0a0
   - libgcc >=15
@@ -9526,6 +9536,7 @@ packages:
   - ros-jazzy-builtin-interfaces
   - liconic_msgs
   - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-robot-skill-advertise
   - ros2-distro-mutex
   - ros2-distro-mutex >=0.14.0,<0.15.0a0
   - libgcc >=15
@@ -15905,6 +15916,29 @@ packages:
   - libstdcxx >=15
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
+- conda: providers/meca500/src/meca500_skill_server
+  name: ros-jazzy-meca500-skill-server
+  version: 0.1.0
+  build: hb0f4dca_0
+  subdir: linux-64
+  variants:
+    target_platform: linux-64
+  depends:
+  - ros-jazzy-rclpy
+  - ros-jazzy-rclcpp-components
+  - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-robot-skill-advertise
+  - ros-jazzy-robot-skill-atoms
+  - ros-jazzy-robot-skill-server
+  - ros-jazzy-ros2launch
+  - ros2-distro-mutex
+  - ros2-distro-mutex >=0.14.0,<0.15.0a0
+  - libgcc >=15
+  - libgcc >=15
+  - libstdcxx >=15
+  - python_abi 3.12.* *_cp312
+  - numpy >=1.23,<3
+  license: LicenseRef-Apache-2.0
 - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-mecanum-drive-controller-4.37.0-np2py312h2ed9cc7_16.conda
   sha256: 60429e5865da4b8d46f2bf118eaf889a897eae9cca77b4a8044cbc82de256e1b
   md5: 71a25b5c737cff03e0913bf0d8bde2ff
@@ -18930,6 +18964,25 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
+- conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
+  subdir: linux-64
+  sha256: 403fa40e07a824d5cd36a4373240b88a73f3abf28dee62d5853642aa26ff39a9
+  md5: 52c95b52381cb2857f5b6969ee8e3f76
+  depends:
+  - ros-jazzy-rclcpp
+  - ros-jazzy-rclpy
+  - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-builtin-interfaces
+  - ros2-distro-mutex
+  - ros2-distro-mutex >=0.14.0,<0.15.0a0
+  - libgcc >=15
+  - libstdcxx >=15
+  - python_abi 3.12.* *_cp312
+  - numpy >=1.23,<3
+  channel: file:///home/eit/channel
+  license: LicenseRef-Apache-2.0
+  size: 11716
+  timestamp: 1777212147994
 - conda: src/robot_skill_atoms
   name: ros-jazzy-robot-skill-atoms
   version: 0.1.0
@@ -18944,6 +18997,7 @@ packages:
   - ros-jazzy-rclcpp-action
   - ros-jazzy-rclcpp-components
   - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-robot-skill-advertise
   - ros-jazzy-geometry-msgs
   - ros-jazzy-sensor-msgs
   - ros-jazzy-std-msgs
@@ -18978,6 +19032,7 @@ packages:
   - jsonschema
   - ros-jazzy-rclpy
   - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-robot-skill-advertise
   - ros-jazzy-geometry-msgs
   - ros-jazzy-std-msgs
   - ros-jazzy-action-msgs

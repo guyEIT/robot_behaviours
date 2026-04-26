@@ -52,8 +52,13 @@ def _humanise(s: str) -> str:
 class BtExecutor(Node):
     """Executes BT XML directly using the Python tree executor."""
 
-    def __init__(self):
+    def __init__(self, skill_discovery=None):
         super().__init__("bt_executor")
+        # Phase 3: when present, parse_trees consults this for
+        # (robot_id, bt_tag) → (action_type, server_name, port_map) lookups
+        # before falling back to the static ACTION_REGISTRY. None preserves
+        # legacy behaviour for tests / standalone use.
+        self._skill_discovery = skill_discovery
 
         callback_group = ReentrantCallbackGroup()
 
@@ -188,7 +193,7 @@ class BtExecutor(Node):
 
         try:
             # Parse the XML into tree nodes
-            trees = parse_trees(goal.tree_xml)
+            trees = parse_trees(goal.tree_xml, discovery=self._skill_discovery)
             main_tree_name = get_main_tree_name(goal.tree_xml)
             main_tree = trees.get(main_tree_name)
 

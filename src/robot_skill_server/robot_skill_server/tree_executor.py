@@ -1414,8 +1414,31 @@ CONTROL_REGISTRY: dict[str, type[TreeNode]] = {
 # XML parser
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def parse_trees(xml_string: str) -> dict[str, TreeNode]:
-    """Parse BT.CPP v4 XML into a dict of {tree_id: root_node}."""
+class BehaviorTreeParseError(Exception):
+    """Raised when a BT XML element references an unknown / ambiguous skill."""
+
+
+def parse_trees(
+    xml_string: str,
+    discovery: Optional[Any] = None,
+) -> dict[str, TreeNode]:
+    """Parse BT.CPP v4 XML into a dict of {tree_id: root_node}.
+
+    If ``discovery`` (a SkillDiscovery instance) is provided, action nodes
+    resolve their type/server via the runtime registry first and fall back
+    to the static :data:`ACTION_REGISTRY` only when no advertisement is
+    found. Phase 4 deletes the static registry; until then the fallback
+    keeps non-advertising deployments working.
+
+    Resolution rules for ``robot_id``:
+
+    1. If the BT element has ``robot_id="..."`` → look up
+       ``(robot_id, bt_tag)`` directly in the discovery.
+    2. Else, inherit ``robot_id`` from a parent ``<SubTree>`` /
+       ``<BehaviorTree>`` element that set it.
+    3. Else, look up by ``bt_tag`` alone — exactly one entry across all
+       robots → use it; multiple → :class:`BehaviorTreeParseError`.
+    """
     root = ElementTree.fromstring(xml_string)
     trees: dict[str, TreeNode] = {}
 
@@ -1423,24 +1446,39 @@ def parse_trees(xml_string: str) -> dict[str, TreeNode]:
         tree_id = bt_elem.get("ID", "")
         children = list(bt_elem)
         if children:
-            trees[tree_id] = _parse_node(children[0])
+            inherited_robot_id = bt_elem.get("robot_id", "")
+            trees[tree_id] = _parse_node(children[0], discovery, inherited_robot_id)
 
     return trees
 
 
-def _parse_node(elem: ElementTree.Element) -> TreeNode:
+def _parse_node(
+    elem: ElementTree.Element,
+    discovery: Optional[Any],
+    inherited_robot_id: str,
+) -> TreeNode:
     tag = elem.tag
     attrs = dict(elem.attrib)
     name = attrs.pop("name", tag)
 
+    # robot_id flows down the tree: an explicit attribute on the element wins,
+    # otherwise the parent (SubTree / BehaviorTree) value is inherited.
+    elem_robot_id = attrs.pop("robot_id", inherited_robot_id)
+
     if tag in CONTROL_REGISTRY:
         node = CONTROL_REGISTRY[tag](name, attrs)
         for child in elem:
-            node.children.append(_parse_node(child))
+            node.children.append(_parse_node(child, discovery, elem_robot_id))
         return node
 
     if tag in UTILITY_REGISTRY:
         return UTILITY_REGISTRY[tag](name, attrs)
+
+    # Action node: try discovery first (with robot_id resolution),
+    # then fall back to the static ACTION_REGISTRY for backwards compat.
+    discovered = _resolve_via_discovery(tag, name, attrs, elem_robot_id, discovery)
+    if discovered is not None:
+        return discovered
 
     if tag in ACTION_REGISTRY:
         reg = ACTION_REGISTRY[tag]
@@ -1457,6 +1495,65 @@ def _parse_node(elem: ElementTree.Element) -> TreeNode:
 
     # Unknown node — treat as always-success
     return SyncNode(name, attrs)
+
+
+def _resolve_via_discovery(
+    tag: str,
+    name: str,
+    attrs: dict,
+    robot_id: str,
+    discovery: Optional[Any],
+) -> Optional[TreeNode]:
+    """Resolve an action node from the runtime SkillDiscovery registry.
+
+    Returns ``None`` if discovery isn't wired in yet, or if the tag isn't
+    advertised; the caller falls back to the static ACTION_REGISTRY in
+    that case. Raises :class:`BehaviorTreeParseError` for ambiguous
+    matches or import failures so misconfigured deployments fail loud at
+    parse time rather than silently at first tick.
+    """
+    if discovery is None:
+        return None
+
+    if robot_id:
+        entry = discovery.get(robot_id, tag)
+    else:
+        candidates = discovery.get_by_tag(tag)
+        if len(candidates) > 1:
+            robots = sorted({e.robot_id or "<unset>" for e in candidates})
+            raise BehaviorTreeParseError(
+                f"BT tag {tag!r} is advertised by multiple robots ({robots}); "
+                f"add robot_id=\"...\" to the action node or to its parent "
+                f"<SubTree>/<BehaviorTree> element"
+            )
+        entry = candidates[0] if candidates else None
+
+    if entry is None:
+        return None
+
+    if entry.import_error:
+        raise BehaviorTreeParseError(
+            f"Skill {tag!r} (robot_id={entry.robot_id!r}) advertises action "
+            f"type {entry.action_type_str!r} but the Python msg pkg is not "
+            f"installed in this env: {entry.import_error}"
+        )
+
+    server_name = attrs.pop("server_name", entry.server_name)
+
+    post_process = (
+        _POST_PROCESSORS.get(entry.post_process) if entry.post_process else None
+    )
+
+    return RosActionNode(
+        name=name,
+        attrs=attrs,
+        action_type=entry.action_type,
+        server_name=server_name,
+        input_map=entry.inputs,
+        output_map=entry.outputs,
+        goal_defaults=entry.defaults,
+        post_process=post_process,
+    )
 
 
 def get_main_tree_name(xml_string: str) -> str:

@@ -93,6 +93,7 @@ channels = [
 
 [feature.lite-native.dependencies]
 ros-jazzy-robot-skills-msgs      = "*"
+ros-jazzy-robot-skill-advertise  = "*"
 ros-jazzy-robot-skill-server     = { path = "src/robot_skill_server" }
 ros-jazzy-robot-mock-skill-atoms = { path = "src/robot_mock_skill_atoms" }
 ros-jazzy-robot-behaviors        = { path = "src/robot_behaviors" }
@@ -124,9 +125,10 @@ channels = [
 ]
 
 [feature.real-native.dependencies]
-ros-jazzy-robot-skills-msgs  = "*"
-ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }
-ros-jazzy-robot-skill-atoms  = { path = "src/robot_skill_atoms" }
+ros-jazzy-robot-skills-msgs     = "*"
+ros-jazzy-robot-skill-advertise = "*"
+ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }
+ros-jazzy-robot-skill-atoms     = { path = "src/robot_skill_atoms" }
 ros-jazzy-robot-behaviors    = { path = "src/robot_behaviors" }
 ros-jazzy-robot-dashboard    = { path = "src/robot_dashboard" }
 # rosbridge-suite on robostack doesn't pull in cbor2 automatically; without it
@@ -166,8 +168,9 @@ channels = [
 ]
 
 [feature.orchestrator.dependencies]
-ros-jazzy-robot-skills-msgs  = "*"
-ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }
+ros-jazzy-robot-skills-msgs     = "*"
+ros-jazzy-robot-skill-advertise = "*"
+ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }
 ros-jazzy-robot-behaviors    = { path = "src/robot_behaviors" }
 ros-jazzy-robot-dashboard    = { path = "src/robot_dashboard" }
 # Provider-defined interfaces the orchestrator needs to call into:
@@ -202,13 +205,15 @@ channels = [
 ]
 
 [feature.meca500-host.dependencies]
-ros-jazzy-robot-skills-msgs = "*"
-ros-jazzy-robot-skill-atoms = { path = "src/robot_skill_atoms" }
-ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }   # needed for skill_atoms_remote.launch.py + launch_helpers
-ros-jazzy-meca500-description = { path = "providers/meca500/src/meca500_description" }
-ros-jazzy-meca500-hardware    = { path = "providers/meca500/src/meca500_hardware" }
-ros-jazzy-meca500-moveit      = { path = "providers/meca500/src/meca500_moveit" }
-ros-jazzy-meca500-bringup     = { path = "providers/meca500/src/meca500_bringup" }
+ros-jazzy-robot-skills-msgs     = "*"
+ros-jazzy-robot-skill-advertise = "*"
+ros-jazzy-robot-skill-atoms     = { path = "src/robot_skill_atoms" }
+ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }   # needed for skill_atoms_remote.launch.py + launch_helpers
+ros-jazzy-meca500-description   = { path = "providers/meca500/src/meca500_description" }
+ros-jazzy-meca500-hardware      = { path = "providers/meca500/src/meca500_hardware" }
+ros-jazzy-meca500-moveit        = { path = "providers/meca500/src/meca500_moveit" }
+ros-jazzy-meca500-bringup       = { path = "providers/meca500/src/meca500_bringup" }
+ros-jazzy-meca500-skill-server  = { path = "providers/meca500/src/meca500_skill_server" }
 # meca500_bringup's moveit.launch.py pulls these in via `Node(package=...)`
 # and `IncludeLaunchDescription(...)`. Since they're not declared as
 # <depend> in its package.xml (only <exec_depend>), the robostack mapping
@@ -254,6 +259,7 @@ meca500-moveit-sim-run = { cmd = "ros2 launch meca500_bringup moveit.launch.py s
 meca500-atoms-run      = { cmd = "ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=meca500", description = "Start skill atoms under /meca500; they self-register with the orchestrator's SkillRegistry over DDS" }
 # Composite: MoveIt sim + atoms + orchestrator in one launch
 meca500-sim-test       = { cmd = "ros2 launch robot_skill_server sim_meca500.launch.py", description = "Meca500 sim (mock_components) + atoms + orchestrator in one launch. Submit test_meca500_sim.xml in another shell." }
+meca500-proxy-test     = { cmd = "ros2 launch meca500_skill_server sim_meca500_proxy.launch.py", description = "Phase 2 validation: Meca500 sim + meca500_skill_server proxy (one process, one combined manifest) + orchestrator. Submit test_meca500_sim.xml in another shell." }
 meca500-shell          = { cmd = "bash -i", description = "Shell in the meca500-host pixi environment" }
 
 # ── Liconic + Hamilton host PC env (runs both action servers + their clients) ──
@@ -270,7 +276,8 @@ channels = [
 ]
 
 [feature.liconic-host.dependencies]
-ros-jazzy-robot-skills-msgs = "*"
+ros-jazzy-robot-skills-msgs     = "*"
+ros-jazzy-robot-skill-advertise = "*"
 # robot_skill_server is needed for the sim_hamilton.launch.py /
 # sim_liconic.launch.py composite launches that run the orchestrator
 # alongside the provider sim in a single ros2 launch invocation.
@@ -324,16 +331,18 @@ channels = [
 
 [feature.lab-sim.dependencies]
 # Framework
-ros-jazzy-robot-skills-msgs  = "*"
-ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }
-ros-jazzy-robot-skill-atoms  = { path = "src/robot_skill_atoms" }
+ros-jazzy-robot-skills-msgs     = "*"
+ros-jazzy-robot-skill-advertise = "*"
+ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }
+ros-jazzy-robot-skill-atoms     = { path = "src/robot_skill_atoms" }
 ros-jazzy-robot-behaviors    = { path = "src/robot_behaviors" }
 ros-jazzy-robot-dashboard    = { path = "src/robot_dashboard" }
 # Meca500 provider
-ros-jazzy-meca500-description = { path = "providers/meca500/src/meca500_description" }
-ros-jazzy-meca500-hardware    = { path = "providers/meca500/src/meca500_hardware" }
-ros-jazzy-meca500-moveit      = { path = "providers/meca500/src/meca500_moveit" }
-ros-jazzy-meca500-bringup     = { path = "providers/meca500/src/meca500_bringup" }
+ros-jazzy-meca500-description   = { path = "providers/meca500/src/meca500_description" }
+ros-jazzy-meca500-hardware      = { path = "providers/meca500/src/meca500_hardware" }
+ros-jazzy-meca500-moveit        = { path = "providers/meca500/src/meca500_moveit" }
+ros-jazzy-meca500-bringup       = { path = "providers/meca500/src/meca500_bringup" }
+ros-jazzy-meca500-skill-server  = { path = "providers/meca500/src/meca500_skill_server" }
 # Liconic + Hamilton provider
 liconic_msgs          = { path = "providers/pbi_liconic/ros2_ws/src/liconic_msgs" }
 liconic_ros           = { path = "providers/pbi_liconic/ros2_ws/src/liconic_ros" }
@@ -412,10 +421,11 @@ channels = [
 ]
 
 [feature.mcp.dependencies]
-ros-jazzy-rclpy             = "*"
-ros-jazzy-robot-skills-msgs = "*"
-ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }
-ros-jazzy-std-msgs          = "*"
+ros-jazzy-rclpy                 = "*"
+ros-jazzy-robot-skills-msgs     = "*"
+ros-jazzy-robot-skill-advertise = "*"
+ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }
+ros-jazzy-std-msgs              = "*"
 
 [feature.mcp.pypi-dependencies]
 mcp = ">=1.0"

@@ -40,7 +40,7 @@ from robot_skills_msgs.msg import (
 )
 from std_msgs.msg import String
 
-from robot_skill_server.skill_advertiser import (
+from robot_skill_advertise import (
     SKILLS_TOPIC_SUFFIX,
     make_skills_qos,
 )

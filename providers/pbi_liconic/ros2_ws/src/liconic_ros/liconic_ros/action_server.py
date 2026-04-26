@@ -36,13 +36,9 @@ from typing import Any, Callable
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import (
-    QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
-    QoSProfile, QoSReliabilityPolicy,
-)
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
 from std_msgs.msg import Bool
 
@@ -52,9 +48,8 @@ from liconic_msgs.srv import (
     ClearCassettePosition, ClearLoadingTray, GetStatus,
     ResetError, SetHumidity, SetTemperature, StartShaking, StopShaking,
 )
-from robot_skills_msgs.msg import (
-    KeyValue, SkillAdvertisement, SkillDescription, SkillManifest,
-)
+from robot_skill_advertise import SkillAdvertiser
+from robot_skills_msgs.msg import KeyValue, SkillAdvertisement, SkillDescription
 
 from .asyncio_bridge import AsyncioBridge
 from .machine import LiconicMachine, LiconicMachineError
@@ -404,25 +399,12 @@ class LiconicActionServer(Node):
     # ---- skill advertisement ----
 
     def _publish_skill_manifest(self) -> None:
-        """Publish a latched SkillManifest on `~/skills` so SkillDiscovery
-        can pick up the Liconic actions without any hardcoded entry in
-        tree_executor.ACTION_REGISTRY. QoS must match
-        `robot_skill_server.skill_advertiser.make_skills_qos()`.
+        """Publish a latched SkillManifest on `~/skills` via the shared
+        SkillAdvertiser helper so SkillDiscovery can pick up the Liconic
+        actions without a hardcoded entry in tree_executor.ACTION_REGISTRY.
         """
-        qos = QoSProfile(
-            depth=1,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            reliability=QoSReliabilityPolicy.RELIABLE,
-            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-            liveliness=QoSLivelinessPolicy.AUTOMATIC,
-            liveliness_lease_duration=Duration(seconds=10.0),
-        )
-        self._skills_pub = self.create_publisher(SkillManifest, "~/skills", qos)
-
         ns = self.get_namespace().rstrip("/")
         node_path = f"{ns}/{self.get_name()}" if ns else f"/{self.get_name()}"
-
-        ads: list[SkillAdvertisement] = []
 
         ad_take_in = SkillAdvertisement()
         ad_take_in.description = SkillDescription(
@@ -438,7 +420,6 @@ class LiconicActionServer(Node):
         )
         ad_take_in.bt_tag = "LiconicTakeIn"
         ad_take_in.goal_defaults = [KeyValue(key="barcode", value="")]
-        ads.append(ad_take_in)
 
         ad_fetch = SkillAdvertisement()
         ad_fetch.description = SkillDescription(
@@ -459,13 +440,8 @@ class LiconicActionServer(Node):
             KeyValue(key="position", value="0"),
         ]
         ad_fetch.output_renames = [KeyValue(key="plate_name", value="plate_name_out")]
-        ads.append(ad_fetch)
 
-        msg = SkillManifest()
-        msg.skills = ads
-        msg.published_at = self.get_clock().now().to_msg()
-        msg.source_node = node_path
-        self._skills_pub.publish(msg)
+        self._skill_advertiser = SkillAdvertiser(self, [ad_take_in, ad_fetch])
 
     # ---- action registration ----
 

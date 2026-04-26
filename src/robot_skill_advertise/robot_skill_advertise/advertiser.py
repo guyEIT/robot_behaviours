@@ -1,11 +1,10 @@
 """Helper for publishing a latched SkillManifest from any rclpy Node.
 
-Used by Python action-server hosts (Liconic, Hamilton, future script server)
-to expose their skill metadata on the standard `<node_fqn>/skills` topic.
-
-The advertisement protocol — TRANSIENT_LOCAL durability + LIVELINESS_AUTOMATIC
-— lets SkillDiscovery treat publisher death as authoritative for skill removal,
-without a separate heartbeat. See `skill_discovery.py`.
+Used by Python action-server hosts (Liconic, Hamilton, the future agent-side
+script server) to expose their skill metadata on the standard
+`<node_fqn>/skills` topic. Centralising the QoS here means publisher and
+subscriber agree byte-for-byte; if you fork this, edit
+``include/robot_skill_advertise/skill_advertiser.hpp`` in lockstep.
 """
 
 from __future__ import annotations
@@ -32,9 +31,9 @@ LIVELINESS_LEASE_SEC = 10.0
 def make_skills_qos() -> QoSProfile:
     """QoS profile for `<node>/skills` advertisement topics.
 
-    Must match between publisher and subscriber or DDS will refuse to connect
-    them silently — discovery will appear to see nothing. Centralised here
-    so both sides import the same definition.
+    Must match between publisher and subscriber or DDS will refuse to
+    connect them silently — discovery will appear to see nothing. Centralised
+    here so both sides import the same definition.
     """
     return QoSProfile(
         depth=1,
@@ -50,8 +49,8 @@ class SkillAdvertiser:
     """Publishes a SkillManifest once on construction, on a latched topic
     relative to the host node (`<node_fqn>/skills`).
 
-    Call `republish()` after registering or removing skills at runtime
-    (e.g. the script server when MCP registers a new script).
+    Call :meth:`republish` after registering or removing skills at runtime
+    (the script server uses this when MCP registers a new script).
     """
 
     def __init__(self, node: Node, skills: Sequence[SkillAdvertisement]):

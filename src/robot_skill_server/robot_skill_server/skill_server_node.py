@@ -31,13 +31,13 @@ def main(args=None):
     registry = SkillRegistry()
     composer = TaskComposer(skill_registry=registry)
     lease_broker = LeaseBroker()
-    bt_executor = BtExecutor()
-    # Phase 1: SkillDiscovery runs in shadow alongside the legacy
-    # service-based registry. It scans for `*/skills` advertisements,
-    # builds the runtime registry, republishes on /skill_server/skill_registry,
-    # and emits a parity diff vs tree_executor.ACTION_REGISTRY on
-    # /skill_server/discovery_diff. Phase 3 swaps tree_executor over.
+    # Phase 3: SkillDiscovery is now passed into BtExecutor so parse_trees
+    # consults the runtime registry (advertised `*/skills` topics) before
+    # falling back to the static tree_executor.ACTION_REGISTRY. The legacy
+    # service-based SkillRegistry stays alongside as the persistent
+    # vetted-shared-skills path; the diff topic confirms parity.
     skill_discovery = SkillDiscovery()
+    bt_executor = BtExecutor(skill_discovery=skill_discovery)
 
     executor.add_node(registry)
     executor.add_node(composer)

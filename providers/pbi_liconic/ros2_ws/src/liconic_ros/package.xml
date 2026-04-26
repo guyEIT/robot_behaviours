@@ -14,6 +14,7 @@
   <depend>builtin_interfaces</depend>
   <depend>liconic_msgs</depend>
   <depend>robot_skills_msgs</depend>
+  <depend>robot_skill_advertise</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -2,21 +2,22 @@
 
 // Helper for publishing a latched SkillManifest from any rclcpp Node.
 //
-// Used by SkillBase (and the future per-robot proxy nodes) to expose
-// skill metadata on the standard `<node_fqn>/skills` topic. QoS matches
-// `robot_skill_server.skill_advertiser.make_skills_qos()` on the Python
+// Used by SkillBase and per-robot proxy nodes to expose skill metadata
+// on the standard `<node_fqn>/skills` topic. QoS matches
+// `robot_skill_advertise.advertiser.make_skills_qos()` on the Python
 // side — change both together or DDS will silently refuse to connect.
 
 #include <chrono>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "robot_skills_msgs/msg/skill_advertisement.hpp"
 #include "robot_skills_msgs/msg/skill_manifest.hpp"
 
-namespace robot_skill_atoms
+namespace robot_skill_advertise
 {
 
 inline rclcpp::QoS make_skills_qos()
@@ -73,4 +74,4 @@ private:
   rclcpp::Publisher<Manifest>::SharedPtr pub_;
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_skill_advertise

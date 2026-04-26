@@ -15,13 +15,9 @@ from typing import Any, Awaitable, Callable, Optional
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import (
-    QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
-    QoSProfile, QoSReliabilityPolicy,
-)
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
 from std_srvs.srv import Trigger
 
@@ -48,9 +44,8 @@ from hamilton_star_msgs.srv import (
     DefineHandoff, DeleteHandoff, GetStatus, InitializeModule, ListHandoffs,
     ListResources, LoadDeck, ResetError, SerializeDeck,
 )
-from robot_skills_msgs.msg import (
-    KeyValue, SkillAdvertisement, SkillDescription, SkillManifest,
-)
+from robot_skill_advertise import SkillAdvertiser
+from robot_skills_msgs.msg import KeyValue, SkillAdvertisement, SkillDescription
 
 from .asyncio_bridge import AsyncioBridge
 from . import iswap_handoff
@@ -683,23 +678,11 @@ class HamiltonStarActionServer(Node):
     # ---- skill advertisement ----
 
     def _publish_skill_manifest(self) -> None:
-        """Publish a latched SkillManifest on `~/skills` for SkillDiscovery.
-
-        QoS must match `robot_skill_server.skill_advertiser.make_skills_qos()`
-        on the orchestrator side. Phase 1 covers the four actions referenced
-        from the validated test trees plus the three currently in
+        """Publish a latched SkillManifest on `~/skills` via the shared
+        SkillAdvertiser helper. Covers the four actions referenced from the
+        validated test trees plus the three currently in
         tree_executor.ACTION_REGISTRY.
         """
-        qos = QoSProfile(
-            depth=1,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            reliability=QoSReliabilityPolicy.RELIABLE,
-            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-            liveliness=QoSLivelinessPolicy.AUTOMATIC,
-            liveliness_lease_duration=Duration(seconds=10.0),
-        )
-        self._skills_pub = self.create_publisher(SkillManifest, "~/skills", qos)
-
         ns = self.get_namespace().rstrip("/")
         node_path = f"{ns}/{self.get_name()}" if ns else f"/{self.get_name()}"
 
@@ -757,11 +740,7 @@ class HamiltonStarActionServer(Node):
             ),
         ]
 
-        msg = SkillManifest()
-        msg.skills = ads
-        msg.published_at = self.get_clock().now().to_msg()
-        msg.source_node = node_path
-        self._skills_pub.publish(msg)
+        self._skill_advertiser = SkillAdvertiser(self, ads)
 
     # ---- action registration ----
     def _register_actions(self) -> None:

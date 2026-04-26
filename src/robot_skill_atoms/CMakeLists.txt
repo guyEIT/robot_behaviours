@@ -12,6 +12,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(robot_skills_msgs REQUIRED)
+find_package(robot_skill_advertise REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -31,6 +32,7 @@ set(SKILL_DEPS
   rclcpp_action
   rclcpp_components
   robot_skills_msgs
+  robot_skill_advertise
   geometry_msgs
   sensor_msgs
   std_msgs

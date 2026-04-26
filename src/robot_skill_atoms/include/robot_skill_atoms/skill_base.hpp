@@ -16,7 +16,7 @@
 #include "robot_skills_msgs/msg/skill_description.hpp"
 #include "robot_skills_msgs/srv/register_skill.hpp"
 
-#include "robot_skill_atoms/skill_advertiser.hpp"
+#include "robot_skill_advertise/skill_advertiser.hpp"
 
 namespace robot_skill_atoms
 {
@@ -74,6 +74,12 @@ public:
     this->declare_parameter("robot_namespace", "");
     this->declare_parameter("robot_id", "");
 
+    // When the atom is composed inside a per-robot proxy (meca500_skill_server,
+    // panda_skill_server, …), the proxy emits one combined manifest covering
+    // all atoms it hosts. Setting publish_manifest:=false here suppresses the
+    // per-atom manifest so SkillDiscovery doesn't see duplicate entries.
+    this->declare_parameter("publish_manifest", true);
+
     const auto ns = this->get_parameter("robot_namespace").as_string();
     if (!ns.empty()) {
       // "/meca500" + "/skill_atoms/move_to_named_config" -> "/meca500/skill_atoms/..."
@@ -122,7 +128,12 @@ public:
     // Phase 1 advertise: publish a latched SkillManifest on `~/skills`
     // alongside the legacy service push. Phase 4 will delete the service
     // path once the BT executor consumes the runtime registry directly.
-    publishManifest();
+    // Phase 2: a per-robot proxy (e.g. meca500_skill_server) sets
+    // publish_manifest:=false on each composed atom so the proxy can
+    // publish a single combined manifest instead.
+    if (this->get_parameter("publish_manifest").as_bool()) {
+      publishManifest();
+    }
 
     // Keep the registry heartbeat fresh so the orchestrator can flag crashed atoms.
     const auto refresh_sec = this->get_parameter("registration_refresh_sec").as_double();
@@ -255,7 +266,7 @@ protected:
     }
     ad.description.robot_id = rid;
 
-    advertiser_ = std::make_unique<SkillAdvertiser>(
+    advertiser_ = std::make_unique<robot_skill_advertise::SkillAdvertiser>(
       this, std::vector<robot_skills_msgs::msg::SkillAdvertisement>{ad});
   }
 
@@ -387,7 +398,7 @@ private:
   rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedPtr reg_client_;
   rclcpp::TimerBase::SharedPtr reg_refresh_timer_;
   rclcpp::TimerBase::SharedPtr init_timer_;
-  std::unique_ptr<SkillAdvertiser> advertiser_;
+  std::unique_ptr<robot_skill_advertise::SkillAdvertiser> advertiser_;
   bool registered_{false};
   bool initialized_{false};
 };
