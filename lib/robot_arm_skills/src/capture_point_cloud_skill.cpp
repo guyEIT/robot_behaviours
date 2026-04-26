@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "robot_skills_msgs/action/capture_point_cloud.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
@@ -34,6 +35,11 @@ public:
   {
     this->declare_parameter("default_camera_topic", "/camera/depth/color/points");
     this->declare_parameter("default_timeout_sec", 5.0);
+
+    // Sim mode: skip the camera wait, return a non-empty fake point cloud.
+    this->declare_parameter("simulate_perception", false);
+    this->declare_parameter("simulate_delay_sec", 0.3);
+    this->declare_parameter("simulate_num_points", 1024);
   }
 
   robot_skills_msgs::msg::SkillDescription getDescription() override
@@ -94,6 +100,35 @@ public:
     auto feedback = std::make_shared<CapturePointCloud::Feedback>();
     feedback->status_message = "Waiting for point cloud on " + topic + "...";
     goal_handle->publish_feedback(feedback);
+
+    if (this->get_parameter("simulate_perception").as_bool()) {
+      const double delay = this->get_parameter("simulate_delay_sec").as_double();
+      const int n_points = static_cast<int>(
+        this->get_parameter("simulate_num_points").as_int());
+      RCLCPP_INFO(this->get_logger(),
+        "[SIM] CapturePointCloud: synthesising %d-point cloud (delay=%.1fs)",
+        n_points, delay);
+      std::this_thread::sleep_for(std::chrono::duration<double>(delay));
+      if (goal_handle->is_canceling()) {
+        result->success = false;
+        result->message = "Capture cancelled";
+        return result;
+      }
+      // Build an empty header-only point cloud — sufficient for trees that
+      // only care that something was captured.
+      sensor_msgs::msg::PointCloud2 cloud;
+      cloud.header.frame_id = "world";
+      cloud.header.stamp = this->now();
+      cloud.height = 1;
+      cloud.width = static_cast<uint32_t>(n_points);
+      result->point_cloud = cloud;
+      result->num_points = n_points;
+      result->success = true;
+      result->message = "[SIM] Captured " + std::to_string(n_points) + " points";
+      feedback->status_message = result->message;
+      goal_handle->publish_feedback(feedback);
+      return result;
+    }
 
     try {
       // Use a one-shot subscription to capture a single message

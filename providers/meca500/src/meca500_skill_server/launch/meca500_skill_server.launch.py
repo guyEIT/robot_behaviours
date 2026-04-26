@@ -80,6 +80,13 @@ def _setup(context, *args, **kwargs):
             parameters=[params],
         )
 
+    # Hosts without a real camera (e.g. lab_sim) can opt in to synthetic
+    # perception via robots.yaml `simulate_perception: true`. DetectObject
+    # then returns a canned positive detection matching the requested class
+    # and CapturePointCloud returns a non-empty fake cloud — enough for
+    # trees that need perception to round-trip end-to-end.
+    sim_perception = bool(robot_cfg.get("simulate_perception", False))
+
     composable = [
         comp("robot_arm_skills::MoveToNamedConfigSkill", "move_to_named_config",
              {"allowed_named_configs": allowed_named_configs}),
@@ -87,9 +94,11 @@ def _setup(context, *args, **kwargs):
         comp("robot_arm_skills::MoveToJointConfigSkill", "move_to_joint_config"),
         comp("robot_arm_skills::MoveCartesianLinearSkill", "move_cartesian_linear",
              {"min_fraction": 0.95}),
-        comp("robot_arm_skills::DetectObjectSkill", "detect_object"),
+        comp("robot_arm_skills::DetectObjectSkill", "detect_object",
+             {"simulate_perception": sim_perception}),
         comp("robot_arm_skills::CapturePointCloudSkill", "capture_point_cloud",
-             {"default_camera_topic": "/camera/depth/color/points"}),
+             {"default_camera_topic": "/camera/depth/color/points",
+              "simulate_perception": sim_perception}),
         comp("robot_arm_skills::SetDigitalIOSkill", "set_digital_io"),
         comp("robot_arm_skills::CheckCollisionSkill", "check_collision"),
         comp("robot_arm_skills::UpdatePlanningSceneSkill", "update_planning_scene"),
@@ -125,6 +134,11 @@ def _setup(context, *args, **kwargs):
                 "gripper_action_server": "/gripper_controller/gripper_cmd",
                 "open_position": 0.0055,
                 "default_force_limit": 10.0,
+                # When the host has no real gripper (lab-sim), close the
+                # gripper synthetically with object_grasped=true so trees
+                # like seed_collection / pick_and_place can verify the
+                # grasp via ScriptCondition.
+                "simulate_grasp": sim_perception,
             },
         ))
 

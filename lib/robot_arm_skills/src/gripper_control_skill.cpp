@@ -44,6 +44,12 @@ public:
     this->declare_parameter("send_goal_timeout_s", 10.0);
     this->declare_parameter("result_timeout_s", 15.0);
 
+    // Sim mode: bypass the gripper action server entirely. Open/close
+    // returns success immediately; close returns object_grasped=true so
+    // pick-and-place trees can verify grasp in lab-sim where no physical
+    // object is held.
+    this->declare_parameter("simulate_grasp", false);
+
     // Action client is created lazily in executeGoal() because
     // shared_from_this() is not available during construction.
   }
@@ -145,6 +151,31 @@ public:
   {
     auto result = std::make_shared<GripperControl::Result>();
     const auto & goal = goal_handle->get_goal();
+
+    if (this->get_parameter("simulate_grasp").as_bool()) {
+      RCLCPP_INFO(this->get_logger(),
+        "[SIM] GripperControl: command='%s' (skipping real gripper action)",
+        goal->command.c_str());
+      const double open_pos = this->get_parameter("open_position").as_double();
+      const double closed_pos = this->get_parameter("closed_position").as_double();
+      result->success = true;
+      if (goal->command == "open") {
+        result->final_position = open_pos;
+        result->object_grasped = false;
+        result->message = "[SIM] Gripper opened";
+      } else if (goal->command == "close") {
+        result->final_position = closed_pos + 0.005;  // pretend object width
+        result->object_grasped = true;                // fake successful grasp
+        result->message = "[SIM] Gripper closed on object";
+      } else {
+        result->final_position =
+          closed_pos + goal->position * (open_pos - closed_pos);
+        result->object_grasped = false;
+        result->message = "[SIM] Gripper at position " +
+          std::to_string(result->final_position);
+      }
+      return result;
+    }
 
     // Lazy-create the action client (shared_from_this() not available in ctor)
     if (!gripper_client_) {

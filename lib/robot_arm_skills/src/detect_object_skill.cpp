@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "robot_skills_msgs/action/detect_object.hpp"
 #include "robot_skills_msgs/msg/detected_object.hpp"
@@ -54,6 +55,19 @@ public:
     this->declare_parameter("world_frame", "world");
     this->declare_parameter("detection_model", "color_blob");  // "color_blob" | "yolo" | "external"
     this->declare_parameter("external_detections_topic", "/detections");
+
+    // Sim mode: skip the camera wait and synthesise a positive detection
+    // matching the requested object_class. Lab-sim sets this to true via
+    // robots.yaml so trees that need perception (full_demo, pick_and_place,
+    // seed_collection) round-trip end-to-end without a real camera.
+    this->declare_parameter("simulate_perception", false);
+    this->declare_parameter("simulate_delay_sec", 0.4);
+    // Default sim pose tuned for the Meca500's ~260 mm reach (lab-sim).
+    // For larger arms, override via the proxy launch.
+    this->declare_parameter("simulate_pose_x", 0.2);
+    this->declare_parameter("simulate_pose_y", 0.0);
+    this->declare_parameter("simulate_pose_z", 0.2);
+    this->declare_parameter("simulate_default_class", "block");
 
     // Mark as stub until real detection model is integrated
     this->is_stub_ = true;
@@ -166,6 +180,48 @@ public:
     RCLCPP_INFO(this->get_logger(),
       "Detecting objects: class='%s' timeout=%.1fs",
       goal->object_class.c_str(), goal->timeout_sec);
+
+    if (this->get_parameter("simulate_perception").as_bool()) {
+      const double delay = this->get_parameter("simulate_delay_sec").as_double();
+      RCLCPP_INFO(this->get_logger(),
+        "[SIM] DetectObject: synthesising 1 detection (class='%s', delay=%.1fs)",
+        goal->object_class.c_str(), delay);
+      auto fb = std::make_shared<DetectObject::Feedback>();
+      fb->detections_so_far = 0;
+      fb->status_message = "Simulating detection...";
+      goal_handle->publish_feedback(fb);
+
+      std::this_thread::sleep_for(std::chrono::duration<double>(delay));
+      if (goal_handle->is_canceling()) {
+        result->success = false;
+        result->message = "Detection cancelled";
+        return result;
+      }
+
+      robot_skills_msgs::msg::DetectedObject det;
+      det.object_id = "sim_object_1";
+      det.class_name = goal->object_class.empty()
+        ? this->get_parameter("simulate_default_class").as_string()
+        : goal->object_class;
+      det.confidence = 0.95;
+      det.pose.header.frame_id = this->get_parameter("world_frame").as_string();
+      det.pose.header.stamp = this->now();
+      det.pose.pose.position.x = this->get_parameter("simulate_pose_x").as_double();
+      det.pose.pose.position.y = this->get_parameter("simulate_pose_y").as_double();
+      det.pose.pose.position.z = this->get_parameter("simulate_pose_z").as_double();
+      det.pose.pose.orientation.w = 1.0;
+      det.width = 0.05;
+      det.height = 0.05;
+      det.depth = 0.05;
+      result->detections.push_back(det);
+      result->success = true;
+      result->message = "[SIM] Detected 1 object(s)";
+
+      fb->detections_so_far = 1;
+      fb->status_message = "Detection complete (sim)";
+      goal_handle->publish_feedback(fb);
+      return result;
+    }
 
     RCLCPP_WARN(this->get_logger(),
       "DetectObject STUB: No detection model integrated. Will return empty detections. "
