@@ -302,7 +302,10 @@ class RosActionNode(TreeNode):
         if getattr(result, "success", True):
             self._store_outputs(result, bb)
             if self.post_process:
-                _POST_PROCESSORS[self.post_process](result, self.attrs, bb)
+                # post_process is already a resolved callable (looked up
+                # against _POST_PROCESSORS by SkillDiscovery / static
+                # registry); call it directly.
+                self.post_process(result, self.attrs, bb)
             ctx.on_skill_completed(self.name)
             return NodeStatus.SUCCESS
         else:

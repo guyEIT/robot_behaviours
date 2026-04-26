@@ -116,7 +116,22 @@ def _entry_from_advertisement(
                 # Slots are prefixed with "_"; strip and use as xml_attr.
                 attr = slot.lstrip("_")
                 inputs[attr] = attr
-    outputs = {kv.key: kv.value for kv in ad.output_renames}
+    # Output mapping: result_field -> xml_attr. Default is 1:1 derived from
+    # the action Result's slots (matches the original ACTION_REGISTRY shape
+    # for the 13 atoms whose xml port name equals the result field name).
+    # Explicit overrides in `output_renames` win — used when the names
+    # diverge (e.g. DetectObject's `detections` -> `detected_objects`).
+    outputs: Dict[str, str] = {}
+    if action_cls is not None:
+        result_cls = getattr(action_cls, "Result", None)
+        if result_cls is not None:
+            for slot in getattr(result_cls, "__slots__", []):
+                field = slot.lstrip("_")
+                if field in ("success", "message"):
+                    continue  # surfaced separately by the executor
+                outputs[field] = field
+    for kv in ad.output_renames:
+        outputs[kv.key] = kv.value
     defaults = {kv.key: kv.value for kv in ad.goal_defaults}
     return ActionEntry(
         bt_tag=bt_tag,

@@ -81,6 +81,11 @@ ARM_SKILLS = [
         "category": "perception",
         "tags": ["perception", "vision"],
         "defaults": [("confidence_threshold", "0.7"), ("timeout_sec", "5.0")],
+        # result.detections → BT XML attr `detected_objects`. The
+        # `_detect_object_post` post-processor pulls best_object_pose out
+        # of the detections list when the XML carries that attribute.
+        "output_renames": [("detections", "detected_objects")],
+        "post_process": "_detect_object_post",
     },
     {
         "name": "capture_point_cloud",
@@ -179,6 +184,12 @@ class ManifestPublisher(Node):
                 ad.goal_defaults = [
                     KeyValue(key=k, value=v) for k, v in skill["defaults"]
                 ]
+            if skill.get("output_renames"):
+                ad.output_renames = [
+                    KeyValue(key=k, value=v) for k, v in skill["output_renames"]
+                ]
+            if skill.get("post_process"):
+                ad.post_process_id = skill["post_process"]
             ads.append(ad)
 
         self._advertiser = SkillAdvertiser(self, ads)
