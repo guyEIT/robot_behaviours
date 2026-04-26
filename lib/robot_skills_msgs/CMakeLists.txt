@@ -48,6 +48,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/UpdatePlanningScene.action"
   "action/RobotEnable.action"
   "action/RecordRosbag.action"
+  "action/StopRecording.action"
   "action/CheckSystemReady.action"
   "action/ExecuteBehaviorTree.action"
   "action/RunScript.action"

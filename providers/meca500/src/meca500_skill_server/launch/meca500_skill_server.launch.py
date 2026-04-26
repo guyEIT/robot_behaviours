@@ -111,6 +111,7 @@ def _setup(context, *args, **kwargs):
         }),
         comp("robot_arm_skills::RecordRosbagSkill", "record_rosbag",
              {"default_output_dir": f"/tmp/rosbags/{robot_id}"}),
+        comp("robot_arm_skills::StopRecordingSkill", "stop_recording"),
     ]
 
     check_extra = {

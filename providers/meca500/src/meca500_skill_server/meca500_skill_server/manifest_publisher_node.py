@@ -139,7 +139,16 @@ ARM_SKILLS = [
         "action_type": "robot_skills_msgs/action/RecordRosbag",
         "category": "utility",
         "tags": ["logging", "rosbag"],
-        "defaults": [("output_path", "/tmp/recording.bag"), ("duration_sec", "5.0")],
+        "defaults": [("output_path", "/tmp/recording.bag"), ("duration_sec", "0.0")],
+    },
+    {
+        "name": "stop_recording",
+        "display_name": "Stop Recording",
+        "bt_tag": "StopRecording",
+        "action_type": "robot_skills_msgs/action/StopRecording",
+        "category": "utility",
+        "tags": ["logging", "rosbag"],
+        "defaults": [("timeout_sec", "5.0")],
     },
     {
         "name": "check_system_ready",

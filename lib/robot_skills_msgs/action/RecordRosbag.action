@@ -9,6 +9,7 @@ string message
 string bag_path                     # Actual path of the recorded bag
 float64 recorded_duration_sec       # How long was recorded
 int64 num_messages                  # Total messages recorded
+int64 recording_pid                 # PGID of the background recorder; pass to StopRecording to stop it
 ---
 # Feedback
 float64 elapsed_sec

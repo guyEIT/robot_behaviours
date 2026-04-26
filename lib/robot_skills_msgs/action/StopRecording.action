@@ -1,0 +1,12 @@
+# Goal: stop a background rosbag recording started by RecordRosbag.
+# Provide either recording_pid (preferred, returned by RecordRosbag) or
+# bag_path (matched against the ros2 bag record command line).
+int64 recording_pid                 # PGID returned by RecordRosbag
+string bag_path                     # Fallback: pkill on this path
+float64 timeout_sec                 # How long to wait for SIGINT before SIGKILL (default 5s)
+---
+bool success
+string message
+int64 stopped_pid                   # The PID we actually signalled
+---
+string status_message

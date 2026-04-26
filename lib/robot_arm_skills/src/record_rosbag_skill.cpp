@@ -136,9 +136,11 @@ public:
     // why a recording failed (e.g. ros2 bag plugin missing). Without this,
     // failures are silent because the parent doesn't read the child's pipes.
     const std::string logfile = bag_path + ".log";
+    // Spawn detached via setsid so the child has its own session/PGID, then
+    // echo the child PID so we can return it for StopRecording to target.
     const std::string cmd = "setsid ros2 bag record -o " + bag_path +
       topics_part + duration_part +
-      " > " + logfile + " 2>&1 < /dev/null &";
+      " > " + logfile + " 2>&1 < /dev/null & echo $!";
 
     RCLCPP_INFO(this->get_logger(),
       "RecordRosbag (background): %s", cmd.c_str());
@@ -150,26 +152,40 @@ public:
     feedback->messages_so_far = 0;
     goal_handle->publish_feedback(feedback);
 
-    // Spawn via system() — we don't care about the child's exit code because
-    // it's detached. Brief pause to let setsid actually kick in.
-    int rc = std::system(cmd.c_str());
-    if (rc != 0) {
+    // popen captures the echoed PID. The child remains detached because of
+    // setsid + I/O redirects; popen's pipe closes when the bash wrapper exits.
+    FILE * pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
       result->success = false;
-      result->message = "Failed to spawn 'ros2 bag record' subprocess";
-      RCLCPP_ERROR(this->get_logger(), "%s (rc=%d)", result->message.c_str(), rc);
+      result->message = "Failed to spawn 'ros2 bag record' subprocess (popen)";
+      RCLCPP_ERROR(this->get_logger(), "%s", result->message.c_str());
       return result;
     }
+    char buf[64] = {0};
+    int64_t pid = 0;
+    if (fgets(buf, sizeof(buf), pipe) != nullptr) {
+      try { pid = std::stoll(buf); } catch (...) { pid = 0; }
+    }
+    pclose(pipe);
 
-    // Sanity check: did the recorder die immediately? If the log file was
-    // populated within 200ms with an obvious error, surface it. Otherwise
-    // assume it's recording.
+    // Sanity check: did the recorder die immediately? Brief pause + verify the
+    // PID is still alive (kill(pid, 0) returns 0 if process exists).
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    if (pid > 0 && ::kill(static_cast<pid_t>(pid), 0) != 0) {
+      result->success = false;
+      result->message = "ros2 bag record (pid=" + std::to_string(pid) +
+        ") died on startup; check " + logfile;
+      RCLCPP_ERROR(this->get_logger(), "%s", result->message.c_str());
+      return result;
+    }
 
     result->bag_path = bag_path;
     result->recorded_duration_sec = goal->duration_sec;
     result->num_messages = 0;  // not tracked from outside
+    result->recording_pid = pid;
     result->success = true;
-    result->message = "Recording '" + bag_path + "' running in background"
+    result->message = "Recording '" + bag_path + "' running in background pid="
+      + std::to_string(pid)
       + (goal->duration_sec > 0.0
         ? " (auto-stops after " + std::to_string(static_cast<int64_t>(goal->duration_sec)) + "s)"
         : " (until killed)")

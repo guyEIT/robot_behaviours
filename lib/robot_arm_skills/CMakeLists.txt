@@ -165,6 +165,15 @@ target_include_directories(record_rosbag_skill PUBLIC
 ament_target_dependencies(record_rosbag_skill ${SKILL_DEPS})
 rclcpp_components_register_nodes(record_rosbag_skill "robot_arm_skills::RecordRosbagSkill")
 
+# ── StopRecording skill ─────────────────────────────────────────────────────
+add_library(stop_recording_skill SHARED
+  src/stop_recording_skill.cpp)
+target_include_directories(stop_recording_skill PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(stop_recording_skill ${SKILL_DEPS})
+rclcpp_components_register_nodes(stop_recording_skill "robot_arm_skills::StopRecordingSkill")
+
 # ── Install ──────────────────────────────────────────────────────────────────
 # Per-skill libraries are loaded as components by per-robot proxies (e.g.
 # meca500_skill_server) via rclcpp_components::component_container_mt. The
@@ -184,6 +193,7 @@ install(TARGETS
   capture_point_cloud_skill
   set_digital_io_skill
   record_rosbag_skill
+  stop_recording_skill
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -213,6 +223,7 @@ ament_export_libraries(
   capture_point_cloud_skill
   set_digital_io_skill
   record_rosbag_skill
+  stop_recording_skill
 )
 ament_export_dependencies(${SKILL_DEPS})
 ament_package()
