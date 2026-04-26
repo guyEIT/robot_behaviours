@@ -3904,6 +3904,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/zziplib-0.13.69-he45264a_2.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
+      - conda: providers/meca500/src/meca500_skill_server
       - conda: src/robot_behaviors
       - conda: src/robot_dashboard
       - conda: src/robot_skill_atoms

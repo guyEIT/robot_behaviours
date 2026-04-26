@@ -53,14 +53,12 @@ def generate_launch_description():
         }.items(),
     )
 
-    # ── Skill atoms at root namespace (/skill_atoms/<name>) ──────────────
-    # Uses the `lab_sim` robot from robots.yaml, which is identical to the
-    # meca500 entry except `namespace: ""` — so atoms advertise under bare
-    # `/skill_atoms/<name>` paths. Every preset BT in the repo references
-    # actions at that root path (without `server_name=` overrides), so this
-    # is what makes "click any preset, hit Run" work end-to-end in lab-sim.
-    # Real-hardware deployments use `robot_name:=meca500` instead, which
-    # picks up the `/meca500` namespace.
+    # ── Skill atoms hosted in one process by meca500_skill_server proxy ──
+    # `robot_id:=lab_sim` pulls the lab_sim entry from robots.yaml, which has
+    # `namespace: ""` — so atoms advertise under bare `/skill_atoms/<name>`
+    # paths. Every preset BT in the repo references actions at that root
+    # path (without `server_name=` overrides), so "click any preset, hit
+    # Run" works end-to-end in lab-sim.
     #
     # Wait so MoveIt's /move_action is up before atoms call wait_for_server.
     meca500_atoms = TimerAction(
@@ -68,10 +66,10 @@ def generate_launch_description():
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource([
-                    FindPackageShare("robot_skill_server"),
-                    "/launch/skill_atoms_remote.launch.py",
+                    FindPackageShare("meca500_skill_server"),
+                    "/launch/meca500_skill_server.launch.py",
                 ]),
-                launch_arguments={"robot_name": "lab_sim"}.items(),
+                launch_arguments={"robot_id": "lab_sim"}.items(),
             ),
         ],
     )

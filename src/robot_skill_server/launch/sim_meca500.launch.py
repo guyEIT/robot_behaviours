@@ -1,24 +1,23 @@
-"""One-shot launch: Meca500 sim (MoveIt + mock_components) + skill atoms +
-skill_server orchestrator.
+"""One-shot launch: Meca500 sim (MoveIt + mock_components) + meca500_skill_server
+proxy + orchestrator.
 
 Brings up:
-  - meca500_bringup/moveit.launch.py with simulation:=true (so the URDF
-    swaps in mock_components/GenericSystem instead of meca500_hardware,
-    no real robot needed) and enable_realsense:=false (no camera in sim).
-  - skill_atoms_remote.launch.py with robot_name:=meca500 — launches the
-    13 generic arm skill atoms under /meca500/skill_atoms/<name>, all
-    parameterized for Meca via robots.yaml.
-  - skill_server_node (BtExecutor, SkillRegistry, TaskComposer).
+  - meca500_bringup/moveit.launch.py with simulation:=true (URDF swaps in
+    mock_components/GenericSystem, no real robot needed).
+  - meca500_skill_server.launch.py — the 13 arm skill atoms composed in
+    one process under /meca500/skill_atoms/<name>, advertising one
+    combined manifest at /meca500_skill_server/skills.
+  - skill_server_node (BtExecutor + SkillDiscovery + TaskComposer +
+    SkillRegistry compound-skill catalog).
 
-Submit test_meca500_sim.xml to /skill_server/execute_behavior_tree after
-the atoms register (~3-5s after launch).
-
-Run in the meca500-host pixi env:
+Submit test_meca500_sim.xml or test_meca500_proxy_v2.xml to
+/skill_server/execute_behavior_tree after the atoms register
+(~3-5s after launch). The phase-3 BT executor resolves
+(robot_id="meca500", bt_tag) → action server name from the runtime
+registry, so trees can drop server_name= overrides and just carry
+robot_id="meca500".
 
     pixi run meca500-sim-test
-
-Equivalent to running meca500-sim-up + meca500-up + skill_server_node
-in three terminals.
 """
 
 from launch import LaunchDescription
@@ -40,17 +39,17 @@ def generate_launch_description():
         }.items(),
     )
 
-    # Atoms come up after MoveIt — they call wait_for_server on /move_action
-    # at ~5s timeout per skill. Delay slightly so the first call lands cleanly.
-    atoms_launch = TimerAction(
+    # Proxy comes up after MoveIt — atoms call wait_for_server on /move_action
+    # at startup. Delay slightly so the first call lands cleanly.
+    proxy_launch = TimerAction(
         period=4.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource([
-                    FindPackageShare("robot_skill_server"),
-                    "/launch/skill_atoms_remote.launch.py",
+                    FindPackageShare("meca500_skill_server"),
+                    "/launch/meca500_skill_server.launch.py",
                 ]),
-                launch_arguments={"robot_name": "meca500"}.items(),
+                launch_arguments={"robot_id": "meca500"}.items(),
             ),
         ],
     )
@@ -62,4 +61,4 @@ def generate_launch_description():
         output="screen",
     )
 
-    return LaunchDescription([moveit_launch, atoms_launch, skill_server])
+    return LaunchDescription([moveit_launch, proxy_launch, skill_server])

@@ -129,6 +129,7 @@ ros-jazzy-robot-skills-msgs     = "*"
 ros-jazzy-robot-skill-advertise = "*"
 ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }
 ros-jazzy-robot-skill-atoms     = { path = "src/robot_skill_atoms" }
+ros-jazzy-meca500-skill-server  = { path = "providers/meca500/src/meca500_skill_server" }
 ros-jazzy-robot-behaviors    = { path = "src/robot_behaviors" }
 ros-jazzy-robot-dashboard    = { path = "src/robot_dashboard" }
 # rosbridge-suite on robostack doesn't pull in cbor2 automatically; without it

@@ -55,9 +55,7 @@ target_include_directories(move_to_named_config_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(move_to_named_config_skill ${SKILL_DEPS})
-rclcpp_components_register_node(move_to_named_config_skill
-  PLUGIN "robot_skill_atoms::MoveToNamedConfigSkill"
-  EXECUTABLE move_to_named_config_skill_node)
+rclcpp_components_register_nodes(move_to_named_config_skill "robot_skill_atoms::MoveToNamedConfigSkill")
 
 # ── MoveToCartesianPose skill ────────────────────────────────────────────────
 add_library(move_to_cartesian_pose_skill SHARED
@@ -66,9 +64,7 @@ target_include_directories(move_to_cartesian_pose_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(move_to_cartesian_pose_skill ${SKILL_DEPS})
-rclcpp_components_register_node(move_to_cartesian_pose_skill
-  PLUGIN "robot_skill_atoms::MoveToCartesianPoseSkill"
-  EXECUTABLE move_to_cartesian_pose_skill_node)
+rclcpp_components_register_nodes(move_to_cartesian_pose_skill "robot_skill_atoms::MoveToCartesianPoseSkill")
 
 # ── GripperControl skill ─────────────────────────────────────────────────────
 add_library(gripper_control_skill SHARED
@@ -77,9 +73,7 @@ target_include_directories(gripper_control_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(gripper_control_skill ${SKILL_DEPS})
-rclcpp_components_register_node(gripper_control_skill
-  PLUGIN "robot_skill_atoms::GripperControlSkill"
-  EXECUTABLE gripper_control_skill_node)
+rclcpp_components_register_nodes(gripper_control_skill "robot_skill_atoms::GripperControlSkill")
 
 # ── DetectObject skill ───────────────────────────────────────────────────────
 add_library(detect_object_skill SHARED
@@ -88,9 +82,7 @@ target_include_directories(detect_object_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(detect_object_skill ${SKILL_DEPS})
-rclcpp_components_register_node(detect_object_skill
-  PLUGIN "robot_skill_atoms::DetectObjectSkill"
-  EXECUTABLE detect_object_skill_node)
+rclcpp_components_register_nodes(detect_object_skill "robot_skill_atoms::DetectObjectSkill")
 
 # ── CheckSystemReady skill ───────────────────────────────────────────────────
 add_library(check_system_ready_skill SHARED
@@ -99,9 +91,7 @@ target_include_directories(check_system_ready_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(check_system_ready_skill ${SKILL_DEPS})
-rclcpp_components_register_node(check_system_ready_skill
-  PLUGIN "robot_skill_atoms::CheckSystemReadySkill"
-  EXECUTABLE check_system_ready_skill_node)
+rclcpp_components_register_nodes(check_system_ready_skill "robot_skill_atoms::CheckSystemReadySkill")
 
 # ── MoveToJointConfig skill ──────────────────────────────────────────────────
 add_library(move_to_joint_config_skill SHARED
@@ -110,9 +100,7 @@ target_include_directories(move_to_joint_config_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(move_to_joint_config_skill ${SKILL_DEPS})
-rclcpp_components_register_node(move_to_joint_config_skill
-  PLUGIN "robot_skill_atoms::MoveToJointConfigSkill"
-  EXECUTABLE move_to_joint_config_skill_node)
+rclcpp_components_register_nodes(move_to_joint_config_skill "robot_skill_atoms::MoveToJointConfigSkill")
 
 # ── MoveCartesianLinear skill ────────────────────────────────────────────────
 add_library(move_cartesian_linear_skill SHARED
@@ -121,9 +109,7 @@ target_include_directories(move_cartesian_linear_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(move_cartesian_linear_skill ${SKILL_DEPS})
-rclcpp_components_register_node(move_cartesian_linear_skill
-  PLUGIN "robot_skill_atoms::MoveCartesianLinearSkill"
-  EXECUTABLE move_cartesian_linear_skill_node)
+rclcpp_components_register_nodes(move_cartesian_linear_skill "robot_skill_atoms::MoveCartesianLinearSkill")
 
 # ── UpdatePlanningScene skill ────────────────────────────────────────────────
 add_library(update_planning_scene_skill SHARED
@@ -132,9 +118,7 @@ target_include_directories(update_planning_scene_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(update_planning_scene_skill ${SKILL_DEPS})
-rclcpp_components_register_node(update_planning_scene_skill
-  PLUGIN "robot_skill_atoms::UpdatePlanningSceneSkill"
-  EXECUTABLE update_planning_scene_skill_node)
+rclcpp_components_register_nodes(update_planning_scene_skill "robot_skill_atoms::UpdatePlanningSceneSkill")
 
 # ── CheckCollision skill ────────────────────────────────────────────────────
 add_library(check_collision_skill SHARED
@@ -143,9 +127,7 @@ target_include_directories(check_collision_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(check_collision_skill ${SKILL_DEPS})
-rclcpp_components_register_node(check_collision_skill
-  PLUGIN "robot_skill_atoms::CheckCollisionSkill"
-  EXECUTABLE check_collision_skill_node)
+rclcpp_components_register_nodes(check_collision_skill "robot_skill_atoms::CheckCollisionSkill")
 
 # ── RobotEnable skill ───────────────────────────────────────────────────────
 add_library(robot_enable_skill SHARED
@@ -154,9 +136,7 @@ target_include_directories(robot_enable_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(robot_enable_skill ${SKILL_DEPS})
-rclcpp_components_register_node(robot_enable_skill
-  PLUGIN "robot_skill_atoms::RobotEnableSkill"
-  EXECUTABLE robot_enable_skill_node)
+rclcpp_components_register_nodes(robot_enable_skill "robot_skill_atoms::RobotEnableSkill")
 
 # ── CapturePointCloud skill ─────────────────────────────────────────────────
 add_library(capture_point_cloud_skill SHARED
@@ -165,9 +145,7 @@ target_include_directories(capture_point_cloud_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(capture_point_cloud_skill ${SKILL_DEPS})
-rclcpp_components_register_node(capture_point_cloud_skill
-  PLUGIN "robot_skill_atoms::CapturePointCloudSkill"
-  EXECUTABLE capture_point_cloud_skill_node)
+rclcpp_components_register_nodes(capture_point_cloud_skill "robot_skill_atoms::CapturePointCloudSkill")
 
 # ── SetDigitalIO skill ──────────────────────────────────────────────────────
 add_library(set_digital_io_skill SHARED
@@ -176,9 +154,7 @@ target_include_directories(set_digital_io_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(set_digital_io_skill ${SKILL_DEPS})
-rclcpp_components_register_node(set_digital_io_skill
-  PLUGIN "robot_skill_atoms::SetDigitalIOSkill"
-  EXECUTABLE set_digital_io_skill_node)
+rclcpp_components_register_nodes(set_digital_io_skill "robot_skill_atoms::SetDigitalIOSkill")
 
 # ── RecordRosbag skill ──────────────────────────────────────────────────────
 add_library(record_rosbag_skill SHARED
@@ -187,18 +163,13 @@ target_include_directories(record_rosbag_skill PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(record_rosbag_skill ${SKILL_DEPS})
-rclcpp_components_register_node(record_rosbag_skill
-  PLUGIN "robot_skill_atoms::RecordRosbagSkill"
-  EXECUTABLE record_rosbag_skill_node)
-
-# ── Main component manager node ──────────────────────────────────────────────
-add_executable(skills_node src/skills_node.cpp)
-ament_target_dependencies(skills_node rclcpp rclcpp_components)
-target_link_libraries(skills_node
-  rclcpp_components::component_manager
-)
+rclcpp_components_register_nodes(record_rosbag_skill "robot_skill_atoms::RecordRosbagSkill")
 
 # ── Install ──────────────────────────────────────────────────────────────────
+# Per-skill libraries are loaded as components by per-robot proxies (e.g.
+# meca500_skill_server) via rclcpp_components::component_container_mt. The
+# old standalone *_skill_node executables and skills_node component-manager
+# wrapper are gone — phase 4 collapsed the fleet into one process.
 install(TARGETS
   move_to_named_config_skill
   move_to_cartesian_pose_skill
@@ -213,7 +184,6 @@ install(TARGETS
   capture_point_cloud_skill
   set_digital_io_skill
   record_rosbag_skill
-  skills_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
