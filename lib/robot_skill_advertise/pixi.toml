@@ -1,6 +1,6 @@
 [workspace]
 # Standalone-build channel list. Mirrors the root workspace channels so
-# `pixi build --path src/robot_skill_advertise` (invoked from
+# `pixi build --path lib/robot_skill_advertise` (invoked from
 # scripts/bootstrap-msgs.sh) can resolve robot_skills_msgs from ~/channel
 # before this package itself is published into ~/channel.
 channels = [
