@@ -27,46 +27,8 @@ from geometry_msgs.msg import PoseStamped
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
-from robot_skills_msgs.action import (
-    CapturePointCloud,
-    CheckCollision,
-    CheckSystemReady,
-    DetectObject,
-    GripperControl,
-    MoveCartesianLinear,
-    MoveToCartesianPose,
-    MoveToJointConfig,
-    MoveToNamedConfig,
-    RecordRosbag,
-    RobotEnable,
-    SetDigitalIO,
-    UpdatePlanningScene,
-)
 from robot_skills_msgs.msg import HumanPrompt, HumanResponse, LogEvent, TaskState
 from robot_skills_msgs.srv import AcquireLease, ReleaseLease, RenewLease
-
-# Provider actions — optional imports. If a provider msgs package isn't
-# installed in the current env, its BT node types simply aren't registered
-# and any tree that references them fails at tick time with a clear error.
-try:
-    from liconic_msgs.action import (
-        TakeIn as _LiconicTakeIn,
-        Fetch as _LiconicFetch,
-    )
-    _HAS_LICONIC = True
-except ImportError:
-    _HAS_LICONIC = False
-
-try:
-    from hamilton_star_msgs.action import (
-        MoveResource as _HamiltonMoveResource,
-        HandoffTransfer as _HamiltonHandoffTransfer,
-        PickUpCoreGripper as _HamiltonPickUpCoreGripper,
-        ReturnCoreGripper as _HamiltonReturnCoreGripper,
-    )
-    _HAS_HAMILTON = True
-except ImportError:
-    _HAS_HAMILTON = False
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1132,249 +1094,6 @@ class ExecutionContext:
         return self.cancelled or self.abort_requested
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Action node registry
-# ═══════════════════════════════════════════════════════════════════════════════
-
-ACTION_REGISTRY: dict[str, dict] = {
-    "MoveToNamedConfig": {
-        "action_type": MoveToNamedConfig,
-        "server": "/skill_atoms/move_to_named_config",
-        "inputs": {
-            "config_name": "config_name",
-            "velocity_scaling": "velocity_scaling",
-            "acceleration_scaling": "acceleration_scaling",
-            "planning_group": "planning_group",
-        },
-        "outputs": {},
-        "defaults": {"velocity_scaling": "0.3", "acceleration_scaling": "0.3"},
-    },
-    "MoveToCartesianPose": {
-        "action_type": MoveToCartesianPose,
-        "server": "/skill_atoms/move_to_cartesian_pose",
-        "inputs": {
-            "target_pose": "target_pose",
-            "velocity_scaling": "velocity_scaling",
-            "acceleration_scaling": "acceleration_scaling",
-            "plan_only": "plan_only",
-            "planning_group": "planning_group",
-        },
-        "outputs": {"final_pose": "final_pose"},
-        "defaults": {"velocity_scaling": "0.3", "acceleration_scaling": "0.3"},
-    },
-    "MoveToJointConfig": {
-        "action_type": MoveToJointConfig,
-        "server": "/skill_atoms/move_to_joint_config",
-        "inputs": {
-            "joint_positions": "joint_positions",
-            "velocity_scaling": "velocity_scaling",
-            "acceleration_scaling": "acceleration_scaling",
-        },
-        "outputs": {},
-        "defaults": {"velocity_scaling": "0.3", "acceleration_scaling": "0.3"},
-    },
-    "MoveCartesianLinear": {
-        "action_type": MoveCartesianLinear,
-        "server": "/skill_atoms/move_cartesian_linear",
-        "inputs": {
-            "target_pose": "target_pose",
-            "velocity_scaling": "velocity_scaling",
-            "step_size": "step_size",
-        },
-        "outputs": {
-            "final_pose": "final_pose",
-            "fraction_achieved": "fraction_achieved",
-        },
-        "defaults": {"velocity_scaling": "0.1", "step_size": "0.005"},
-    },
-    "GripperControl": {
-        "action_type": GripperControl,
-        "server": "/skill_atoms/gripper_control",
-        "inputs": {
-            "command": "command",
-            "position": "position",
-            "force_limit": "force_limit",
-            "speed": "speed",
-        },
-        "outputs": {
-            "final_position": "final_position",
-            "object_grasped": "object_grasped",
-        },
-        "defaults": {"command": "open", "position": "1.0", "force_limit": "0.0"},
-    },
-    "DetectObject": {
-        "action_type": DetectObject,
-        "server": "/skill_atoms/detect_object",
-        "inputs": {
-            "object_class": "object_class",
-            "confidence_threshold": "confidence_threshold",
-            "max_detections": "max_detections",
-            "timeout_sec": "timeout_sec",
-        },
-        "outputs": {
-            "detections": "detected_objects",
-        },
-        "defaults": {"confidence_threshold": "0.7", "timeout_sec": "5.0"},
-        "post_process": "_detect_object_post",
-    },
-    "CapturePointCloud": {
-        "action_type": CapturePointCloud,
-        "server": "/skill_atoms/capture_point_cloud",
-        "inputs": {
-            "timeout_sec": "timeout_sec",
-            "apply_filters": "apply_filters",
-        },
-        "outputs": {"num_points": "num_points"},
-        "defaults": {"timeout_sec": "5.0"},
-    },
-    "SetDigitalIO": {
-        "action_type": SetDigitalIO,
-        "server": "/skill_atoms/set_digital_io",
-        "inputs": {
-            "pin_name": "pin_name",
-            "value": "value",
-            "read_only": "read_only",
-        },
-        "outputs": {"current_value": "current_value"},
-        "defaults": {},
-    },
-    "CheckCollision": {
-        "action_type": CheckCollision,
-        "server": "/skill_atoms/check_collision",
-        "inputs": {"joint_positions": "joint_positions"},
-        "outputs": {"in_collision": "in_collision"},
-        "defaults": {},
-    },
-    "UpdatePlanningScene": {
-        "action_type": UpdatePlanningScene,
-        "server": "/skill_atoms/update_planning_scene",
-        "inputs": {
-            "object_id": "object_id",
-            "operation": "operation",
-            "pose": "pose",
-            "dimensions": "dimensions",
-            "shape_type": "shape_type",
-        },
-        "outputs": {},
-        "defaults": {"operation": "add", "shape_type": "box"},
-    },
-    "RobotEnable": {
-        "action_type": RobotEnable,
-        "server": "/skill_atoms/robot_enable",
-        "inputs": {"enable": "enable"},
-        "outputs": {"is_enabled": "is_enabled"},
-        "defaults": {"enable": "true"},
-    },
-    "RecordRosbag": {
-        "action_type": RecordRosbag,
-        "server": "/skill_atoms/record_rosbag",
-        "inputs": {
-            "output_path": "output_path",
-            "duration_sec": "duration_sec",
-        },
-        "outputs": {"bag_path": "bag_path", "num_messages": "num_messages"},
-        "defaults": {"output_path": "/tmp/recording.bag", "duration_sec": "5.0"},
-    },
-    "CheckSystemReady": {
-        "action_type": CheckSystemReady,
-        "server": "/skill_atoms/check_system_ready",
-        "inputs": {
-            "required_systems": "required_systems",
-            "timeout_sec": "timeout_sec",
-        },
-        "outputs": {
-            "available_systems": "available_systems",
-            "unavailable_systems": "unavailable_systems",
-        },
-        "defaults": {"timeout_sec": "5.0"},
-    },
-}
-
-# Provider-specific actions, conditionally registered. BT XML referring to
-# these node types fails parse-time only if the provider msgs package isn't
-# installed; when it is, the registry picks them up on import.
-# Default server names match the upstream launch files:
-#   liconic_ros/launch/liconic.launch.py               -> node name "liconic_action_server"
-#   hamilton_star_bringup/launch/action_server.launch  -> node name "hamilton_star_action_server"
-# Override per-tree via the `server_name=` XML attr if the node is renamed or namespaced.
-if _HAS_LICONIC:
-    ACTION_REGISTRY["LiconicTakeIn"] = {
-        "action_type": _LiconicTakeIn,
-        "server": "/liconic_action_server/take_in",
-        "inputs": {
-            "plate_name": "plate_name",
-            "barcode": "barcode",
-            "cassette": "cassette",
-            "position": "position",
-        },
-        "outputs": {"success": "success", "message": "message"},
-        "defaults": {"barcode": ""},
-    }
-    ACTION_REGISTRY["LiconicFetch"] = {
-        "action_type": _LiconicFetch,
-        "server": "/liconic_action_server/fetch",
-        "inputs": {
-            "plate_name": "plate_name",
-            "cassette": "cassette",
-            "position": "position",
-        },
-        "outputs": {
-            "success": "success",
-            "message": "message",
-            "plate_name_out": "plate_name",
-        },
-        "defaults": {"plate_name": "", "cassette": "0", "position": "0"},
-    }
-
-if _HAS_HAMILTON:
-    ACTION_REGISTRY["HamiltonMoveResource"] = {
-        "action_type": _HamiltonMoveResource,
-        "server": "/hamilton_star_action_server/move_resource",
-        "inputs": {
-            "resource": "resource",
-            "to": "to",
-            "transport": "transport",
-            "pickup_direction": "pickup_direction",
-            "drop_direction": "drop_direction",
-            "use_unsafe_hotel": "use_unsafe_hotel",
-        },
-        "outputs": {"success": "success", "message": "message"},
-        "defaults": {
-            "transport": "auto",
-            "pickup_direction": "front",
-            "drop_direction": "front",
-            "use_unsafe_hotel": "false",
-        },
-    }
-    ACTION_REGISTRY["HamiltonHandoffTransfer"] = {
-        "action_type": _HamiltonHandoffTransfer,
-        "server": "/hamilton_star_action_server/handoff_transfer",
-        "inputs": {
-            "calibration_name": "calibration_name",
-            "direction": "direction",
-            "on_deck_resource": "on_deck_resource",
-        },
-        "outputs": {"success": "success", "message": "message"},
-        "defaults": {"direction": "to_handoff"},
-    }
-    ACTION_REGISTRY["HamiltonPickUpCoreGripper"] = {
-        "action_type": _HamiltonPickUpCoreGripper,
-        "server": "/hamilton_star_action_server/pick_up_core_gripper",
-        "inputs": {
-            "gripper_resource": "gripper_resource",
-            "front_channel": "front_channel",
-        },
-        "outputs": {"success": "success", "message": "message"},
-        "defaults": {"gripper_resource": "core_grippers", "front_channel": "7"},
-    }
-    ACTION_REGISTRY["HamiltonReturnCoreGripper"] = {
-        "action_type": _HamiltonReturnCoreGripper,
-        "server": "/hamilton_star_action_server/return_core_gripper",
-        "inputs": {"gripper_resource": "gripper_resource"},
-        "outputs": {"success": "success", "message": "message"},
-        "defaults": {"gripper_resource": "core_grippers"},
-    }
-
 UTILITY_REGISTRY: dict[str, type[TreeNode]] = {
     "SetPose": SetPoseNode,
     "ComputePreGraspPose": ComputePreGraspPoseNode,
@@ -1424,13 +1143,8 @@ def parse_trees(
 ) -> dict[str, TreeNode]:
     """Parse BT.CPP v4 XML into a dict of {tree_id: root_node}.
 
-    If ``discovery`` (a SkillDiscovery instance) is provided, action nodes
-    resolve their type/server via the runtime registry first and fall back
-    to the static :data:`ACTION_REGISTRY` only when no advertisement is
-    found. Phase 4 deletes the static registry; until then the fallback
-    keeps non-advertising deployments working.
-
-    Resolution rules for ``robot_id``:
+    Action nodes are resolved against the runtime SkillDiscovery registry,
+    keyed by ``(robot_id, bt_tag)``. Resolution rules for ``robot_id``:
 
     1. If the BT element has ``robot_id="..."`` → look up
        ``(robot_id, bt_tag)`` directly in the discovery.
@@ -1474,26 +1188,14 @@ def _parse_node(
     if tag in UTILITY_REGISTRY:
         return UTILITY_REGISTRY[tag](name, attrs)
 
-    # Action node: try discovery first (with robot_id resolution),
-    # then fall back to the static ACTION_REGISTRY for backwards compat.
     discovered = _resolve_via_discovery(tag, name, attrs, elem_robot_id, discovery)
     if discovered is not None:
         return discovered
 
-    if tag in ACTION_REGISTRY:
-        reg = ACTION_REGISTRY[tag]
-        return RosActionNode(
-            name=name,
-            attrs=attrs,
-            action_type=reg["action_type"],
-            server_name=reg["server"],
-            input_map=reg["inputs"],
-            output_map=reg["outputs"],
-            goal_defaults=reg.get("defaults", {}),
-            post_process=reg.get("post_process"),
-        )
-
-    # Unknown node — treat as always-success
+    # Unknown tag — treat as always-success. Real "missing skill" errors
+    # land as BehaviorTreeParseError from _resolve_via_discovery when a
+    # tag is advertised but its msg pkg can't be imported, or when it's
+    # ambiguous across robots.
     return SyncNode(name, attrs)
 
 
@@ -1506,11 +1208,12 @@ def _resolve_via_discovery(
 ) -> Optional[TreeNode]:
     """Resolve an action node from the runtime SkillDiscovery registry.
 
-    Returns ``None`` if discovery isn't wired in yet, or if the tag isn't
-    advertised; the caller falls back to the static ACTION_REGISTRY in
-    that case. Raises :class:`BehaviorTreeParseError` for ambiguous
-    matches or import failures so misconfigured deployments fail loud at
-    parse time rather than silently at first tick.
+    Returns ``None`` if discovery isn't wired in (e.g. unit tests that
+    construct trees directly) or if the tag is genuinely unknown; the
+    caller treats those as always-success utility nodes. Raises
+    :class:`BehaviorTreeParseError` for ambiguous matches or import
+    failures so misconfigured deployments fail loud at parse time rather
+    than silently at first tick.
     """
     if discovery is None:
         return None

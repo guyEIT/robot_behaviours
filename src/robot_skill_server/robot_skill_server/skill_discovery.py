@@ -10,9 +10,10 @@ last manifest survives publisher restart and is delivered automatically
 to new subscribers, while `on_liveliness_changed` fires when a publisher
 crashes — entries from a dead publisher are evicted.
 
-In phase 1 this runs alongside the static ACTION_REGISTRY in
-tree_executor.py and publishes a diff on `/skill_server/discovery_diff`
-to validate parity. Phase 3 swaps the consumer over.
+The runtime registry is now the only source of truth for the BT executor
+(post phase 4). The `/skill_server/skill_registry` topic is the
+aggregated view; `/skill_server/discovery_diff` retains a JSON snapshot
+of the current registry for tooling that wants a flat dump.
 """
 
 from __future__ import annotations
@@ -161,10 +162,9 @@ class SkillDiscovery(Node):
             "/skill_server/skill_registry",
             make_skills_qos(),
         )
-        # Phase 1 parity diagnostic. Removed once tree_executor stops
-        # consuming ACTION_REGISTRY (phase 4). TRANSIENT_LOCAL so late
-        # `ros2 topic echo` calls get the latest diff without having to
-        # wait for a publish event.
+        # Flat-JSON snapshot of the current registry, for tooling that doesn't
+        # want to deserialise SkillManifest. TRANSIENT_LOCAL so late
+        # `ros2 topic echo` calls get the latest snapshot immediately.
         self._diff_pub = self.create_publisher(
             String,
             "/skill_server/discovery_diff",
@@ -292,28 +292,24 @@ class SkillDiscovery(Node):
         self._aggregate_pub.publish(msg)
 
     def _publish_diff(self) -> None:
-        """Compare the discovered registry to tree_executor.ACTION_REGISTRY.
+        """Publish a flat-JSON snapshot of the current registry.
 
-        Phase 1 parity check. Phase 4 deletes this and the static registry.
-        Imported lazily so the discovery module doesn't pull in tree_executor
-        at module-load time (tree_executor itself imports a lot).
+        Kept under the legacy `/skill_server/discovery_diff` topic name for
+        backwards compat with tooling that grew up against the phase-1
+        parity check.
         """
-        try:
-            from robot_skill_server import tree_executor
-        except Exception as e:  # pragma: no cover
-            self._diff_pub.publish(
-                String(data=json.dumps({"error": f"tree_executor import: {e}"}))
-            )
-            return
-
-        static_tags = set(tree_executor.ACTION_REGISTRY.keys())
         with self._lock:
-            discovered_tags = {tag for (_, tag) in self._registry.keys()}
-        diff = {
-            "only_in_static": sorted(static_tags - discovered_tags),
-            "only_in_discovery": sorted(discovered_tags - static_tags),
-            "in_both": sorted(static_tags & discovered_tags),
-            "discovered_count": len(self._registry),
-            "static_count": len(static_tags),
-        }
-        self._diff_pub.publish(String(data=json.dumps(diff)))
+            entries = [
+                {
+                    "robot_id": robot_id,
+                    "bt_tag": bt_tag,
+                    "action_server": entry.server_name,
+                    "action_type": entry.action_type_str,
+                    "import_error": entry.import_error,
+                }
+                for (robot_id, bt_tag), entry in sorted(self._registry.items())
+            ]
+        self._diff_pub.publish(String(data=json.dumps({
+            "count": len(entries),
+            "entries": entries,
+        })))
