@@ -75,6 +75,15 @@ public:
     return desc;
   }
 
+  robot_skills_msgs::msg::SkillAdvertisement getAdvertisement() override
+  {
+    // Default PascalCase derivation would yield "SetDigitalIo"; the
+    // canonical BT tag uses the all-caps "IO" acronym, so set it explicitly.
+    robot_skills_msgs::msg::SkillAdvertisement ad;
+    ad.bt_tag = "SetDigitalIO";
+    return ad;
+  }
+
   std::pair<bool, std::string> checkPreconditions(
     const std::shared_ptr<const Goal> goal) override
   {
