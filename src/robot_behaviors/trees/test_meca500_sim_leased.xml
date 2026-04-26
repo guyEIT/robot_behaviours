@@ -13,6 +13,11 @@
   To test contention, fire two concurrent tree goals: the second's
   AcquireLease returns FAILURE with `reason="resource 'meca500' is held
   by ...". The first run proceeds uninterrupted.
+
+  Action nodes carry no robot_id / server_name override — the BT executor
+  resolves them from the runtime SkillDiscovery registry. lab-sim
+  publishes the atoms with robot_id="lab_sim", meca500-host publishes with
+  robot_id="meca500"; in either case the bt_tag matches a unique entry.
 -->
 <root BTCPP_format="4" main_tree_to_execute="MecaSimSmokeTestLeased">
 
@@ -30,30 +35,25 @@
                     output_key="{meca_lease}"/>
 
       <CheckSystemReady name="check_meca_ready"
-                        server_name="/meca500/skill_atoms/check_system_ready"
                         timeout_sec="10.0"/>
 
       <MoveToNamedConfig name="go_home_start"
-                         server_name="/meca500/skill_atoms/move_to_named_config"
                          config_name="home"
                          velocity_scaling="0.3"/>
 
       <MoveToJointConfig name="go_to_pre_pick"
-                         server_name="/meca500/skill_atoms/move_to_joint_config"
                          joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
                          velocity_scaling="0.3"/>
 
       <WaitForDuration name="settle" seconds="0.5"/>
 
       <MoveToJointConfig name="go_to_over_seed"
-                         server_name="/meca500/skill_atoms/move_to_joint_config"
                          joint_positions="1.3954, 0.5605, 0.4706, 0.0727, 0.5396, -0.3589"
                          velocity_scaling="0.25"/>
 
       <WaitForDuration name="settle_again" seconds="0.5"/>
 
       <MoveToNamedConfig name="go_home_end"
-                         server_name="/meca500/skill_atoms/move_to_named_config"
                          config_name="home"
                          velocity_scaling="0.3"/>
 
