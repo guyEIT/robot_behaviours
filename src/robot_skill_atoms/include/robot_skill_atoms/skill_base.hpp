@@ -14,7 +14,6 @@
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "robot_skills_msgs/msg/skill_advertisement.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
-#include "robot_skills_msgs/srv/register_skill.hpp"
 
 #include "robot_skill_advertise/skill_advertiser.hpp"
 
@@ -62,11 +61,6 @@ public:
   : rclcpp::Node(node_name, options),
     action_name_(action_name)
   {
-    // Declare common parameters
-    this->declare_parameter("skill_registry_service", "/skill_server/register_skill");
-    this->declare_parameter("registration_timeout_sec", 5.0);
-    this->declare_parameter("registration_refresh_sec", 30.0);
-
     // Multi-robot: optional namespace prefix for action server and registry identity.
     // robot_namespace: e.g. "/meca500" or "/franka" — prepended to all action server names.
     // robot_id:        e.g. "meca500" or "franka"   — used in SkillDescription.robot_id.
@@ -123,27 +117,14 @@ public:
         produceDiagnostics(stat);
       });
 
-    registerWithRegistry();
-
-    // Phase 1 advertise: publish a latched SkillManifest on `~/skills`
-    // alongside the legacy service push. Phase 4 will delete the service
-    // path once the BT executor consumes the runtime registry directly.
-    // Phase 2: a per-robot proxy (e.g. meca500_skill_server) sets
-    // publish_manifest:=false on each composed atom so the proxy can
-    // publish a single combined manifest instead.
+    // Publish a latched SkillManifest on `~/skills` for SkillDiscovery to
+    // pick up. A per-robot proxy (e.g. meca500_skill_server) sets
+    // publish_manifest:=false on each composed atom so it can emit a single
+    // combined manifest instead. DDS QoS liveliness handles eviction when
+    // an atom dies — no heartbeat needed.
     if (this->get_parameter("publish_manifest").as_bool()) {
       publishManifest();
     }
-
-    // Keep the registry heartbeat fresh so the orchestrator can flag crashed atoms.
-    const auto refresh_sec = this->get_parameter("registration_refresh_sec").as_double();
-    reg_refresh_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(static_cast<int>(refresh_sec * 1000.0)),
-      [this]() {
-        if (reg_client_ && reg_client_->service_is_ready()) {
-          sendRegistrationRequest();
-        }
-      });
   }
 
   /**
@@ -225,31 +206,10 @@ protected:
   std::string last_error_message_;
 
   /**
-   * @brief Register this skill with the central SkillRegistry.
-   * Called automatically during initialize().
-   */
-  void registerWithRegistry()
-  {
-    const std::string registry_service =
-      this->get_parameter("skill_registry_service").as_string();
-
-    reg_client_ = this->create_client<robot_skills_msgs::srv::RegisterSkill>(registry_service);
-
-    if (!reg_client_->service_is_ready()) {
-      RCLCPP_INFO(this->get_logger(),
-        "SkillRegistry service '%s' not yet available for '%s', will retry on heartbeat.",
-        registry_service.c_str(), this->get_name());
-      return;
-    }
-
-    sendRegistrationRequest();
-  }
-
-  /**
    * @brief Publish a latched SkillManifest on `~/skills` for SkillDiscovery.
    *
-   * Combines getDescription() (with action_server_name + robot_id filled in
-   * the same way as sendRegistrationRequest) with getAdvertisement().
+   * Combines getDescription() with getAdvertisement(), filling in
+   * action_server_name and robot_id derived from the node's parameters.
    */
   void publishManifest()
   {
@@ -268,46 +228,6 @@ protected:
 
     advertiser_ = std::make_unique<robot_skill_advertise::SkillAdvertiser>(
       this, std::vector<robot_skills_msgs::msg::SkillAdvertisement>{ad});
-  }
-
-  void sendRegistrationRequest()
-  {
-    auto request = std::make_shared<robot_skills_msgs::srv::RegisterSkill::Request>();
-    request->description = getDescription();
-    request->description.action_server_name = action_name_;
-
-    // Populate robot_id: use explicit param, or derive from robot_namespace ("/meca500" -> "meca500")
-    std::string rid = this->get_parameter("robot_id").as_string();
-    if (rid.empty()) {
-      const auto ns = this->get_parameter("robot_namespace").as_string();
-      if (!ns.empty()) {
-        rid = (ns[0] == '/') ? ns.substr(1) : ns;
-      }
-    }
-    request->description.robot_id = rid;
-
-    reg_client_->async_send_request(request,
-      [this](rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedFuture future) {
-        try {
-          auto response = future.get();
-          if (response->success) {
-            if (!registered_) {
-              RCLCPP_INFO(this->get_logger(), "Skill '%s' registered successfully",
-                this->get_name());
-            } else {
-              RCLCPP_DEBUG(this->get_logger(), "Skill '%s' heartbeat refreshed",
-                this->get_name());
-            }
-            registered_ = true;
-          } else {
-            RCLCPP_WARN(this->get_logger(), "Skill '%s' registration failed: %s",
-              this->get_name(), response->message.c_str());
-          }
-        } catch (const std::exception & e) {
-          RCLCPP_WARN(this->get_logger(), "Skill '%s' registration error: %s",
-            this->get_name(), e.what());
-        }
-      });
   }
 
 private:
@@ -395,11 +315,8 @@ private:
 
   std::mutex threads_mutex_;
   std::vector<TrackedThread> execution_threads_;
-  rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedPtr reg_client_;
-  rclcpp::TimerBase::SharedPtr reg_refresh_timer_;
   rclcpp::TimerBase::SharedPtr init_timer_;
   std::unique_ptr<robot_skill_advertise::SkillAdvertiser> advertiser_;
-  bool registered_{false};
   bool initialized_{false};
 };
 

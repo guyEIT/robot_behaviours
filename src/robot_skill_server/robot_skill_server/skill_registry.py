@@ -17,7 +17,6 @@ import json
 import os
 import re
 import threading
-import time
 import xml.etree.ElementTree as ET
 import yaml
 from datetime import datetime
@@ -35,7 +34,6 @@ from robot_skills_msgs.msg import SkillDescription
 from robot_skills_msgs.srv import (
     GetSkillDescriptions,
     RegisterCompoundSkill,
-    RegisterSkill,
 )
 from std_msgs.msg import String
 
@@ -64,11 +62,6 @@ class SkillRegistry(Node):
         self._persist_dir = Path(persist_dir)
 
         # Services
-        self._register_srv = self.create_service(
-            RegisterSkill,
-            "/skill_server/register_skill",
-            self._handle_register_skill,
-        )
         self._get_skills_srv = self.create_service(
             GetSkillDescriptions,
             "/skill_server/get_skill_descriptions",
@@ -90,20 +83,13 @@ class SkillRegistry(Node):
         self._diag_updater.setHardwareID("skill_registry")
         self._diag_updater.add("registry_status", self._produce_diagnostics)
 
-        # Health monitoring: track atom skills with stale heartbeats
-        # Atoms re-register every ~30 s via their diagnostic updater; if we see
-        # no re-registration for health_timeout_s we mark the skill stale.
-        self.declare_parameter("health_timeout_s", 60.0)
-        self._skill_last_seen: Dict[str, float] = {}
-        self._stale_skills: set = set()
-        self._health_timer = self.create_timer(15.0, self._check_skill_health)
-
         # Load persisted compound skills from disk
         self._load_persisted_skills()
 
         self.get_logger().info(
-            "SkillRegistry started. "
-            "Waiting for skill atoms to register on /skill_server/register_skill"
+            "SkillRegistry started — compound-skill catalog only. "
+            "Atoms self-advertise via */skills topics; SkillDiscovery is "
+            "the runtime registry."
         )
 
     # ── Helpers for multi-robot keying ────────────────────────────────────────
@@ -122,35 +108,6 @@ class SkillRegistry(Node):
         return desc.name
 
     # ── Service handlers ─────────────────────────────────────────────────────
-
-    def _handle_register_skill(
-        self,
-        request: RegisterSkill.Request,
-        response: RegisterSkill.Response,
-    ) -> RegisterSkill.Response:
-        """Called by skill atom servers on startup to register themselves."""
-        desc = request.description
-        now = self.get_clock().now().to_msg()
-        desc.created_at = now
-        desc.updated_at = now
-        key = self._skill_key(desc)
-        with self._lock:
-            existing = self._skills.get(key)
-            self._skills[key] = desc
-            self._skill_last_seen[key] = time.monotonic()
-            self._stale_skills.discard(key)
-            message = (
-                f"Registered skill atom: '{key}' "
-                f"[{desc.category}] -> {desc.action_server_name}"
-            )
-            if existing is None:
-                self.get_logger().info(message)
-            else:
-                self.get_logger().debug(message)
-        self._publish_skill_list()
-        response.success = True
-        response.message = f"Skill '{key}' registered"
-        return response
 
     def _handle_get_skill_descriptions(
         self,
@@ -248,37 +205,6 @@ class SkillRegistry(Node):
         response.message = f"Compound skill '{desc.name}' registered successfully"
         return response
 
-    # ── Health monitoring ──────────────────────────────────────────────────
-
-    def _check_skill_health(self) -> None:
-        """Periodic timer: flag atom skills that haven't re-registered recently."""
-        timeout = self.get_parameter("health_timeout_s").value
-        now = time.monotonic()
-        newly_stale = []
-        newly_recovered = []
-
-        with self._lock:
-            for name, skill in self._skills.items():
-                if skill.is_compound:
-                    continue  # compound skills are static; no heartbeat expected
-                last_seen = self._skill_last_seen.get(name, 0.0)
-                if now - last_seen > timeout:
-                    if name not in self._stale_skills:
-                        self._stale_skills.add(name)
-                        newly_stale.append(name)
-                else:
-                    if name in self._stale_skills:
-                        self._stale_skills.discard(name)
-                        newly_recovered.append(name)
-
-        for name in newly_stale:
-            self.get_logger().warning(
-                f"Skill atom '{name}' has not re-registered in {timeout:.0f}s — "
-                "it may have crashed. Check the skill atom node."
-            )
-        for name in newly_recovered:
-            self.get_logger().info(f"Skill atom '{name}' recovered.")
-
     # ── Diagnostics ────────────────────────────────────────────────────────
 
     def _produce_diagnostics(self, stat):
@@ -288,19 +214,15 @@ class SkillRegistry(Node):
             atoms = sum(1 for s in self._skills.values() if not s.is_compound)
             compounds = sum(1 for s in self._skills.values() if s.is_compound)
             names = ", ".join(sorted(self._skills.keys()))
-            stale = list(self._stale_skills)
 
         if total == 0:
-            stat.summary(DiagnosticStatus.WARN, "No skills registered")
-        elif stale:
-            stat.summary(DiagnosticStatus.WARN, f"{len(stale)} stale skill(s): {', '.join(stale)}")
+            stat.summary(DiagnosticStatus.OK, "Compound-skill catalog empty")
         else:
             stat.summary(DiagnosticStatus.OK, f"{total} skills registered")
 
         stat.add("total_skills", str(total))
         stat.add("atom_skills", str(atoms))
         stat.add("compound_skills", str(compounds))
-        stat.add("stale_skills", ", ".join(stale) if stale else "none")
         stat.add("skill_names", names)
         return stat
 

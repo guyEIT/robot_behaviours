@@ -31,7 +31,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetSkillDescriptions.srv"
   "srv/ComposeTask.srv"
   "srv/RegisterCompoundSkill.srv"
-  "srv/RegisterSkill.srv"
   "srv/AcquireLease.srv"
   "srv/RenewLease.srv"
   "srv/ReleaseLease.srv"
