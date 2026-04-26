@@ -1,8 +1,0 @@
-[package.build]
-backend = { name = "pixi-build-ros", version = "*" }
-
-[package.build.config]
-distro = "jazzy"
-extra-input-globs = [
-  "config/**/*",
-]
