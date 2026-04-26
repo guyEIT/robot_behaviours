@@ -390,7 +390,11 @@ export default function BehaviorExecutorPanel() {
         tree_name: runName,
         enable_groot_monitor: true,
         groot_zmq_port: 1666,
-        tick_rate_hz: 10.0,
+        // Currently a no-op on the Python tree_executor (fully async/event-driven,
+        // no polling loop). Kept in the goal for contract parity with the action
+        // schema. 5Hz is the expected ceiling if a future executor introduces
+        // a TaskState publish rate cap.
+        tick_rate_hz: 5.0,
       });
       const elapsedSec = result.total_execution_time_sec ?? 0;
       const final = String(result.final_status || "").toUpperCase();
@@ -415,13 +419,13 @@ export default function BehaviorExecutorPanel() {
   return (
     <div className="flex flex-col h-full bg-paper relative">
       {/* Header — title + mode tabs (segmented) + details toggle */}
-      <div className="px-5 py-3 border-b border-hair flex items-center gap-4 shrink-0">
+      <div className="px-4 py-2 border-b border-hair flex items-center gap-3 shrink-0">
         <div className="flex items-center gap-2 shrink-0">
           <Rocket className="w-4 h-4 text-terracotta" />
-          <h2 className="text-[14px] font-medium text-ink">Behavior Executor</h2>
+          <h2 className="text-[13px] font-medium text-ink">Behavior Executor</h2>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           <SegmentedControl
             options={[
               { id: "preset", label: "Preset" },
@@ -689,27 +693,25 @@ function RunBar({
   onCompose: () => void;
 }) {
   // In Compose mode, the workflow is two-step: build steps → compose XML → run.
-  // We surface a separate Compose action when there's no XML yet.
+  // Surface a separate Compose action when there's no XML yet.
   const showComposeButton = mode === "compose" && !composeReady && !composing;
+  const placeholder =
+    mode === "preset"
+      ? "Select a preset to run"
+      : mode === "compose"
+        ? "Add steps and compose to run"
+        : "Paste BT XML to run";
   return (
-    <div className="border-t border-hair bg-cream-deep px-5 py-3 shrink-0">
+    <div className="border-t border-hair bg-cream-deep px-4 py-2 shrink-0">
       <div className="flex items-center gap-3">
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex items-baseline gap-2">
+          <Eyebrow size="sm" tone="muted" className="shrink-0">
+            {isRunning ? "Running" : runLabel ? "Ready" : "Idle"}
+          </Eyebrow>
           {runLabel ? (
-            <>
-              <Eyebrow size="sm" tone="muted" className="block">
-                {isRunning ? "Now Running" : "Ready to Run"}
-              </Eyebrow>
-              <div className="text-[13px] font-medium text-ink truncate mt-0.5">{runLabel}</div>
-            </>
+            <span className="text-[13px] font-medium text-ink truncate">{runLabel}</span>
           ) : (
-            <Eyebrow size="sm" tone="muted">
-              {mode === "preset"
-                ? "Select a preset to run"
-                : mode === "compose"
-                  ? "Add steps and compose to run"
-                  : "Paste BT XML to run"}
-            </Eyebrow>
+            <span className="text-[12px] text-muted truncate">{placeholder}</span>
           )}
         </div>
 
@@ -717,6 +719,7 @@ function RunBar({
           <Button
             onClick={onCompose}
             variant="secondary"
+            size="sm"
             leftIcon={<FileCode className="w-3.5 h-3.5" />}
           >
             Compose
@@ -727,8 +730,9 @@ function RunBar({
           <Button
             onClick={onCancel}
             variant="danger"
+            size="sm"
             leftIcon={<Square className="w-3.5 h-3.5" />}
-            className="!px-6"
+            className="!px-4"
           >
             Cancel
           </Button>
@@ -738,7 +742,7 @@ function RunBar({
             disabled={!canRun}
             variant="primary"
             leftIcon={<Play className="w-3.5 h-3.5" fill="currentColor" />}
-            className="!px-7 !py-3 text-[15px]"
+            className="!px-5 !py-1.5 text-[13px]"
           >
             Run
           </Button>
@@ -765,22 +769,22 @@ function PresetMode({
 }) {
   return (
     <div className="flex flex-col h-full">
-      <div className="px-5 pt-4 pb-3 border-b border-hair-soft shrink-0">
+      <div className="px-4 py-2 border-b border-hair-soft shrink-0">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={`Search ${total} preset${total === 1 ? "" : "s"}…`}
-            className="w-full pl-9 pr-3 py-2 text-[13px] bg-paper border border-hair rounded-DEFAULT focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
+            className="w-full pl-8 pr-3 py-1 text-[12.5px] bg-paper border border-hair rounded-DEFAULT focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
           />
         </div>
       </div>
 
       <div className="flex-1 overflow-auto">
         {presets.length === 0 && (
-          <div className="px-5 py-12 text-center text-muted text-[12px]">
+          <div className="px-4 py-6 text-center text-muted text-[12px]">
             {total === 0 ? "No presets available" : "No presets match your search"}
           </div>
         )}
@@ -790,8 +794,9 @@ function PresetMode({
             <button
               key={p.name}
               onClick={() => onSelect(p.name)}
+              title={p.description}
               className={clsx(
-                "w-full text-left px-5 py-3 border-b border-hair-soft border-l-2 transition-colors flex items-start gap-3",
+                "w-full text-left px-4 py-1.5 border-b border-hair-soft border-l-2 transition-colors flex items-center gap-2.5",
                 isSelected
                   ? "border-l-terracotta bg-terracotta-tint"
                   : "border-l-transparent hover:bg-cream",
@@ -799,20 +804,20 @@ function PresetMode({
             >
               <span
                 className={clsx(
-                  "shrink-0 mt-1 w-4 h-4 rounded-full border flex items-center justify-center",
+                  "shrink-0 w-3.5 h-3.5 rounded-full border flex items-center justify-center",
                   isSelected ? "border-terracotta bg-terracotta" : "border-hair bg-paper",
                 )}
               >
-                {isSelected && <Check className="w-2.5 h-2.5 text-paper" strokeWidth={3} />}
+                {isSelected && <Check className="w-2 h-2 text-paper" strokeWidth={3} />}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[14px] font-medium text-ink truncate">{p.label}</span>
+                  <span className="text-[13px] font-medium text-ink truncate">{p.label}</span>
                   <span className="font-mono text-[10px] text-muted truncate tracking-[0.04em]">
                     {p.name}
                   </span>
                 </div>
-                <p className="text-[12.5px] text-ink-soft mt-0.5 line-clamp-2">{p.description}</p>
+                <p className="text-[11.5px] text-muted truncate">{p.description}</p>
               </div>
             </button>
           );
@@ -853,8 +858,8 @@ function ComposeMode({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-5 py-3 border-b border-hair-soft shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="px-4 py-2 border-b border-hair-soft shrink-0">
+        <div className="flex items-center gap-2">
           <Eyebrow size="sm" tone="muted" className="shrink-0">
             Task
           </Eyebrow>
@@ -863,7 +868,7 @@ function ComposeMode({
             value={taskName}
             onChange={(e) => onTaskNameChange(e.target.value)}
             placeholder="my_task"
-            className="!py-1.5 max-w-xs"
+            className="!py-1 !text-[12.5px] max-w-xs"
           />
           <Eyebrow size="sm" tone="muted" className="ml-auto shrink-0">
             {steps.length} step{steps.length === 1 ? "" : "s"}
@@ -871,10 +876,10 @@ function ComposeMode({
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-5 space-y-2">
+      <div className="flex-1 overflow-auto p-4 space-y-1.5">
         {steps.length === 0 && (
-          <div className="text-center text-muted text-[13px] py-12">
-            No steps yet. Add a skill below to start composing a task.
+          <div className="text-center text-muted text-[12px] py-4">
+            No steps yet — add a skill below to start.
           </div>
         )}
         {steps.map((step, idx) => (
@@ -895,9 +900,9 @@ function ComposeMode({
 
         <button
           onClick={onAddStep}
-          className="w-full flex items-center justify-center gap-1.5 py-3 border border-dashed border-hair text-[13px] text-muted hover:text-terracotta hover:border-terracotta hover:bg-cream transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-dashed border-hair text-[12px] text-muted hover:text-terracotta hover:border-terracotta hover:bg-cream transition-colors"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-3 h-3" />
           Add Step
         </button>
 

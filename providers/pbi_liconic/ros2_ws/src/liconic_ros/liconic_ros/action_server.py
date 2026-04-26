@@ -36,9 +36,13 @@ from typing import Any, Callable
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.qos import (
+    QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
+    QoSProfile, QoSReliabilityPolicy,
+)
 
 from std_msgs.msg import Bool
 
@@ -47,6 +51,9 @@ from liconic_msgs.msg import PlateLocation
 from liconic_msgs.srv import (
     ClearCassettePosition, ClearLoadingTray, GetStatus,
     ResetError, SetHumidity, SetTemperature, StartShaking, StopShaking,
+)
+from robot_skills_msgs.msg import (
+    KeyValue, SkillAdvertisement, SkillDescription, SkillManifest,
 )
 
 from .asyncio_bridge import AsyncioBridge
@@ -144,6 +151,7 @@ class LiconicActionServer(Node):
 
         self._register_services()
         self._register_actions()
+        self._publish_skill_manifest()
 
         if connect_on_start:
             self._bridge.submit(self._setup_backend())
@@ -392,6 +400,72 @@ class LiconicActionServer(Node):
             response.shaker_frequency_hz = float("nan")
 
         return response
+
+    # ---- skill advertisement ----
+
+    def _publish_skill_manifest(self) -> None:
+        """Publish a latched SkillManifest on `~/skills` so SkillDiscovery
+        can pick up the Liconic actions without any hardcoded entry in
+        tree_executor.ACTION_REGISTRY. QoS must match
+        `robot_skill_server.skill_advertiser.make_skills_qos()`.
+        """
+        qos = QoSProfile(
+            depth=1,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            liveliness=QoSLivelinessPolicy.AUTOMATIC,
+            liveliness_lease_duration=Duration(seconds=10.0),
+        )
+        self._skills_pub = self.create_publisher(SkillManifest, "~/skills", qos)
+
+        ns = self.get_namespace().rstrip("/")
+        node_path = f"{ns}/{self.get_name()}" if ns else f"/{self.get_name()}"
+
+        ads: list[SkillAdvertisement] = []
+
+        ad_take_in = SkillAdvertisement()
+        ad_take_in.description = SkillDescription(
+            name="liconic_take_in",
+            display_name="Liconic Take In",
+            description="Move a plate from the loading tray into a cassette slot.",
+            version="1.0.0",
+            robot_id="liconic",
+            category="manipulation",
+            tags=["liconic", "incubator"],
+            action_server_name=f"{node_path}/take_in",
+            action_type="liconic_msgs/action/TakeIn",
+        )
+        ad_take_in.bt_tag = "LiconicTakeIn"
+        ad_take_in.goal_defaults = [KeyValue(key="barcode", value="")]
+        ads.append(ad_take_in)
+
+        ad_fetch = SkillAdvertisement()
+        ad_fetch.description = SkillDescription(
+            name="liconic_fetch",
+            display_name="Liconic Fetch",
+            description="Retrieve a plate by name (or by cassette/position) onto the loading tray.",
+            version="1.0.0",
+            robot_id="liconic",
+            category="manipulation",
+            tags=["liconic", "incubator"],
+            action_server_name=f"{node_path}/fetch",
+            action_type="liconic_msgs/action/Fetch",
+        )
+        ad_fetch.bt_tag = "LiconicFetch"
+        ad_fetch.goal_defaults = [
+            KeyValue(key="plate_name", value=""),
+            KeyValue(key="cassette", value="0"),
+            KeyValue(key="position", value="0"),
+        ]
+        ad_fetch.output_renames = [KeyValue(key="plate_name", value="plate_name_out")]
+        ads.append(ad_fetch)
+
+        msg = SkillManifest()
+        msg.skills = ads
+        msg.published_at = self.get_clock().now().to_msg()
+        msg.source_node = node_path
+        self._skills_pub.publish(msg)
 
     # ---- action registration ----
 

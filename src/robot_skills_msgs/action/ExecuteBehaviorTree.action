@@ -3,7 +3,13 @@ string tree_xml                    # Full BT XML content (BehaviorTree.CPP v4 fo
 string tree_name                   # Human-readable label for logging/monitoring
 bool enable_groot_monitor          # Stream execution to Groot2 for live visualization
 int32 groot_zmq_port               # Groot2 ZMQ port, default 1666
-float64 tick_rate_hz               # Tree tick frequency, default 10.0
+float64 tick_rate_hz               # TaskState heartbeat publish rate while the tree
+                                   # runs, in Hz. Default 5.0; clamped to [0.5, 20].
+                                   # Does NOT control tree execution cadence — the
+                                   # Python executor is async/event-driven, so a
+                                   # "tick rate" in the BT.CPP sense doesn't apply.
+                                   # See docs/tick-based-bt-executor.md for the
+                                   # rationale.
 ---
 # Result
 bool success

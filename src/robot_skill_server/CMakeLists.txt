@@ -15,6 +15,12 @@ install(PROGRAMS
   RENAME skill_server_node
 )
 
+install(PROGRAMS
+  robot_skill_server/mcp_server.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME bt_executor_mcp
+)
+
 # ── Launch files ──────────────────────────────────────────────────────────────
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch

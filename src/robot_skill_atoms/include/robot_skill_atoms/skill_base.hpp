@@ -12,8 +12,11 @@
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "diagnostic_updater/diagnostic_updater.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
+#include "robot_skills_msgs/msg/skill_advertisement.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
 #include "robot_skills_msgs/srv/register_skill.hpp"
+
+#include "robot_skill_atoms/skill_advertiser.hpp"
 
 namespace robot_skill_atoms
 {
@@ -116,6 +119,11 @@ public:
 
     registerWithRegistry();
 
+    // Phase 1 advertise: publish a latched SkillManifest on `~/skills`
+    // alongside the legacy service push. Phase 4 will delete the service
+    // path once the BT executor consumes the runtime registry directly.
+    publishManifest();
+
     // Keep the registry heartbeat fresh so the orchestrator can flag crashed atoms.
     const auto refresh_sec = this->get_parameter("registration_refresh_sec").as_double();
     reg_refresh_timer_ = this->create_wall_timer(
@@ -132,6 +140,18 @@ public:
    * Override in derived classes to provide skill-specific metadata.
    */
   virtual robot_skills_msgs::msg::SkillDescription getDescription() = 0;
+
+  /**
+   * @brief Return the BT-binding additions on top of getDescription().
+   * Override in derived classes when defaults / output renames / a
+   * post-processor are required. Default is an empty advertisement;
+   * SkillDiscovery will then PascalCase the description.name as bt_tag
+   * and derive inputs from the action Goal field names.
+   */
+  virtual robot_skills_msgs::msg::SkillAdvertisement getAdvertisement()
+  {
+    return robot_skills_msgs::msg::SkillAdvertisement{};
+  }
 
   /**
    * @brief Check if preconditions are met before executing.
@@ -212,6 +232,31 @@ protected:
     }
 
     sendRegistrationRequest();
+  }
+
+  /**
+   * @brief Publish a latched SkillManifest on `~/skills` for SkillDiscovery.
+   *
+   * Combines getDescription() (with action_server_name + robot_id filled in
+   * the same way as sendRegistrationRequest) with getAdvertisement().
+   */
+  void publishManifest()
+  {
+    robot_skills_msgs::msg::SkillAdvertisement ad = getAdvertisement();
+    ad.description = getDescription();
+    ad.description.action_server_name = action_name_;
+
+    std::string rid = this->get_parameter("robot_id").as_string();
+    if (rid.empty()) {
+      const auto ns = this->get_parameter("robot_namespace").as_string();
+      if (!ns.empty()) {
+        rid = (ns[0] == '/') ? ns.substr(1) : ns;
+      }
+    }
+    ad.description.robot_id = rid;
+
+    advertiser_ = std::make_unique<SkillAdvertiser>(
+      this, std::vector<robot_skills_msgs::msg::SkillAdvertisement>{ad});
   }
 
   void sendRegistrationRequest()
@@ -342,6 +387,7 @@ private:
   rclcpp::Client<robot_skills_msgs::srv::RegisterSkill>::SharedPtr reg_client_;
   rclcpp::TimerBase::SharedPtr reg_refresh_timer_;
   rclcpp::TimerBase::SharedPtr init_timer_;
+  std::unique_ptr<SkillAdvertiser> advertiser_;
   bool registered_{false};
   bool initialized_{false};
 };

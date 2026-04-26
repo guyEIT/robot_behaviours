@@ -287,7 +287,14 @@ class RosActionNode(TreeNode):
 
         send_future = client.send_goal_async(goal)
         try:
-            goal_handle = await send_future
+            # `await_or_halt` polls ctx.is_halted() every 50 ms so the operator's
+            # Cancel reaches us within ~1 poll period instead of waiting for the
+            # action server to acknowledge the goal.
+            goal_handle = await await_or_halt(send_future, ctx)
+        except HaltedError:
+            logger.info(f"[{self.name}] halted before goal accepted: {ctx.halt_reason}")
+            ctx.on_skill_failed(self.name)
+            return NodeStatus.FAILURE
         except Exception as e:
             import traceback
             logger.error(
@@ -308,7 +315,20 @@ class RosActionNode(TreeNode):
         ctx.inflight_goals.append(goal_handle)
         try:
             result_future = goal_handle.get_result_async()
-            wrapped = await result_future
+            try:
+                wrapped = await await_or_halt(result_future, ctx)
+            except HaltedError:
+                # Best-effort hard cancel of the in-flight goal so the action
+                # server stops doing work. We don't await the cancel future —
+                # the action server will tear down asynchronously, and our
+                # tree is exiting anyway.
+                logger.info(f"[{self.name}] halted mid-action: {ctx.halt_reason}")
+                try:
+                    goal_handle.cancel_goal_async()
+                except Exception:
+                    pass
+                ctx.on_skill_failed(self.name)
+                return NodeStatus.FAILURE
         finally:
             try:
                 ctx.inflight_goals.remove(goal_handle)
@@ -437,6 +457,55 @@ async def _rclpy_sleep(node: Node, seconds: float) -> None:
         node.destroy_timer(timer)
 
 
+# ── Reactive halt primitives ───────────────────────────────────────────────
+#
+# The async tree executor blocks on action / sleep / human-prompt futures via
+# `await`. Without these helpers, a halt signal (cancel button, lease revoke)
+# only takes effect once the underlying future resolves on its own — a 60 s
+# wait or a long Meca move means up to that long until halt is acknowledged.
+#
+# `await_or_halt` and `sleep_or_halt` wrap the await in a 50 ms poll that
+# also checks `ctx.is_halted()`, raising `HaltedError` as soon as halt fires.
+# Callers translate that into FAILURE + on_skill_failed bookkeeping.
+#
+# Why poll instead of asyncio.Event: rclpy's action-server callback runs the
+# user coroutine via its own executor, not an asyncio loop, so asyncio
+# primitives that depend on `get_running_loop()` may not function. Polling on
+# top of `_rclpy_sleep` is portable and bounded-latency (50 ms is fine for
+# operator-perceptible halt; tighten if a tree needs faster reactivity).
+
+class HaltedError(Exception):
+    """Raised mid-await when ExecutionContext.is_halted() becomes true."""
+
+
+async def await_or_halt(future, ctx: "ExecutionContext", poll_interval: float = 0.05):
+    """Await an rclpy.Future, racing against the halt signal.
+
+    Returns the future's result on completion; raises HaltedError if halt
+    fires first. The future is NOT cancelled here — caller is responsible
+    for any goal-handle teardown via ctx.inflight_goals.
+    """
+    while not future.done():
+        if ctx.is_halted():
+            raise HaltedError(ctx.halt_reason)
+        await _rclpy_sleep(ctx.ros_node, poll_interval)
+    return future.result()
+
+
+async def sleep_or_halt(
+    ctx: "ExecutionContext", seconds: float, poll_interval: float = 0.05
+) -> None:
+    """Sleep for `seconds`, raising HaltedError early if halt fires."""
+    end = time.monotonic() + seconds
+    while True:
+        if ctx.is_halted():
+            raise HaltedError(ctx.halt_reason)
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return
+        await _rclpy_sleep(ctx.ros_node, min(remaining, poll_interval))
+
+
 class WaitForDurationNode(SyncNode):
     async def tick(self, bb, ctx):
         # Override SyncNode.tick because we need an async sleep, but mirror
@@ -445,7 +514,12 @@ class WaitForDurationNode(SyncNode):
         seconds = float(self.attrs.get("seconds", "1.0"))
         ctx.on_skill_started(self.name)
         try:
-            await _rclpy_sleep(ctx.ros_node, seconds)
+            # sleep_or_halt polls every 50 ms — a 60 s wait that gets cancelled
+            # at second 5 returns within ~50 ms instead of after another 55 s.
+            await sleep_or_halt(ctx, seconds)
+        except HaltedError:
+            ctx.on_skill_failed(self.name)
+            return NodeStatus.FAILURE
         except Exception:
             ctx.on_skill_failed(self.name)
             raise
@@ -550,6 +624,15 @@ class HumanBlockingNode(TreeNode):
 
         start = time.monotonic()
         while True:
+            # Halt check first so a Cancel during a long human prompt
+            # returns immediately instead of waiting for the operator.
+            if ctx.is_halted():
+                ctx.log(
+                    f"Human prompt '{self.name}' halted: {ctx.halt_reason}",
+                    "warn",
+                )
+                ctx.on_skill_failed(self.name)
+                return NodeStatus.FAILURE
             response = ctx.check_human_response(prompt_id)
             if response is not None:
                 self._store_response(response, bb)
@@ -799,6 +882,10 @@ class ExecutionContext:
         self.root_bb: Optional["Blackboard"] = None
         self.abort_requested = False
         self.abort_reason = ""
+        # Unified halt reason for await_or_halt / sleep_or_halt. Populated by
+        # whichever path triggers the halt; surfaced through HaltedError so
+        # downstream logging can identify the cause.
+        self.halt_reason = ""
 
         # Lease keepalive bookkeeping. Keys are lease_ids; values are the
         # rclpy timer driving the renewer and the resource_id it guards.
@@ -1032,9 +1119,17 @@ class ExecutionContext:
         self.abort_requested = True
         self.abort_reason = reason or "unspecified"
         self.cancelled = True
+        self.halt_reason = self.abort_reason
         if self.root_bb is not None:
             self.root_bb.set("_abort_requested", True)
             self.root_bb.set("_abort_reason", self.abort_reason)
+
+    def is_halted(self) -> bool:
+        """Single check covering all halt sources: action-server cancel
+        (sets `cancelled`) and lease/abort signalling (sets `abort_requested`).
+        Used by `await_or_halt` and `sleep_or_halt` to break out of long
+        awaits as soon as the operator clicks Cancel."""
+        return self.cancelled or self.abort_requested
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

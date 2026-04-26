@@ -16,8 +16,11 @@ find_package(action_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   # Messages
   "msg/DetectedObject.msg"
+  "msg/KeyValue.msg"
   "msg/LogEvent.msg"
   "msg/SkillDescription.msg"
+  "msg/SkillAdvertisement.msg"
+  "msg/SkillManifest.msg"
   "msg/TaskState.msg"
   "msg/TaskStep.msg"
   "msg/HumanPrompt.msg"

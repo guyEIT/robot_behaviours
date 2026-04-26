@@ -20,37 +20,30 @@ export default function TaskMonitorPanel() {
   if (!ts) {
     return (
       <div className="flex flex-col h-full bg-paper">
-        <div className="px-5 py-3 border-b border-hair">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-terracotta" />
-            <h2 className="text-[14px] font-medium text-ink">Task Monitor</h2>
-          </div>
-        </div>
-
-        <div className="px-5 py-3 border-b border-hair-soft">
-          <div className="flex items-center gap-2 text-[13px]">
+        {/* Compact combined header: title + status chip on one row */}
+        <div className="px-4 py-2 border-b border-hair flex items-center gap-2">
+          <Activity className="w-4 h-4 text-terracotta" />
+          <h2 className="text-[13px] font-medium text-ink">Task Monitor</h2>
+          <span className="ml-auto">
             <Chip state={connected ? "done" : "failed"} showDot>
               {connected ? "Connected" : "Offline"}
             </Chip>
-            {connected && (
-              <span className="text-muted">— Idle, no task running</span>
-            )}
-          </div>
+          </span>
         </div>
 
         {taskHistory.length > 0 ? (
-          <div className="flex-1 overflow-auto px-5 py-3">
-            <Eyebrow size="sm" tone="muted" className="block mb-2">
+          <div className="flex-1 overflow-auto px-4 py-2">
+            <Eyebrow size="sm" tone="muted" className="block mb-1.5">
               Recent Tasks
             </Eyebrow>
-            <div className="space-y-1">
+            <div>
               {taskHistory.map((t) => {
                 const chipState =
                   t.status === "SUCCESS" ? "done" : t.status === "FAILURE" ? "failed" : "idle";
                 return (
                   <div
                     key={t.id}
-                    className="flex items-center gap-2 text-[13px] px-3 py-2 border-l-2 border-transparent hover:border-terracotta hover:bg-cream transition-colors"
+                    className="flex items-center gap-2 text-[12.5px] px-2 py-1 border-l-2 border-transparent hover:border-terracotta hover:bg-cream transition-colors"
                   >
                     {t.status === "SUCCESS" ? (
                       <CheckCircle className="w-3.5 h-3.5 text-ok shrink-0" />
@@ -72,12 +65,11 @@ export default function TaskMonitorPanel() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted px-8 bg-cream-deep">
-            <Rocket className="w-8 h-8 mb-3 opacity-30" />
-            <p className="text-[14px] font-medium text-ink-soft">No tasks executed yet</p>
-            <p className="text-[12px] text-center mt-1 text-muted">
-              Open the <span className="text-terracotta font-semibold">Behavior Executor</span> panel
-              to load a behavior tree and run it.
+          <div className="flex-1 flex flex-col items-center justify-center text-muted px-6 py-4 bg-cream-deep">
+            <Rocket className="w-6 h-6 mb-2 opacity-30" />
+            <p className="text-[13px] font-medium text-ink-soft">Idle — no tasks yet</p>
+            <p className="text-[11.5px] text-center mt-0.5 text-muted">
+              Run a tree from <span className="text-terracotta font-medium">Behavior Executor</span>
             </p>
           </div>
         )}
@@ -95,11 +87,11 @@ export default function TaskMonitorPanel() {
 
   return (
     <div className="flex flex-col h-full bg-paper">
-      <div className="px-5 py-3 border-b border-hair">
-        <div className="flex items-center gap-2 mb-3">
-          <Activity className="w-4 h-4 text-terracotta" />
-          <h2 className="text-[14px] font-medium text-ink">Task Monitor</h2>
-        </div>
+      {/* Header — title + task chip + id all on one row */}
+      <div className="px-4 py-2 border-b border-hair flex items-center gap-2 flex-wrap">
+        <Activity className="w-4 h-4 text-terracotta shrink-0" />
+        <h2 className="text-[13px] font-medium text-ink shrink-0">Task Monitor</h2>
+        <span className="text-muted shrink-0">·</span>
         <TaskHeader
           taskId={ts.task_id}
           taskName={ts.task_name}
@@ -107,14 +99,27 @@ export default function TaskMonitorPanel() {
         />
       </div>
 
-      <div className="px-5 py-3 border-b border-hair-soft">
-        <div className="flex items-center justify-between mb-1.5">
-          <Eyebrow size="sm" tone="muted">Progress</Eyebrow>
-          <span className="text-[12px] font-mono text-ink-soft tracking-[0.06em]">
+      {/* Stats + progress on a single compact strip */}
+      <div className="px-4 py-2 border-b border-hair-soft">
+        <div className="flex items-center gap-3 mb-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Clock className="w-3 h-3 text-muted" />
+            <span className="text-[14px] font-mono text-ink tracking-[0.04em]">
+              {formatTime(ts.elapsed_sec)}
+            </span>
+          </div>
+          <span className="text-muted shrink-0 text-[12px]">·</span>
+          <div className="flex items-baseline gap-1.5 min-w-0 flex-1">
+            <Eyebrow size="sm" tone="muted" className="shrink-0">Node</Eyebrow>
+            <span className="text-[12px] font-mono text-running truncate tracking-[0.04em]">
+              {ts.current_bt_node || "—"}
+            </span>
+          </div>
+          <span className="text-[11px] font-mono text-ink-soft tracking-[0.06em] shrink-0">
             {progressPct}%
           </span>
         </div>
-        <div className="h-1.5 bg-stone overflow-hidden">
+        <div className="h-1 bg-stone overflow-hidden">
           <div
             className={clsx("h-full transition-all duration-300", progressFill)}
             style={{ width: `${progressPct}%` }}
@@ -122,33 +127,15 @@ export default function TaskMonitorPanel() {
         </div>
       </div>
 
-      <div className="px-5 py-3 border-b border-hair-soft grid grid-cols-2 gap-4">
-        <div>
-          <div className="flex items-center gap-1.5 mb-1">
-            <Clock className="w-3 h-3 text-muted" />
-            <Eyebrow size="sm" tone="muted">Elapsed</Eyebrow>
-          </div>
-          <span className="text-[20px] font-mono text-ink tracking-[0.04em]">
-            {formatTime(ts.elapsed_sec)}
-          </span>
-        </div>
-        <div>
-          <Eyebrow size="sm" tone="muted" className="block mb-1">Current Node</Eyebrow>
-          <span className="text-[14px] font-mono text-running truncate block tracking-[0.04em]">
-            {ts.current_bt_node || "—"}
-          </span>
-        </div>
-      </div>
-
       {ts.error_message && (
-        <div className="px-5 py-3 border-b border-hair-soft">
+        <div className="px-4 py-2 border-b border-hair-soft">
           <Banner tone="err" title={`Error in ${ts.error_skill}`}>
             {ts.error_message}
           </Banner>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto px-5 py-4">
+      <div className="flex-1 overflow-auto px-4 py-2">
         <SkillTimeline
           completedSkills={ts.completed_skills}
           failedSkills={ts.failed_skills}

@@ -394,6 +394,36 @@ uvicorn = "*"
 lab-sim-run   = { cmd = "ros2 launch robot_skill_server sim_lab.launch.py", description = "Launch every provider sim + orchestrator + dashboard. Open http://localhost:8081 to drive BTs from the UI." }
 lab-sim-shell = { cmd = "bash -i", description = "Shell in the lab-sim pixi environment" }
 
+# ── MCP server env (BT executor exposed as Model Context Protocol over stdio) ──
+# Lightweight env: just rclpy + msgs + the mcp PyPI lib. No skill_server here —
+# this env is a CLIENT of /skill_server/... endpoints, so the orchestrator must
+# already be running (e.g. pixi run lite-native-up or lab-sim-up). Wire into
+# Claude Code via .mcp.json:
+#   { "mcpServers": { "bt-executor": { "command": "pixi",
+#       "args": ["run", "-e", "mcp", "bt-mcp"],
+#       "cwd": "/home/eit/robot_behaviours" } } }
+[feature.mcp]
+platforms = ["linux-64"]
+channels = [
+  "~/channel",
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/robostack-jazzy",
+  "https://prefix.dev/conda-forge",
+]
+
+[feature.mcp.dependencies]
+ros-jazzy-rclpy             = "*"
+ros-jazzy-robot-skills-msgs = "*"
+ros-jazzy-robot-skill-server = { path = "src/robot_skill_server" }
+ros-jazzy-std-msgs          = "*"
+
+[feature.mcp.pypi-dependencies]
+mcp = ">=1.0"
+
+[feature.mcp.tasks]
+bt-mcp       = { cmd = "ros2 run robot_skill_server bt_executor_mcp", description = "Run the BT executor MCP server on stdio (talks to /skill_server/... endpoints). Orchestrator must already be running." }
+bt-mcp-shell = { cmd = "bash -i", description = "Shell in the mcp pixi environment" }
+
 [environments]
 ros-tools    = ["ros-tools"]
 local-dev    = ["local-dev"]
@@ -403,6 +433,7 @@ orchestrator = ["orchestrator"]
 meca500-host = ["meca500-host"]
 liconic-host = ["liconic-host"]
 lab-sim      = ["lab-sim"]
+mcp          = ["mcp"]
 
 [tasks]
 # ── msgs channel (populates ~/channel) ───────────────────────────────────────
@@ -453,6 +484,10 @@ hamilton-sim-up       = { cmd = "pixi run hamilton-server-sim", depends-on = ["l
 # ── Whole-lab sim (every provider + orchestrator + dashboard, one launch) ────
 lab-sim-install       = { cmd = "pixi install --environment lab-sim", depends-on = ["update-msgs", "dashboard-build"], description = "Build msgs + dashboard frontend + resolve lab-sim env (every provider + framework)" }
 lab-sim-up            = { cmd = "pixi run lab-sim-run", depends-on = ["lab-sim-install"], description = "Build everything and launch all sims + skill_server + dashboard. http://localhost:8081 to drive BTs." }
+
+# ── MCP (BT executor over Model Context Protocol on stdio) ────────────────────
+mcp-install = { cmd = "pixi install --environment mcp", depends-on = ["update-msgs"], description = "Resolve mcp env (rclpy + msgs + mcp PyPI lib)" }
+mcp-up      = { cmd = "pixi run -e mcp bt-mcp", depends-on = ["mcp-install"], description = "Run the BT executor MCP server on stdio. Requires the orchestrator to already be running." }
 
 ros2 = { cmd = "ros2", default-environment = "ros-tools", description = "Run ros2 from the Pixi ROS tools environment" }
 

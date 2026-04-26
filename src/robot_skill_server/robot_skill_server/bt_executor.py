@@ -90,10 +90,27 @@ class BtExecutor(Node):
         )
 
         self._current_task_id: Optional[str] = None
+        self._current_task_name: Optional[str] = None
         self._current_ctx: Optional[ExecutionContext] = None
         self._task_started_at = None
         self._total_tasks_executed = 0
         self._last_task_result = "IDLE"
+
+        # Default tick rate for the heartbeat publisher. The action goal's
+        # `tick_rate_hz` field overrides this per-tree. 5 Hz keeps the
+        # dashboard responsive (200 ms updates) while staying well below
+        # any rosbridge / WebSocket bandwidth concerns.
+        self.declare_parameter("default_tick_rate_hz", 5.0)
+        # Periodic state-publish loop. The tree itself runs async/await and
+        # publishes state on transitions; this timer ensures the dashboard
+        # also gets a heartbeat at a fixed cadence even when a long-running
+        # action is in flight (e.g. a 5 s Meca move). Created once and
+        # gated by `_current_task_id` — no overhead while idle.
+        self._heartbeat_timer = None
+        self._heartbeat_period = 1.0 / max(
+            0.1, self.get_parameter("default_tick_rate_hz").value
+        )
+        self._install_heartbeat_timer(self._heartbeat_period)
 
         # ── Available trees (scanned from disk, published as latched JSON) ──
         latched_trees_qos = QoSProfile(
@@ -126,6 +143,10 @@ class BtExecutor(Node):
         self.get_logger().info("BT execution cancel requested")
         if self._current_ctx:
             self._current_ctx.cancelled = True
+            # `halt_reason` is read by HaltedError so logs can identify why
+            # the tree halted (operator cancel vs. lease revoke vs. ...).
+            if not self._current_ctx.halt_reason:
+                self._current_ctx.halt_reason = "operator cancel"
         return CancelResponse.ACCEPT
 
     async def _execute_bt(self, goal_handle) -> ExecuteBehaviorTree.Result:
@@ -133,11 +154,23 @@ class BtExecutor(Node):
         result = ExecuteBehaviorTree.Result()
         task_id = "t" + uuid.uuid4().hex[:8]
         self._current_task_id = task_id
+        self._current_task_name = goal.tree_name
         self._task_started_at = self.get_clock().now().to_msg()
         start_time = time.time()
 
+        # Honour the goal's tick_rate_hz if non-zero; falls back to the node
+        # default. Clamp to a sensible range so a goal can't accidentally DoS
+        # rosbridge with a 1000 Hz heartbeat or stall the dashboard at 0.01 Hz.
+        requested_hz = float(getattr(goal, "tick_rate_hz", 0.0) or 0.0)
+        default_hz = float(self.get_parameter("default_tick_rate_hz").value)
+        effective_hz = max(0.5, min(20.0, requested_hz if requested_hz > 0 else default_hz))
+        new_period = 1.0 / effective_hz
+        if abs(new_period - self._heartbeat_period) > 1e-3:
+            self._install_heartbeat_timer(new_period)
+
         self.get_logger().info(
-            f"Executing BT '{goal.tree_name}' (id={task_id})"
+            f"Executing BT '{goal.tree_name}' (id={task_id}) "
+            f"heartbeat={effective_hz:.1f}Hz"
         )
 
         self._active_bt_xml_pub.publish(String(data=goal.tree_xml))
@@ -218,6 +251,11 @@ class BtExecutor(Node):
             self._publish_log_event(
                 "task_error", str(e), severity="error", task_id=task_id
             )
+            # Clear current-task pointers BEFORE the terminal publish so the
+            # heartbeat timer (gated on _current_ctx / _current_task_id) can't
+            # race with a stale RUNNING after FAILURE has been emitted.
+            self._current_task_id = None
+            self._current_task_name = None
             self._publish_task_state(
                 task_id=task_id,
                 task_name=goal.tree_name,
@@ -225,7 +263,6 @@ class BtExecutor(Node):
                 error_message=str(e),
             )
             goal_handle.abort(result)
-            self._current_task_id = None
             return result
 
         result.success = success
@@ -239,6 +276,12 @@ class BtExecutor(Node):
         self._total_tasks_executed += 1
         self._last_task_result = final_status
         self.get_logger().info(result.message)
+
+        # Clear current-task pointers BEFORE the terminal publish so the
+        # heartbeat timer can't race with a stale RUNNING after the terminal
+        # state has been emitted.
+        self._current_task_id = None
+        self._current_task_name = None
 
         self._publish_task_state(
             task_id=task_id,
@@ -344,6 +387,35 @@ class BtExecutor(Node):
                 )
 
     # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _install_heartbeat_timer(self, period_s: float) -> None:
+        """(Re)create the periodic state-publish timer at the given period."""
+        if self._heartbeat_timer is not None:
+            self._heartbeat_timer.destroy()
+        self._heartbeat_period = period_s
+        self._heartbeat_timer = self.create_timer(period_s, self._tick_heartbeat)
+
+    def _tick_heartbeat(self):
+        """Fixed-rate publish of the live TaskState while a tree is running.
+        No-op when idle. Mirrors a BT.CPP-style tickRoot cadence externally
+        even though the underlying tree execution is async/await."""
+        ctx = self._current_ctx
+        if ctx is None or self._current_task_id is None:
+            return
+        # Don't republish terminal states — those are emitted exactly once by
+        # _execute_bt at the end. Heartbeating after that would clobber the
+        # final SUCCESS/FAILURE message with a stale RUNNING.
+        if ctx.cancelled:
+            return
+        self._publish_task_state(
+            task_id=self._current_task_id,
+            task_name=self._current_task_name or "",
+            status="RUNNING",
+            current_node=ctx.current_skill,
+            progress=ctx.progress,
+            completed_skills=list(ctx.completed_skills),
+            failed_skills=list(ctx.failed_skills),
+        )
 
     def _publish_task_state(
         self,

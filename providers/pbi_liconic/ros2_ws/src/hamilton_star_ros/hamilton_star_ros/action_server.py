@@ -15,9 +15,13 @@ from typing import Any, Awaitable, Callable, Optional
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.qos import (
+    QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
+    QoSProfile, QoSReliabilityPolicy,
+)
 
 from std_srvs.srv import Trigger
 
@@ -43,6 +47,9 @@ from hamilton_star_msgs.msg import Status as StatusMsg
 from hamilton_star_msgs.srv import (
     DefineHandoff, DeleteHandoff, GetStatus, InitializeModule, ListHandoffs,
     ListResources, LoadDeck, ResetError, SerializeDeck,
+)
+from robot_skills_msgs.msg import (
+    KeyValue, SkillAdvertisement, SkillDescription, SkillManifest,
 )
 
 from .asyncio_bridge import AsyncioBridge
@@ -193,6 +200,7 @@ class HamiltonStarActionServer(Node):
 
         self._register_services()
         self._register_actions()
+        self._publish_skill_manifest()
 
         self.get_logger().info(
             f"hamilton_star_action_server ready (backend={backend_kind}, connecting…)"
@@ -671,6 +679,89 @@ class HamiltonStarActionServer(Node):
                 details={"name": req.name},
             ))
         return resp
+
+    # ---- skill advertisement ----
+
+    def _publish_skill_manifest(self) -> None:
+        """Publish a latched SkillManifest on `~/skills` for SkillDiscovery.
+
+        QoS must match `robot_skill_server.skill_advertiser.make_skills_qos()`
+        on the orchestrator side. Phase 1 covers the four actions referenced
+        from the validated test trees plus the three currently in
+        tree_executor.ACTION_REGISTRY.
+        """
+        qos = QoSProfile(
+            depth=1,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            liveliness=QoSLivelinessPolicy.AUTOMATIC,
+            liveliness_lease_duration=Duration(seconds=10.0),
+        )
+        self._skills_pub = self.create_publisher(SkillManifest, "~/skills", qos)
+
+        ns = self.get_namespace().rstrip("/")
+        node_path = f"{ns}/{self.get_name()}" if ns else f"/{self.get_name()}"
+
+        def _ad(
+            name: str, display: str, action: str, type_str: str, bt_tag: str,
+            defaults: list[tuple[str, str]] | None = None,
+        ) -> SkillAdvertisement:
+            ad = SkillAdvertisement()
+            ad.description = SkillDescription(
+                name=name,
+                display_name=display,
+                description=f"Hamilton STAR {display.lower()}",
+                version="1.0.0",
+                robot_id="hamilton",
+                category="manipulation",
+                tags=["hamilton", "star", "liquid-handling"],
+                action_server_name=f"{node_path}/{action}",
+                action_type=type_str,
+            )
+            ad.bt_tag = bt_tag
+            if defaults:
+                ad.goal_defaults = [KeyValue(key=k, value=v) for k, v in defaults]
+            return ad
+
+        ads: list[SkillAdvertisement] = [
+            _ad(
+                "hamilton_move_resource", "Move Resource", "move_resource",
+                "hamilton_star_msgs/action/MoveResource", "HamiltonMoveResource",
+                defaults=[
+                    ("transport", "auto"),
+                    ("pickup_direction", "front"),
+                    ("drop_direction", "front"),
+                    ("use_unsafe_hotel", "false"),
+                ],
+            ),
+            _ad(
+                "hamilton_handoff_transfer", "Handoff Transfer", "handoff_transfer",
+                "hamilton_star_msgs/action/HandoffTransfer", "HamiltonHandoffTransfer",
+                defaults=[("direction", "to_handoff")],
+            ),
+            _ad(
+                "hamilton_pick_up_core_gripper", "Pick Up Core Gripper",
+                "pick_up_core_gripper",
+                "hamilton_star_msgs/action/PickUpCoreGripper", "HamiltonPickUpCoreGripper",
+                defaults=[
+                    ("gripper_resource", "core_grippers"),
+                    ("front_channel", "7"),
+                ],
+            ),
+            _ad(
+                "hamilton_return_core_gripper", "Return Core Gripper",
+                "return_core_gripper",
+                "hamilton_star_msgs/action/ReturnCoreGripper", "HamiltonReturnCoreGripper",
+                defaults=[("gripper_resource", "core_grippers")],
+            ),
+        ]
+
+        msg = SkillManifest()
+        msg.skills = ads
+        msg.published_at = self.get_clock().now().to_msg()
+        msg.source_node = node_path
+        self._skills_pub.publish(msg)
 
     # ---- action registration ----
     def _register_actions(self) -> None:

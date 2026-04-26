@@ -1,6 +1,6 @@
--[ ]  UI fixes and update
-        Merge the trees and tree view - run task button should be cleaer
+
 -[ ] Multiple tree at once
 -[ ] Async 
--[ ] MCP
+-[x] MCP (stdio; pixi run mcp-up; SSE transport deferred)
 -[ ] Sim before real
+discovery

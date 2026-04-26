@@ -104,11 +104,17 @@ export default function LogStream() {
     });
   }, [filteredRos, filteredSkill, viewMode]);
 
+  // Pin to the bottom whenever new entries arrive, the user toggles auto-scroll
+  // back on, the visible mode flips (all↔human), or the container resizes
+  // (e.g. when the panel is dragged taller). Using align="end" is what
+  // actually puts the newest row flush with the bottom edge — the default
+  // "auto" only does the minimum scroll to make it visible, leaving the
+  // newest row's descenders clipped under the next row's top border.
   useEffect(() => {
     if (autoScroll && listRef.current && merged.length > 0) {
-      listRef.current.scrollToItem(merged.length - 1);
+      listRef.current.scrollToItem(merged.length - 1, "end");
     }
-  }, [merged.length, autoScroll]);
+  }, [merged.length, autoScroll, viewMode, containerHeight]);
 
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const entry = merged[index];
@@ -233,13 +239,16 @@ export default function LogStream() {
         </button>
       </div>
 
-      <div className="flex-1 bg-paper" ref={containerRef}>
+      {/* min-h-0 is required for a flex-1 child to shrink below its content
+          size; without it the list can grow taller than the panel and the
+          newest rows sit below the visible viewport. */}
+      <div className="flex-1 min-h-0 bg-paper" ref={containerRef}>
         <List
           ref={listRef}
           height={containerHeight}
           width="100%"
           itemCount={merged.length}
-          itemSize={22}
+          itemSize={24}
           overscanCount={20}
         >
           {Row}
