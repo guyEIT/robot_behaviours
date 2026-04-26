@@ -6,8 +6,8 @@ as Model Context Protocol tools so an LLM client (Claude Code, etc.) can
 drive the robot via stdio JSON-RPC.
 
 Usage:
-  ros2 run robot_skill_server bt_executor_mcp
-  python -m robot_skill_server.mcp_server
+  ros2 run robot_skill_mcp bt_executor_mcp
+  python -m robot_skill_mcp.mcp_server
 
 Wire into Claude Code via .mcp.json:
   {
@@ -28,7 +28,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from robot_skill_server.mcp_ros_bridge import MCPRosBridge
+from robot_skill_mcp.mcp_ros_bridge import MCPRosBridge
 
 
 _bridge: MCPRosBridge | None = None

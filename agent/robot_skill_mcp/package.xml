@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_skill_mcp</name>
+  <version>0.1.0</version>
+  <description>
+    MCP (Model Context Protocol) server that bridges agents (Claude Code,
+    Claude Desktop, custom MCP clients) to the Robot Skills Framework over
+    ROS 2 DDS. Runs on the agent's machine as a stdio subprocess; its
+    internal mcp_ros_bridge node joins the lab DDS graph and translates MCP
+    tool calls into ROS 2 service / action / topic operations.
+
+    Lives under agent/ rather than src/ because it runs on the agent host,
+    not the orchestrator. Phase 5 adds a co-located robot_script_server
+    so register_script keeps agent-authored code on the agent's machine.
+  </description>
+  <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>robot_skills_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

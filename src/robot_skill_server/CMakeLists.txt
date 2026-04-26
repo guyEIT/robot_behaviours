@@ -15,11 +15,8 @@ install(PROGRAMS
   RENAME skill_server_node
 )
 
-install(PROGRAMS
-  robot_skill_server/mcp_server.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME bt_executor_mcp
-)
+# bt_executor_mcp moved to agent/robot_skill_mcp — it runs on the agent's
+# machine, not the orchestrator (see plan section C, "Trust model").
 
 # ── Launch files ──────────────────────────────────────────────────────────────
 install(DIRECTORY launch/

@@ -426,14 +426,14 @@ channels = [
 ros-jazzy-rclpy                 = "*"
 ros-jazzy-robot-skills-msgs     = "*"
 ros-jazzy-robot-skill-advertise = "*"
-ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }
+ros-jazzy-robot-skill-mcp       = { path = "agent/robot_skill_mcp" }
 ros-jazzy-std-msgs              = "*"
 
 [feature.mcp.pypi-dependencies]
 mcp = ">=1.0"
 
 [feature.mcp.tasks]
-bt-mcp       = { cmd = "ros2 run robot_skill_server bt_executor_mcp", description = "Run the BT executor MCP server on stdio (talks to /skill_server/... endpoints). Orchestrator must already be running." }
+bt-mcp       = { cmd = "ros2 run robot_skill_mcp bt_executor_mcp", description = "Run the BT executor MCP server on stdio. Lives on the agent's machine; talks to the orchestrator's /skill_server/... endpoints over DDS." }
 bt-mcp-shell = { cmd = "bash -i", description = "Shell in the mcp pixi environment" }
 
 [environments]
