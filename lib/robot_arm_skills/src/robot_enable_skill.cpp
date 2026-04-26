@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <memory>
 #include <string>
@@ -10,7 +10,7 @@
 #include "controller_manager_msgs/srv/switch_controller.hpp"
 #include "controller_manager_msgs/srv/list_controllers.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class RobotEnableSkill
@@ -146,7 +146,7 @@ public:
   }
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::RobotEnableSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::RobotEnableSkill)

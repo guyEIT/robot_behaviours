@@ -1,6 +1,6 @@
 """Meca500 single-process skill server proxy.
 
-Composes the 13 robot_skill_atoms components into one process under the
+Composes the 13 robot_arm_skills components into one process under the
 /meca500 namespace, with each atom configured to suppress its individual
 SkillManifest. A small Python ManifestPublisher node emits one combined
 manifest at /meca500_skill_server/skills.
@@ -74,33 +74,33 @@ def _setup(context, *args, **kwargs):
     def comp(plugin: str, name: str, extra: dict | None = None) -> ComposableNode:
         params = {**common, **(extra or {})}
         return ComposableNode(
-            package="robot_skill_atoms",
+            package="robot_arm_skills",
             plugin=plugin,
             name=f"{robot_id}_{name}",
             parameters=[params],
         )
 
     composable = [
-        comp("robot_skill_atoms::MoveToNamedConfigSkill", "move_to_named_config",
+        comp("robot_arm_skills::MoveToNamedConfigSkill", "move_to_named_config",
              {"allowed_named_configs": allowed_named_configs}),
-        comp("robot_skill_atoms::MoveToCartesianPoseSkill", "move_to_cartesian_pose"),
-        comp("robot_skill_atoms::MoveToJointConfigSkill", "move_to_joint_config"),
-        comp("robot_skill_atoms::MoveCartesianLinearSkill", "move_cartesian_linear",
+        comp("robot_arm_skills::MoveToCartesianPoseSkill", "move_to_cartesian_pose"),
+        comp("robot_arm_skills::MoveToJointConfigSkill", "move_to_joint_config"),
+        comp("robot_arm_skills::MoveCartesianLinearSkill", "move_cartesian_linear",
              {"min_fraction": 0.95}),
-        comp("robot_skill_atoms::DetectObjectSkill", "detect_object"),
-        comp("robot_skill_atoms::CapturePointCloudSkill", "capture_point_cloud",
+        comp("robot_arm_skills::DetectObjectSkill", "detect_object"),
+        comp("robot_arm_skills::CapturePointCloudSkill", "capture_point_cloud",
              {"default_camera_topic": "/camera/depth/color/points"}),
-        comp("robot_skill_atoms::SetDigitalIOSkill", "set_digital_io"),
-        comp("robot_skill_atoms::CheckCollisionSkill", "check_collision"),
-        comp("robot_skill_atoms::UpdatePlanningSceneSkill", "update_planning_scene"),
-        comp("robot_skill_atoms::RobotEnableSkill", "robot_enable", {
+        comp("robot_arm_skills::SetDigitalIOSkill", "set_digital_io"),
+        comp("robot_arm_skills::CheckCollisionSkill", "check_collision"),
+        comp("robot_arm_skills::UpdatePlanningSceneSkill", "update_planning_scene"),
+        comp("robot_arm_skills::RobotEnableSkill", "robot_enable", {
             "controllers_to_activate": [
                 arm_controller_action.rsplit("/", 1)[-1]
                 if "/" in arm_controller_action
                 else "joint_trajectory_controller",
             ] + (["gripper_controller"] if has_gripper else []),
         }),
-        comp("robot_skill_atoms::RecordRosbagSkill", "record_rosbag",
+        comp("robot_arm_skills::RecordRosbagSkill", "record_rosbag",
              {"default_output_dir": f"/tmp/rosbags/{robot_id}"}),
     ]
 
@@ -114,13 +114,13 @@ def _setup(context, *args, **kwargs):
     if has_gripper:
         check_extra["gripper_controller_action"] = "/gripper_controller/gripper_cmd"
     composable.append(comp(
-        "robot_skill_atoms::CheckSystemReadySkill", "check_system_ready",
+        "robot_arm_skills::CheckSystemReadySkill", "check_system_ready",
         check_extra,
     ))
 
     if has_gripper:
         composable.append(comp(
-            "robot_skill_atoms::GripperControlSkill", "gripper_control",
+            "robot_arm_skills::GripperControlSkill", "gripper_control",
             {
                 "gripper_action_server": "/gripper_controller/gripper_cmd",
                 "open_position": 0.0055,

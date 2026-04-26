@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <memory>
 #include <string>
@@ -11,7 +11,7 @@
 #include "moveit/planning_scene/planning_scene.hpp"
 #include "moveit_msgs/srv/get_planning_scene.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class CheckCollisionSkill
@@ -191,7 +191,7 @@ public:
   }
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::CheckCollisionSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::CheckCollisionSkill)

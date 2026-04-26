@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 #include <chrono>
 #include <thread>
 #include "robot_skills_msgs/action/record_rosbag.hpp"
@@ -6,11 +6,11 @@
 namespace robot_mock_skill_atoms {
 
 class MockRecordRosbag
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::RecordRosbag>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::RecordRosbag>
 {
 public:
   using Action = robot_skills_msgs::action::RecordRosbag;
-  using Base = robot_skill_atoms::SkillBase<Action>;
+  using Base = robot_arm_skills::SkillBase<Action>;
 
   explicit MockRecordRosbag(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Base("mock_record_rosbag_skill", "/skill_atoms/record_rosbag", options)

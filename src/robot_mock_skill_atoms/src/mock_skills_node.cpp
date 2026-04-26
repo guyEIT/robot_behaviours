@@ -1,7 +1,7 @@
 /**
  * @brief Main entry point for all mock robot skill servers.
  *
- * Drop-in replacement for robot_skill_atoms/skills_node.
+ * Drop-in replacement for robot_arm_skills/skills_node.
  * Uses rclcpp_components ComponentManager to load mock skills
  * as composable components.
  */

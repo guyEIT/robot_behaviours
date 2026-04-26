@@ -12,7 +12,8 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(robot_skills_msgs REQUIRED)
-# skill_base.hpp is copied locally to avoid MoveIt2 dependency from robot_skill_atoms
+find_package(robot_skill_advertise REQUIRED)
+find_package(robot_arm_skills REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -24,6 +25,8 @@ set(MOCK_DEPS
   rclcpp_action
   rclcpp_components
   robot_skills_msgs
+  robot_skill_advertise
+  robot_arm_skills
   geometry_msgs
   sensor_msgs
   std_msgs
@@ -194,10 +197,6 @@ install(TARGETS
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
-)
-
-install(DIRECTORY include/
-  DESTINATION include
 )
 
 install(DIRECTORY config/

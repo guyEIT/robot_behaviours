@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 #include <chrono>
 #include <thread>
 #include "robot_skills_msgs/action/move_to_joint_config.hpp"
@@ -7,11 +7,11 @@
 namespace robot_mock_skill_atoms {
 
 class MockMoveToJointConfig
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::MoveToJointConfig>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::MoveToJointConfig>
 {
 public:
   using Action = robot_skills_msgs::action::MoveToJointConfig;
-  using Base = robot_skill_atoms::SkillBase<Action>;
+  using Base = robot_arm_skills::SkillBase<Action>;
 
   explicit MockMoveToJointConfig(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Base("mock_move_to_joint_config_skill", "/skill_atoms/move_to_joint_config", options)

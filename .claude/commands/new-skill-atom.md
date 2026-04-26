@@ -21,7 +21,7 @@ Add the action to `src/robot_skills_msgs/CMakeLists.txt` in the `rosidl_generate
 
 ### If Python:
 
-Create `src/robot_skill_atoms/robot_skill_atoms/<skill_name>.py` with:
+Create `src/robot_arm_skills/robot_arm_skills/<skill_name>.py` with:
 - A class inheriting from `rclpy.node.Node`
 - An `ActionServer` on `/skill_atoms/<skill_name>`
 - `_on_goal`, `_on_cancel`, and `_execute` callbacks
@@ -29,15 +29,15 @@ Create `src/robot_skill_atoms/robot_skill_atoms/<skill_name>.py` with:
 - Cancellation support
 - A `main()` entry point
 
-Add the console_scripts entry point in `src/robot_skill_atoms/setup.py`.
+Add the console_scripts entry point in `src/robot_arm_skills/setup.py`.
 
 ### If C++:
 
-Create `src/robot_skill_atoms/src/<skill_name>.cpp` inheriting from `robot_skill_atoms::SkillBase<ActionT>` (see `src/robot_skill_atoms/include/robot_skill_atoms/skill_base.hpp`).
+Create `src/robot_arm_skills/src/<skill_name>.cpp` inheriting from `robot_arm_skills::SkillBase<ActionT>` (see `src/robot_arm_skills/include/robot_arm_skills/skill_base.hpp`).
 
 Implement: constructor, `getDescription()`, `checkPreconditions()`, `executeGoal()`.
 
-Add executable to `src/robot_skill_atoms/CMakeLists.txt`.
+Add executable to `src/robot_arm_skills/CMakeLists.txt`.
 
 ## BT node wrapper
 

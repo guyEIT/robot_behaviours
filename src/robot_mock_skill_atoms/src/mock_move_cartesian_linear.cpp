@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 #include <chrono>
 #include <cmath>
 #include <thread>
@@ -9,11 +9,11 @@
 namespace robot_mock_skill_atoms {
 
 class MockMoveCartesianLinear
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::MoveCartesianLinear>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::MoveCartesianLinear>
 {
 public:
   using Action = robot_skills_msgs::action::MoveCartesianLinear;
-  using Base = robot_skill_atoms::SkillBase<Action>;
+  using Base = robot_arm_skills::SkillBase<Action>;
 
   explicit MockMoveCartesianLinear(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Base("mock_move_cartesian_linear_skill", "/skill_atoms/move_cartesian_linear", options)

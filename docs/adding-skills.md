@@ -60,7 +60,7 @@ Rebuild `robot_skills_msgs` before anything else — other packages depend on it
 A skill atom is a ROS2 action server. Python is the simplest path.
 
 ```python
-# src/robot_skill_atoms/robot_skill_atoms/your_skill.py
+# src/robot_arm_skills/robot_arm_skills/your_skill.py
 
 import rclpy
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
@@ -121,12 +121,12 @@ def main():
     rclpy.shutdown()
 ```
 
-Add a console script entry point in `src/robot_skill_atoms/setup.py` (or `setup.cfg`):
+Add a console script entry point in `src/robot_arm_skills/setup.py` (or `setup.cfg`):
 
 ```python
 entry_points={
     "console_scripts": [
-        "your_skill_node = robot_skill_atoms.your_skill:main",
+        "your_skill_node = robot_arm_skills.your_skill:main",
     ],
 },
 ```
@@ -135,22 +135,22 @@ Then add it to the launch file so it starts with the system.
 
 ### C++ (for performance-critical or hardware-driver skills)
 
-Inherit from `SkillBase<ActionT>` in `src/robot_skill_atoms/include/robot_skill_atoms/skill_base.hpp`. This base class handles:
+Inherit from `SkillBase<ActionT>` in `src/robot_arm_skills/include/robot_arm_skills/skill_base.hpp`. This base class handles:
 - Action server lifecycle
 - Automatic registration with the skill registry
 - Diagnostic publishing
 - Precondition checking
 
 ```cpp
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 #include "robot_skills_msgs/action/your_new_skill.hpp"
 
 class YourSkill
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::YourNewSkill>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::YourNewSkill>
 {
 public:
   using YourNewSkill = robot_skills_msgs::action::YourNewSkill;
-  using Base = robot_skill_atoms::SkillBase<YourNewSkill>;
+  using Base = robot_arm_skills::SkillBase<YourNewSkill>;
 
   explicit YourSkill(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Base("your_skill_node", "/skill_atoms/your_skill", options)
@@ -184,7 +184,7 @@ public:
 };
 ```
 
-Register in `src/robot_skill_atoms/CMakeLists.txt`:
+Register in `src/robot_arm_skills/CMakeLists.txt`:
 
 ```cmake
 add_executable(your_skill_node src/your_skill.cpp)
@@ -208,7 +208,7 @@ A mock should:
 // src/robot_mock_skill_atoms/src/mock_your_skill.cpp
 
 class MockYourSkill
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::YourNewSkill>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::YourNewSkill>
 {
 public:
   explicit MockYourSkill(const rclcpp::NodeOptions & options)
@@ -441,8 +441,8 @@ The Execute panel's "Compose" mode provides a UI for building task steps from re
 src/robot_skills_msgs/action/YourSkill.action          # action definition
 src/robot_skills_msgs/CMakeLists.txt                    # register in rosidl_generate_interfaces
 
-src/robot_skill_atoms/your_skill.py (or .cpp)           # action server implementation
-src/robot_skill_atoms/setup.py (or CMakeLists.txt)      # build registration
+src/robot_arm_skills/your_skill.py (or .cpp)           # action server implementation
+src/robot_arm_skills/setup.py (or CMakeLists.txt)      # build registration
 
 src/robot_mock_skill_atoms/src/mock_your_skill.cpp      # mock implementation
 src/robot_mock_skill_atoms/config/mock_params.yaml      # mock parameters

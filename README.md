@@ -16,7 +16,7 @@ A hierarchical, extensible, agent-callable robot control framework for the **Mec
 └──────┬───────────────────────────────────┬────────────────────┘
        │ runs BT trees                     │ direct calls
 ┌──────▼──────────┐         ┌──────────────▼──────────────────┐
-│ robot_behaviors  │         │ robot_skill_atoms (C++)          │
+│ robot_behaviors  │         │ robot_arm_skills (C++)          │
 │ (XML trees)     │         │ MoveToNamedConfig                │
 └──────┬──────────┘         │ MoveToCartesianPose              │
        │                    │ GripperControl                   │
@@ -219,7 +219,7 @@ the preferred path.
 | Package | Language | Role |
 |---------|----------|------|
 | `robot_skills_msgs` | — | ROS2 message/service/action definitions |
-| `robot_skill_atoms` | C++ | Primitive skill action servers |
+| `robot_arm_skills` | C++ | Primitive skill action servers |
 | `robot_bt_nodes` | C++ | BT.CPP v4 leaf node plugins |
 | `robot_skill_server` | Python/C++ | Orchestrator: SkillRegistry, TaskComposer, BtExecutor |
 | `robot_behaviors` | XML | Pre-built behavior trees |
@@ -245,7 +245,7 @@ the preferred path.
 ## Adding New Skills
 
 1. Create a new action definition in `robot_skills_msgs/action/`
-2. Implement `YourSkill : SkillBase<YourAction>` in `robot_skill_atoms/src/`
+2. Implement `YourSkill : SkillBase<YourAction>` in `robot_arm_skills/src/`
 3. Add a `YourSkillNode : BT::RosActionNode<YourAction>` in `robot_bt_nodes/src/`
 4. Register in `bt_runner.cpp` and `bt_nodes_plugin.cpp`
 5. The skill auto-appears in `GetSkillDescriptions` after `colcon build`

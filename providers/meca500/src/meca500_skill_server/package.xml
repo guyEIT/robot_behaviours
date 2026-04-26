@@ -7,7 +7,7 @@
     Per-robot skill action server proxy for the Meca500. Hosts all 13 arm
     skill action servers in one process under the /meca500 namespace and
     publishes a single combined SkillManifest on /meca500_skill_server/skills.
-    Phase 2 implementation: composes existing robot_skill_atoms components
+    Phase 2 implementation: composes existing robot_arm_skills components
     via rclcpp_components::ComponentManager. Phase 4 will collapse the atoms
     into a library and merge the proxy + atoms into a single C++ Node that
     shares one MoveGroupInterface.
@@ -25,7 +25,7 @@
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>robot_skills_msgs</exec_depend>
   <exec_depend>robot_skill_advertise</exec_depend>
-  <exec_depend>robot_skill_atoms</exec_depend>
+  <exec_depend>robot_arm_skills</exec_depend>
   <exec_depend>robot_skill_server</exec_depend>
   <exec_depend>ros2launch</exec_depend>
 

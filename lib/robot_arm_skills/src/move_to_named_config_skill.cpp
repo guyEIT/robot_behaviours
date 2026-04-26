@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <memory>
@@ -10,7 +10,7 @@
 // MoveIt2
 #include "moveit/move_group_interface/move_group_interface.h"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class MoveToNamedConfigSkill
@@ -250,8 +250,8 @@ public:
   }
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 // Register as a component
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::MoveToNamedConfigSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::MoveToNamedConfigSkill)

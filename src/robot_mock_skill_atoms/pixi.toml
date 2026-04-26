@@ -6,3 +6,15 @@ distro = "jazzy"
 extra-input-globs = [
   "config/**/*",
 ]
+extra-package-mappings = [
+  { robot_arm_skills = { conda = ["ros-jazzy-robot-arm-skills"] } },
+]
+
+# Sibling robot_arm_skills is a path-dep (not in the channel), so wire it
+# in explicitly for the standalone-build environment that pixi-build-ros
+# spawns.
+[package.host-dependencies]
+ros-jazzy-robot-arm-skills = { path = "../../lib/robot_arm_skills" }
+
+[package.build-dependencies]
+ros-jazzy-robot-arm-skills = { path = "../../lib/robot_arm_skills" }

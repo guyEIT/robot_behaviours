@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -16,11 +16,11 @@ namespace robot_mock_skill_atoms
 {
 
 class MockMoveToCartesianPose
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::MoveToCartesianPose>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::MoveToCartesianPose>
 {
 public:
   using MoveToCartesianPose = robot_skills_msgs::action::MoveToCartesianPose;
-  using Base = robot_skill_atoms::SkillBase<MoveToCartesianPose>;
+  using Base = robot_arm_skills::SkillBase<MoveToCartesianPose>;
   using typename Base::GoalHandle;
   using typename Base::Goal;
   using typename Base::Result;

@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 #include <chrono>
 #include <map>
 #include <thread>
@@ -7,11 +7,11 @@
 namespace robot_mock_skill_atoms {
 
 class MockSetDigitalIO
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::SetDigitalIO>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::SetDigitalIO>
 {
 public:
   using Action = robot_skills_msgs::action::SetDigitalIO;
-  using Base = robot_skill_atoms::SkillBase<Action>;
+  using Base = robot_arm_skills::SkillBase<Action>;
 
   explicit MockSetDigitalIO(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Base("mock_set_digital_io_skill", "/skill_atoms/set_digital_io", options)

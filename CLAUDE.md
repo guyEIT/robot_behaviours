@@ -124,7 +124,7 @@ Compound skills can be registered at runtime via `/skill_server/register_compoun
 
 Framework (at `src/`):
 - `robot_skills_msgs` — ROS2 interfaces (actions/msgs/srvs)
-- `robot_skill_atoms` — C++ (or Python) primitive skill action servers (generic MoveIt2 / controller_manager wrappers; not robot-specific)
+- `robot_arm_skills` — C++ (or Python) primitive skill action servers (generic MoveIt2 / controller_manager wrappers; not robot-specific)
 - `robot_mock_skill_atoms` — C++ mock skill atoms for lite sim mode
 - `robot_bt_nodes` — C++ BehaviorTree.CPP v4 leaf node plugins
 - `robot_skill_server` — Python orchestrator (SkillRegistry, TaskComposer, BtExecutor) + C++ bt_runner
@@ -140,7 +140,7 @@ Providers (at `providers/`) — each is a git subtree of an upstream repo that c
 - `providers/meca500/` — Mecademic Meca500 arm (upstream: `guyEIT/meca500_ros2` @ main). ROS 2 Jazzy. Four packages: `meca500_description`, `meca500_hardware`, `meca500_moveit`, `meca500_bringup`.
 - `providers/pbi_liconic/` — PBI Liconic STX44 incubator + Hamilton STAR liquid handler (upstream: `guyEIT/pbi_liconic` @ master). Originally ROS 2 Humble; **migrated to Jazzy locally** so it can share the root pixi workspace's solve (the per-package `distro = "jazzy"` changes are a local divergence from upstream — push back via `git subtree push` once validated on real hardware). Five packages under `ros2_ws/src/`: `liconic_msgs`, `liconic_ros`, `hamilton_star_msgs`, `hamilton_star_ros`, `hamilton_star_bringup`.
 
-The provider pattern: any upstream workspace that provides skills (arm, instrument, software-only vision/planner) goes under `providers/<name>/`. Generic framework atoms stay in `src/robot_skill_atoms/` — a skill atom belongs in a provider's own `<provider>_skill_atoms/` package only when its implementation depends on a vendor SDK or a robot-specific behavior that can't be parameterized via ROS params.
+The provider pattern: any upstream workspace that provides skills (arm, instrument, software-only vision/planner) goes under `providers/<name>/`. Generic framework atoms stay in `src/robot_arm_skills/` — a skill atom belongs in a provider's own `<provider>_skill_atoms/` package only when its implementation depends on a vendor SDK or a robot-specific behavior that can't be parameterized via ROS params.
 
 ### Per-PC pixi environments
 

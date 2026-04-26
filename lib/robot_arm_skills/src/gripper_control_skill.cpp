@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -14,7 +14,7 @@
 #include "control_msgs/action/gripper_command.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class GripperControlSkill
@@ -298,7 +298,7 @@ private:
   rclcpp_action::Client<GripperCommand>::SharedPtr gripper_client_;
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::GripperControlSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::GripperControlSkill)

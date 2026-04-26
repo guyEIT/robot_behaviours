@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <map>
@@ -15,11 +15,11 @@ namespace robot_mock_skill_atoms
 {
 
 class MockMoveToNamedConfig
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::MoveToNamedConfig>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::MoveToNamedConfig>
 {
 public:
   using MoveToNamedConfig = robot_skills_msgs::action::MoveToNamedConfig;
-  using Base = robot_skill_atoms::SkillBase<MoveToNamedConfig>;
+  using Base = robot_arm_skills::SkillBase<MoveToNamedConfig>;
   using typename Base::GoalHandle;
   using typename Base::Goal;
   using typename Base::Result;

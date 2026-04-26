@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <memory>
@@ -13,7 +13,7 @@
 #include "moveit/robot_trajectory/robot_trajectory.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class MoveCartesianLinearSkill
@@ -225,7 +225,7 @@ public:
   }
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::MoveCartesianLinearSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::MoveCartesianLinearSkill)

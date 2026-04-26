@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 #include <chrono>
 #include <thread>
 #include "robot_skills_msgs/action/capture_point_cloud.hpp"
@@ -6,11 +6,11 @@
 namespace robot_mock_skill_atoms {
 
 class MockCapturePointCloud
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::CapturePointCloud>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::CapturePointCloud>
 {
 public:
   using Action = robot_skills_msgs::action::CapturePointCloud;
-  using Base = robot_skill_atoms::SkillBase<Action>;
+  using Base = robot_arm_skills::SkillBase<Action>;
 
   explicit MockCapturePointCloud(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Base("mock_capture_point_cloud_skill", "/skill_atoms/capture_point_cloud", options)

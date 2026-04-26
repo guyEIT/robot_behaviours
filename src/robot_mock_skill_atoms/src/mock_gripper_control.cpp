@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <memory>
@@ -14,11 +14,11 @@ namespace robot_mock_skill_atoms
 {
 
 class MockGripperControl
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::GripperControl>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::GripperControl>
 {
 public:
   using GripperControl = robot_skills_msgs::action::GripperControl;
-  using Base = robot_skill_atoms::SkillBase<GripperControl>;
+  using Base = robot_arm_skills::SkillBase<GripperControl>;
   using typename Base::GoalHandle;
   using typename Base::Goal;
   using typename Base::Result;

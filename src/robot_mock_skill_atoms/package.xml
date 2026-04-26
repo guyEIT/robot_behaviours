@@ -6,7 +6,7 @@
   <description>
     Lightweight mock skill action servers for testing the orchestration pipeline
     without MoveIt2, ros2_control, or physical hardware. Drop-in replacement for
-    robot_skill_atoms — same action interfaces, configurable delays, fake joint states.
+    robot_arm_skills — same action interfaces, configurable delays, fake joint states.
   </description>
   <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
   <license>Apache-2.0</license>
@@ -17,7 +17,8 @@
   <depend>rclcpp_action</depend>
   <depend>rclcpp_components</depend>
   <depend>robot_skills_msgs</depend>
-  <!-- Uses a local copy of skill_base.hpp (no MoveIt2 dependency) -->
+  <depend>robot_skill_advertise</depend>
+  <depend>robot_arm_skills</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>

@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <memory>
@@ -14,11 +14,11 @@ namespace robot_mock_skill_atoms
 {
 
 class MockDetectObject
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::DetectObject>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::DetectObject>
 {
 public:
   using DetectObject = robot_skills_msgs::action::DetectObject;
-  using Base = robot_skill_atoms::SkillBase<DetectObject>;
+  using Base = robot_arm_skills::SkillBase<DetectObject>;
   using typename Base::GoalHandle;
   using typename Base::Goal;
   using typename Base::Result;

@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <csignal>
@@ -15,7 +15,7 @@
 #include "robot_skills_msgs/action/record_rosbag.hpp"
 #include "robot_skills_msgs/msg/skill_description.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 /**
@@ -180,7 +180,7 @@ public:
   }
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::RecordRosbagSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::RecordRosbagSkill)

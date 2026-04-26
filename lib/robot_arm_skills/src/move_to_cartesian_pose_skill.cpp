@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <memory>
@@ -11,7 +11,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class MoveToCartesianPoseSkill
@@ -268,7 +268,7 @@ public:
 
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::MoveToCartesianPoseSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::MoveToCartesianPoseSkill)

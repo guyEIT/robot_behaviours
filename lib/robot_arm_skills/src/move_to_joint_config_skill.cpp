@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <chrono>
 #include <memory>
@@ -9,7 +9,7 @@
 
 #include "moveit/move_group_interface/move_group_interface.h"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class MoveToJointConfigSkill
@@ -208,7 +208,7 @@ public:
   }
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::MoveToJointConfigSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::MoveToJointConfigSkill)

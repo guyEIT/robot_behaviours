@@ -1,4 +1,4 @@
-#include "robot_mock_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 #include <chrono>
 #include <thread>
 #include "robot_skills_msgs/action/check_collision.hpp"
@@ -6,11 +6,11 @@
 namespace robot_mock_skill_atoms {
 
 class MockCheckCollision
-  : public robot_skill_atoms::SkillBase<robot_skills_msgs::action::CheckCollision>
+  : public robot_arm_skills::SkillBase<robot_skills_msgs::action::CheckCollision>
 {
 public:
   using Action = robot_skills_msgs::action::CheckCollision;
-  using Base = robot_skill_atoms::SkillBase<Action>;
+  using Base = robot_arm_skills::SkillBase<Action>;
 
   explicit MockCheckCollision(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Base("mock_check_collision_skill", "/skill_atoms/check_collision", options)

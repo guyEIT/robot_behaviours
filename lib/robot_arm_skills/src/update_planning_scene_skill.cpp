@@ -1,4 +1,4 @@
-#include "robot_skill_atoms/skill_base.hpp"
+#include "robot_arm_skills/skill_base.hpp"
 
 #include <memory>
 #include <string>
@@ -11,7 +11,7 @@
 #include "shape_msgs/msg/solid_primitive.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 class UpdatePlanningSceneSkill
@@ -177,7 +177,7 @@ public:
   }
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(robot_skill_atoms::UpdatePlanningSceneSkill)
+RCLCPP_COMPONENTS_REGISTER_NODE(robot_arm_skills::UpdatePlanningSceneSkill)

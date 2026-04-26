@@ -17,7 +17,7 @@
 
 #include "robot_skill_advertise/skill_advertiser.hpp"
 
-namespace robot_skill_atoms
+namespace robot_arm_skills
 {
 
 /**
@@ -320,4 +320,4 @@ private:
   bool initialized_{false};
 };
 
-}  // namespace robot_skill_atoms
+}  // namespace robot_arm_skills
