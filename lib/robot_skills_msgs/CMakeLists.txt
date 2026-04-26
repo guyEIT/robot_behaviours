@@ -31,6 +31,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetSkillDescriptions.srv"
   "srv/ComposeTask.srv"
   "srv/RegisterCompoundSkill.srv"
+  "srv/RegisterScript.srv"
   "srv/AcquireLease.srv"
   "srv/RenewLease.srv"
   "srv/ReleaseLease.srv"
@@ -49,6 +50,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/RecordRosbag.action"
   "action/CheckSystemReady.action"
   "action/ExecuteBehaviorTree.action"
+  "action/RunScript.action"
   DEPENDENCIES
     builtin_interfaces
     geometry_msgs

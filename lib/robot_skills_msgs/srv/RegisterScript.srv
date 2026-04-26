@@ -1,0 +1,14 @@
+# Register a script as a runnable skill on the agent's machine.
+# The script_action_server hosts a /scripts_<session>/<name> action of type
+# RunScript and re-publishes the per-session manifest so the orchestrator's
+# SkillDiscovery picks the script up.
+
+string name                       # bt_tag exposed to the BT executor
+string kind                       # "bt_xml" | "action_sequence" | "python_callable"
+string source                     # BT XML / sequence YAML / python source — depending on kind
+string input_schema_json          # JSON Schema for goal inputs
+string output_schema_json         # JSON Schema for result outputs
+string description                # human-readable summary
+---
+bool success
+string message

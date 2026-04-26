@@ -2329,6 +2329,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
+      - conda: agent/robot_script_server
       - conda: agent/robot_skill_mcp
       - pypi: https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/da/42/e921fccf5015463e32a3cf6ee7f980a6ed0f395ceeaa45060b61d86486c2/anyio-4.13.0-py3-none-any.whl
@@ -19031,6 +19032,25 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
+- conda: agent/robot_script_server
+  name: ros-jazzy-robot-script-server
+  version: 0.1.0
+  build: hb0f4dca_0
+  subdir: linux-64
+  variants:
+    target_platform: linux-64
+  depends:
+  - ros-jazzy-rclpy
+  - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-robot-skill-advertise
+  - ros2-distro-mutex
+  - ros2-distro-mutex >=0.14.0,<0.15.0a0
+  - libgcc >=15
+  - libgcc >=15
+  - libstdcxx >=15
+  - python_abi 3.12.* *_cp312
+  - numpy >=1.23,<3
+  license: LicenseRef-Apache-2.0
 - conda: providers/panda_sim/src/robot_sim_config
   name: ros-jazzy-robot-sim-config
   version: 0.1.0
@@ -19130,7 +19150,7 @@ packages:
   license: LicenseRef-Apache-2.0
 - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
   subdir: linux-64
-  sha256: e503bac77311579cbe280e4898ebbe82b188250aacab22c12c8fc5214f38eb30
+  sha256: 7591eb58ad1167fc17df7b0ce0b6dac7f4485d0b280fed4c41b617998f6c87db
   md5: 1e3a41a4ccc3790c7bf7f59cc889c144
   depends:
   - ros-jazzy-rosidl-default-runtime

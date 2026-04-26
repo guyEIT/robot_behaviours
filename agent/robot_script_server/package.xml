@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_script_server</name>
+  <version>0.1.0</version>
+  <description>
+    Agent-host scripted action server. An LLM (or any MCP client) can call
+    register_script via the MCP server and this node spins up a
+    /scripts_&lt;session&gt;/&lt;name&gt; action server that the orchestrator
+    discovers like any hardware proxy.
+
+    Critically: agent-authored code runs on the agent's machine, never on the
+    orchestrator. From DDS' perspective an agent-hosted skill is
+    indistinguishable from a Liconic action; from a security perspective the
+    LLM cannot run code on the lab control PC at all.
+
+    Phase 5 ships the bt_xml dispatcher (scripts are stored BT XML, executed
+    by round-tripping through /skill_server/execute_behavior_tree).
+    action_sequence and python_callable dispatchers are deferred behind
+    --allow-python-scripts gating.
+  </description>
+  <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>robot_skills_msgs</exec_depend>
+  <exec_depend>robot_skill_advertise</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

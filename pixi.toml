@@ -423,11 +423,13 @@ channels = [
 ]
 
 [feature.mcp.dependencies]
-ros-jazzy-rclpy                 = "*"
-ros-jazzy-robot-skills-msgs     = "*"
-ros-jazzy-robot-skill-advertise = "*"
-ros-jazzy-robot-skill-mcp       = { path = "agent/robot_skill_mcp" }
-ros-jazzy-std-msgs              = "*"
+ros-jazzy-rclpy                  = "*"
+ros-jazzy-robot-skills-msgs      = "*"
+ros-jazzy-robot-skill-advertise  = "*"
+ros-jazzy-robot-skill-mcp        = { path = "agent/robot_skill_mcp" }
+ros-jazzy-robot-script-server    = { path = "agent/robot_script_server" }
+ros-jazzy-std-msgs               = "*"
+pyyaml                           = "*"
 
 [feature.mcp.pypi-dependencies]
 mcp = ">=1.0"

@@ -1,0 +1,18 @@
+# Generic action used by every script-hosted endpoint on the agent's machine.
+# A scripted skill is just an action server with this signature; the agent
+# host's script_action_server registers one such action server per registered
+# script and advertises them on /script_action_server_<session>/skills so
+# the orchestrator's SkillDiscovery picks them up like any hardware proxy.
+
+# Goal — parameter bindings, validated against the script's input_schema
+# (declared at register_script time and carried in the SkillAdvertisement).
+robot_skills_msgs/KeyValue[] inputs
+---
+# Result
+bool success
+string message
+robot_skills_msgs/KeyValue[] outputs
+---
+# Feedback
+string status
+float32 progress

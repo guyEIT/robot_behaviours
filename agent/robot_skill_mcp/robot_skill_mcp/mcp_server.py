@@ -205,10 +205,11 @@ async def register_compound_skill(
 ) -> dict[str, Any]:
     """Register a compound skill in the SkillRegistry.
 
-    With persist=True (default) the skill is saved to
-    ~/.ros2_robot_skills/compound_skills/{name}.yaml so it survives
-    restarts. Once registered, the skill appears in list_skills and can be
-    referenced from other trees by name.
+    Persistent, vetted shared skill. Lives on the orchestrator and persists
+    in ~/.ros2_robot_skills/compound_skills/{name}.yaml. Use this for
+    long-lived skills that everyone on the lab DDS graph should see.
+    For ad-hoc agent-authored skills, prefer register_script (lives on the
+    agent host, blast radius limited to this machine).
     """
     return await _b().call_register_compound_skill(
         name=name,
@@ -216,6 +217,36 @@ async def register_compound_skill(
         description=description,
         tags=tags or [],
         persist=persist,
+    )
+
+
+@mcp.tool()
+async def register_script(
+    name: str,
+    source: str,
+    description: str = "",
+    input_schema: str = "{}",
+    output_schema: str = "{}",
+    kind: str = "bt_xml",
+) -> dict[str, Any]:
+    """Register an ad-hoc skill on the agent's local script_action_server.
+
+    Agent-authored code runs on the agent's machine, never on the
+    orchestrator. The script is exposed as /scripts_<session>/<name> and
+    advertised so the orchestrator's SkillDiscovery picks it up like any
+    hardware proxy. The skill is alive only as long as this MCP session.
+
+    kind="bt_xml" (currently the only supported kind): source is BT XML
+    that the orchestrator's tree executor will run when the script's
+    action is invoked.
+    """
+    return await _b().call_register_script(
+        name=name,
+        kind=kind,
+        source=source,
+        input_schema=input_schema,
+        output_schema=output_schema,
+        description=description,
     )
 
 

@@ -36,6 +36,7 @@ from robot_skills_msgs.srv import (
     ComposeTask,
     GetSkillDescriptions,
     RegisterCompoundSkill,
+    RegisterScript,
 )
 
 
@@ -272,6 +273,53 @@ class MCPRosBridge:
             "message": resp.message,
             "bt_xml": resp.bt_xml,
             "warnings": list(resp.warnings),
+        }
+
+    async def call_register_script(
+        self,
+        name: str,
+        kind: str,
+        source: str,
+        input_schema: str,
+        output_schema: str,
+        description: str,
+    ) -> dict[str, Any]:
+        """Register a script with the local agent-host script_action_server.
+
+        Discovers the per-session register_script service by scanning
+        ``/script_action_server_*/register_script`` on the local DDS graph.
+        Multiple agents are isolated by session-id suffix; we pick the first
+        match (this MCP server only ever runs alongside one script server).
+        """
+        target = None
+        for srv_name, types in self._node.get_service_names_and_types():
+            if (
+                srv_name.startswith("/script_action_server_")
+                and srv_name.endswith("/register_script")
+                and "robot_skills_msgs/srv/RegisterScript" in types
+            ):
+                target = srv_name
+                break
+        if target is None:
+            raise RuntimeError(
+                "no /script_action_server_*/register_script service on the "
+                "local DDS graph — is robot_script_server running?"
+            )
+        client = self._node.create_client(RegisterScript, target)
+        if not client.wait_for_service(timeout_sec=2.0):
+            raise RuntimeError(f"{target} service not ready")
+        req = RegisterScript.Request()
+        req.name = name
+        req.kind = kind
+        req.source = source
+        req.input_schema_json = input_schema
+        req.output_schema_json = output_schema
+        req.description = description
+        resp = await self._await_ros_future(client.call_async(req))
+        return {
+            "success": resp.success,
+            "message": resp.message,
+            "service": target,
         }
 
     async def call_register_compound_skill(
