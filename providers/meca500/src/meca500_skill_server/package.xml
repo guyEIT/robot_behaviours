@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>meca500_skill_server</name>
+  <version>0.1.0</version>
+  <description>
+    Per-robot skill action server proxy for the Meca500. Hosts all 13 arm
+    skill action servers in one process under the /meca500 namespace and
+    publishes a single combined SkillManifest on /meca500_skill_server/skills.
+    Phase 2 implementation: composes existing robot_skill_atoms components
+    via rclcpp_components::ComponentManager. Phase 4 will collapse the atoms
+    into a library and merge the proxy + atoms into a single C++ Node that
+    shares one MoveGroupInterface.
+  </description>
+  <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <!-- All runtime deps — this package is a launch + Python-only proxy that
+       composes existing atom components via rclcpp_components. No C++
+       compilation, so build-time channel lookups are unnecessary. -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
+  <exec_depend>robot_skills_msgs</exec_depend>
+  <exec_depend>robot_skill_advertise</exec_depend>
+  <exec_depend>robot_skill_atoms</exec_depend>
+  <exec_depend>robot_skill_server</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

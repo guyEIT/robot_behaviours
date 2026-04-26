@@ -1,0 +1,56 @@
+<!--
+  Phase 3 validation tree — same content as test_meca500_sim.xml, but the
+  per-action server_name overrides are gone. Instead each action node
+  carries robot_id="meca500" and the BT executor's runtime SkillDiscovery
+  resolves (robot_id, bt_tag) → action server name from the manifest the
+  meca500_skill_server proxy advertises on /meca500_skill_server/skills.
+
+  Validation harness:
+    pixi run meca500-proxy-test
+    # then submit this tree to /skill_server/execute_behavior_tree
+-->
+<root BTCPP_format="4" main_tree_to_execute="MecaProxyV2Test">
+
+  <BehaviorTree ID="MecaProxyV2Test">
+    <Sequence name="meca_proxy_v2_main">
+      <LogEvent name="log_start"
+                event_name="meca_proxy_v2_test_start"
+                severity="info"
+                message="Meca500 proxy phase-3 test starting"/>
+
+      <CheckSystemReady name="check_meca_ready"
+                        robot_id="meca500"
+                        timeout_sec="10.0"/>
+
+      <MoveToNamedConfig name="go_home_start"
+                         robot_id="meca500"
+                         config_name="home"
+                         velocity_scaling="0.3"/>
+
+      <MoveToJointConfig name="go_to_pre_pick"
+                         robot_id="meca500"
+                         joint_positions="0.9902, 0.2692, 1.0904, -0.2384, -1.2858, 0.2633"
+                         velocity_scaling="0.3"/>
+
+      <WaitForDuration name="settle" seconds="0.5"/>
+
+      <MoveToJointConfig name="go_to_over_seed"
+                         robot_id="meca500"
+                         joint_positions="1.3954, 0.5605, 0.4706, 0.0727, 0.5396, -0.3589"
+                         velocity_scaling="0.25"/>
+
+      <WaitForDuration name="settle_again" seconds="0.5"/>
+
+      <MoveToNamedConfig name="go_home_end"
+                         robot_id="meca500"
+                         config_name="home"
+                         velocity_scaling="0.3"/>
+
+      <LogEvent name="log_done"
+                event_name="meca_proxy_v2_test_done"
+                severity="info"
+                message="Meca500 proxy phase-3 test complete"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>
