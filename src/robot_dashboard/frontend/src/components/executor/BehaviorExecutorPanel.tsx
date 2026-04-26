@@ -425,6 +425,21 @@ export default function BehaviorExecutorPanel() {
           <h2 className="text-[13px] font-medium text-ink">Behavior Executor</h2>
         </div>
 
+        {/* Header cancel — pinned next to the title so it stays visible
+             regardless of scroll position in the running banner / bottom bar. */}
+        {isRunning && (
+          <Button
+            onClick={cancel}
+            variant="danger"
+            size="sm"
+            leftIcon={<Square className="w-3 h-3" />}
+            className="shrink-0"
+            title="Cancel the running behavior tree"
+          >
+            Cancel
+          </Button>
+        )}
+
         <div className="ml-auto flex items-center gap-1.5">
           <SegmentedControl
             options={[
