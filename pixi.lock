@@ -1531,7 +1531,6 @@ environments:
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2-control-test-assets-4.43.0-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2-controllers-4.37.0-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2action-0.32.8-np2py312h2ed9cc7_16.conda
-      - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2bag-0.26.9-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2cli-0.32.8-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2controlcli-4.43.0-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2interface-0.32.8-np2py312h2ed9cc7_16.conda
@@ -2868,7 +2867,6 @@ environments:
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2-control-test-assets-4.43.0-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2-controllers-4.37.0-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2action-0.32.8-np2py312h2ed9cc7_16.conda
-      - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2bag-0.26.9-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2cli-0.32.8-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2controlcli-4.43.0-np2py312h2ed9cc7_16.conda
       - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-ros2interface-0.32.8-np2py312h2ed9cc7_16.conda
@@ -18940,7 +18938,8 @@ packages:
   variants:
     target_platform: linux-64
   depends:
-  - ros-jazzy-ros2bag
+  - ros-jazzy-rclpy
+  - ros-jazzy-rosbag2-py
   - ros-jazzy-rosbag2-storage-default-plugins
   - ros-jazzy-rclcpp
   - ros-jazzy-rclcpp-action

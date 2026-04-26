@@ -109,9 +109,6 @@ def _setup(context, *args, **kwargs):
                 else "joint_trajectory_controller",
             ] + (["gripper_controller"] if has_gripper else []),
         }),
-        comp("robot_arm_skills::RecordRosbagSkill", "record_rosbag",
-             {"default_output_dir": f"/tmp/rosbags/{robot_id}"}),
-        comp("robot_arm_skills::StopRecordingSkill", "stop_recording"),
     ]
 
     check_extra = {
@@ -164,7 +161,21 @@ def _setup(context, *args, **kwargs):
         }],
     )
 
-    return [container, manifest_publisher]
+    # RecordRosbag + StopRecording are Python skills driving
+    # rosbag2_py.Recorder directly (no subprocess, no PIDs). They share
+    # an in-process registry keyed by bag_path so they MUST run in the
+    # same Python interpreter — hosted by one executable.
+    rosbag_skills = Node(
+        package="robot_arm_skills",
+        executable="rosbag_skills_node",
+        name=f"{robot_id}_rosbag_skills",
+        output="screen",
+        parameters=[{
+            "default_output_dir": f"/tmp/rosbags/{robot_id}",
+        }],
+    )
+
+    return [container, manifest_publisher, rosbag_skills]
 
 
 def generate_launch_description():

@@ -8,6 +8,7 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -156,23 +157,16 @@ target_include_directories(set_digital_io_skill PUBLIC
 ament_target_dependencies(set_digital_io_skill ${SKILL_DEPS})
 rclcpp_components_register_nodes(set_digital_io_skill "robot_arm_skills::SetDigitalIOSkill")
 
-# ── RecordRosbag skill ──────────────────────────────────────────────────────
-add_library(record_rosbag_skill SHARED
-  src/record_rosbag_skill.cpp)
-target_include_directories(record_rosbag_skill PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(record_rosbag_skill ${SKILL_DEPS})
-rclcpp_components_register_nodes(record_rosbag_skill "robot_arm_skills::RecordRosbagSkill")
+# ── Python skills ───────────────────────────────────────────────────────────
+# RecordRosbag + StopRecording are Python nodes that drive
+# rosbag2_py.Recorder directly — no subprocess, no PID juggling.
+ament_python_install_package(${PROJECT_NAME})
 
-# ── StopRecording skill ─────────────────────────────────────────────────────
-add_library(stop_recording_skill SHARED
-  src/stop_recording_skill.cpp)
-target_include_directories(stop_recording_skill PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(stop_recording_skill ${SKILL_DEPS})
-rclcpp_components_register_nodes(stop_recording_skill "robot_arm_skills::StopRecordingSkill")
+install(PROGRAMS
+  ${PROJECT_NAME}/rosbag_skills_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME rosbag_skills_node
+)
 
 # ── Install ──────────────────────────────────────────────────────────────────
 # Per-skill libraries are loaded as components by per-robot proxies (e.g.
@@ -192,8 +186,6 @@ install(TARGETS
   robot_enable_skill
   capture_point_cloud_skill
   set_digital_io_skill
-  record_rosbag_skill
-  stop_recording_skill
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -222,8 +214,6 @@ ament_export_libraries(
   robot_enable_skill
   capture_point_cloud_skill
   set_digital_io_skill
-  record_rosbag_skill
-  stop_recording_skill
 )
 ament_export_dependencies(${SKILL_DEPS})
 ament_package()

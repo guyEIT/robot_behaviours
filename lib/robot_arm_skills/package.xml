@@ -12,12 +12,17 @@
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
 
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>rclcpp_components</depend>
   <depend>robot_skills_msgs</depend>
   <depend>robot_skill_advertise</depend>
+
+  <!-- Python rosbag skills (rosbag_skills_node.py) -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rosbag2_py</exec_depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
@@ -34,8 +39,6 @@
   <!-- Diagnostics -->
   <depend>diagnostic_updater</depend>
   <depend>diagnostic_msgs</depend>
-  <!-- record_rosbag_skill shells out to `ros2 bag record` -->
-  <exec_depend>ros2bag</exec_depend>
   <exec_depend>rosbag2_storage_default_plugins</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
