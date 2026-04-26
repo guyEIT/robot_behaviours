@@ -96,10 +96,10 @@ ros-jazzy-robot-skills-msgs      = "*"
 ros-jazzy-robot-skill-advertise  = "*"
 ros-jazzy-robot-arm-skills       = { path = "lib/robot_arm_skills" }
 ros-jazzy-robot-skill-server     = { path = "src/robot_skill_server" }
-ros-jazzy-robot-mock-skill-atoms = { path = "src/robot_mock_skill_atoms" }
+ros-jazzy-robot-mock-skill-atoms = { path = "providers/panda_sim/src/robot_mock_skill_atoms" }
 ros-jazzy-robot-behaviors        = { path = "src/robot_behaviors" }
 ros-jazzy-robot-dashboard        = { path = "src/robot_dashboard" }
-ros-jazzy-robot-sim-config       = { path = "src/robot_sim_config" }
+ros-jazzy-robot-sim-config       = { path = "providers/panda_sim/src/robot_sim_config" }
 # rosbridge-suite on robostack doesn't pull in cbor2 automatically; without it
 # rosbridge_websocket crashes with ModuleNotFoundError on startup.
 cbor2 = "*"

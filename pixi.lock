@@ -1699,10 +1699,10 @@ environments:
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: lib/robot_arm_skills
+      - conda: providers/panda_sim/src/robot_mock_skill_atoms
+      - conda: providers/panda_sim/src/robot_sim_config
       - conda: src/robot_behaviors
       - conda: src/robot_dashboard
-      - conda: src/robot_mock_skill_atoms
-      - conda: src/robot_sim_config
       - conda: src/robot_skill_server
   local-dev:
     channels:
@@ -19004,7 +19004,7 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-MIT
-- conda: src/robot_mock_skill_atoms
+- conda: providers/panda_sim/src/robot_mock_skill_atoms
   name: ros-jazzy-robot-mock-skill-atoms
   version: 0.1.0
   build: hb0f4dca_0
@@ -19031,7 +19031,7 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: src/robot_sim_config
+- conda: providers/panda_sim/src/robot_sim_config
   name: ros-jazzy-robot-sim-config
   version: 0.1.0
   build: hb0f4dca_0

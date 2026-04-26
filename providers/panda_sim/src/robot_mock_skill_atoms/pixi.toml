@@ -14,7 +14,7 @@ extra-package-mappings = [
 # in explicitly for the standalone-build environment that pixi-build-ros
 # spawns.
 [package.host-dependencies]
-ros-jazzy-robot-arm-skills = { path = "../../lib/robot_arm_skills" }
+ros-jazzy-robot-arm-skills = { path = "../../../../lib/robot_arm_skills" }
 
 [package.build-dependencies]
-ros-jazzy-robot-arm-skills = { path = "../../lib/robot_arm_skills" }
+ros-jazzy-robot-arm-skills = { path = "../../../../lib/robot_arm_skills" }
