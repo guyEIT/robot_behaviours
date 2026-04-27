@@ -12,7 +12,8 @@ export type PanelId =
   | "diagnostics"
   | "intervention"
   | "human-prompts"
-  | "campaign";
+  | "campaign"
+  | "blackboard";
 
 export interface LayoutLeaf {
   type: "leaf";
