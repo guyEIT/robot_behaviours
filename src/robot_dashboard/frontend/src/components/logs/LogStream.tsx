@@ -28,6 +28,19 @@ const SEV_COLORS: Record<string, string> = {
 };
 
 type ViewMode = "all" | "human";
+type SkillSeverity = "info" | "warn" | "error";
+
+const SKILL_SEVERITY_BUCKETS: Record<SkillSeverity, ReadonlySet<string>> = {
+  info: new Set(["info", "debug"]),
+  warn: new Set(["warn", "warning"]),
+  error: new Set(["error", "critical"]),
+};
+
+const SKILL_SEVERITY_STYLES: Record<SkillSeverity, string> = {
+  info: "text-running border-running",
+  warn: "text-terracotta border-terracotta",
+  error: "text-err border-err",
+};
 
 export default function LogStream() {
   const logs = useLogStore((s) => s.logs);
@@ -37,6 +50,10 @@ export default function LogStream() {
   const [activeLevels, setActiveLevels] = useState<Set<LogLevelName>>(
     new Set(["INFO", "WARN", "ERROR", "FATAL"])
   );
+  const [activeSkillSeverities, setActiveSkillSeverities] = useState<Set<SkillSeverity>>(
+    new Set(["info", "warn", "error"])
+  );
+  const [skillFilter, setSkillFilter] = useState("");
   const [nodeFilter, setNodeFilter] = useState("");
   const [textFilter, setTextFilter] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -64,6 +81,15 @@ export default function LogStream() {
     });
   }, []);
 
+  const toggleSkillSeverity = useCallback((sev: SkillSeverity) => {
+    setActiveSkillSeverities((prev) => {
+      const next = new Set(prev);
+      if (next.has(sev)) next.delete(sev);
+      else next.add(sev);
+      return next;
+    });
+  }, []);
+
   const filteredRos = useMemo(() => {
     if (viewMode !== "all") return [];
     const nodeLower = nodeFilter.toLowerCase();
@@ -79,13 +105,24 @@ export default function LogStream() {
 
   const filteredSkill = useMemo(() => {
     const textLower = textFilter.toLowerCase();
+    const skillLower = skillFilter.toLowerCase();
     return skillLogs.filter((log) => {
       if (viewMode === "human" && !log.tags.includes("human")) return false;
+      if (viewMode === "human") {
+        const sevKey = (Object.keys(SKILL_SEVERITY_BUCKETS) as SkillSeverity[]).find(
+          (k) => SKILL_SEVERITY_BUCKETS[k].has(log.severity),
+        );
+        if (sevKey && !activeSkillSeverities.has(sevKey)) return false;
+        if (skillLower) {
+          const skillName = (log.skill_name || log.event_name).toLowerCase();
+          if (!skillName.includes(skillLower)) return false;
+        }
+      }
       if (textLower && !log.message.toLowerCase().includes(textLower) &&
           !log.event_name.toLowerCase().includes(textLower)) return false;
       return true;
     });
-  }, [skillLogs, textFilter, viewMode]);
+  }, [skillLogs, textFilter, viewMode, activeSkillSeverities, skillFilter]);
 
   type MergedEntry =
     | { type: "ros"; log: RosLog }
@@ -212,13 +249,36 @@ export default function LogStream() {
           />
         )}
         {viewMode === "human" && (
-          <input
-            type="text"
-            placeholder="Search…"
-            value={textFilter}
-            onChange={(e) => setTextFilter(e.target.value)}
-            className="px-2 py-0.5 text-[11px] bg-paper border border-hair rounded-DEFAULT flex-1 min-w-[80px] focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
-          />
+          <div className="flex items-center gap-2 flex-wrap flex-1">
+            {(Object.keys(SKILL_SEVERITY_BUCKETS) as SkillSeverity[]).map((sev) => (
+              <button
+                key={sev}
+                onClick={() => toggleSkillSeverity(sev)}
+                className={clsx(
+                  "px-2 py-0.5 font-mono text-[10px] font-semibold uppercase border tracking-[0.08em] transition-colors",
+                  activeSkillSeverities.has(sev)
+                    ? SKILL_SEVERITY_STYLES[sev]
+                    : "text-muted-2 border-hair-soft hover:border-hair",
+                )}
+              >
+                {sev}
+              </button>
+            ))}
+            <input
+              type="text"
+              placeholder="Skill…"
+              value={skillFilter}
+              onChange={(e) => setSkillFilter(e.target.value)}
+              className="px-2 py-0.5 text-[11px] bg-paper border border-hair rounded-DEFAULT w-24 focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
+            />
+            <input
+              type="text"
+              placeholder="Search…"
+              value={textFilter}
+              onChange={(e) => setTextFilter(e.target.value)}
+              className="px-2 py-0.5 text-[11px] bg-paper border border-hair rounded-DEFAULT flex-1 min-w-[80px] focus:border-terracotta focus:outline-none text-ink-soft placeholder:text-muted-2"
+            />
+          </div>
         )}
 
         <label className="flex items-center gap-1 text-[11px] text-muted shrink-0 font-mono uppercase tracking-[0.08em]">

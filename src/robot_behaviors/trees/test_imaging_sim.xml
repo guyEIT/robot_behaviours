@@ -1,0 +1,44 @@
+<!--
+  ImagePlate sim smoke test — drives the imaging_station_sim provider
+  through the skill_server's BT executor end-to-end. Validates that:
+
+    1. Skill discovery picks up the ImagePlate manifest from
+       /imaging_station_sim/skills.
+    2. The BT executor can resolve the bt_tag without a server_name override
+       (idempotent flag flows through to RosActionNode).
+    3. The persistent SQLite layer creates a per-task DB at
+       ~/.local/state/skill_server/tasks/{task_id}/state.db, runs the tree,
+       and reaps the dir on clean SUCCESS.
+    4. The placeholder PNGs land at ~/.local/state/imaging_station/...
+
+  Preconditions:
+    pixi run -e local-dev (or equivalent) with the imaging_station_sim
+    + skill_server_node + bb_operator running.
+
+  Submit:
+    ros2 action send_goal /skill_server/execute_behavior_tree \
+      robot_skills_msgs/action/ExecuteBehaviorTree \
+      "$(python3 -c 'import yaml,sys; xml=open(sys.argv[1]).read(); \
+        print(yaml.safe_dump({"tree_xml": xml, "tree_name": "imaging_smoke"}, \
+        default_style="|"))' src/robot_behaviors/trees/test_imaging_sim.xml)"
+-->
+<root BTCPP_format="4" main_tree_to_execute="ImagingSmoke">
+  <BehaviorTree ID="ImagingSmoke">
+    <Sequence name="imaging_smoke_main">
+      <LogEvent name="log_start"
+                event_name="imaging_smoke_start"
+                severity="info"
+                message="Starting ImagePlate sim smoke test"/>
+
+      <ImagePlate name="image_p_smoke_001"
+                  plate_name="p_smoke_001"
+                  protocol="brightfield_3site_v1"
+                  site_count="3"/>
+
+      <LogEvent name="log_done"
+                event_name="imaging_smoke_done"
+                severity="info"
+                message="ImagePlate completed; PNGs written under ~/.local/state/imaging_station/"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

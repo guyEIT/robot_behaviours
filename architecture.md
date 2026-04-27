@@ -113,6 +113,10 @@ A ROS 2 Jazzy workspace that exposes every robot/instrument skill — hardware-b
 
 **Sim-before-real (★).** Each provider launch accepts `namespace_prefix:=/sim` and wraps its action servers in a `PushRosNamespace` group, producing a paired `/sim/<provider>/...` action surface. Discovery filters `/sim/*` manifests so the registry stays single-source-of-truth on real paths; the executor synthesises sim paths at parse time by string-prepending `/sim`. The `lab-up` topology brings up real and sim side-by-side on one box for the dry-run-then-real workflow.
 
+**Additional provider not shown above:** `imaging_station` ([providers/imaging_station/](providers/imaging_station/)) advertises `ImagePlate` (idempotent) at `/imaging_station_sim/image_plate`. The campaign tree ([src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml](src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml)) drives plates Liconic → Hamilton iSWAP → imaging_handoff → ImagePlate → reverse → Liconic via the existing handoff calibration ([providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup/config/handoffs.yaml](providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup/config/handoffs.yaml)) extended with an `imaging_handoff` site. The provider ships a sim backend that writes placeholder PNGs; a real driver swaps in via the same action.
+
+**Operator-services sidecar:** `bb_operator` ([src/robot_skill_server/robot_skill_server/bb_operator_node.py](src/robot_skill_server/robot_skill_server/bb_operator_node.py)) exposes `/bb_operator/{add_plate, retire_plate, pause_campaign, operator_decision}` so an operator can trickle plates in and out of an active long-lived tree without restarting it. Tracks the current task via `/skill_server/task_state` and writes through SQLite WAL to the active task's persistent blackboard — same DB the executor reads.
+
 ## Skill discovery and advertisement
 
 The architectural backbone. Every node hosting one or more skill action servers publishes one latched topic `<node_fqn>/skills`.
@@ -127,10 +131,11 @@ The architectural backbone. Every node hosting one or more skill action servers 
 
 [tree_executor.py](src/robot_skill_server/robot_skill_server/tree_executor.py) is a pure-Python BT.CPP-v4-compatible parser/executor. It supports:
 
-- **Control flow** — Sequence, Fallback, Parallel, RetryUntilSuccessful, ForceSuccess/Failure, Decorators, SubTree.
-- **Action nodes** — every `*/skills` advertisement registers as an XML tag. The executor reflects the action's Goal type to derive ports, applies `goal_defaults`, and runs `post_process_id` on the result before writing to the blackboard.
-- **Utility nodes** — `WaitForDuration`, `Log`, `SetBlackboard`, plus human-interaction nodes (`HumanPrompt`, `WaitForHumanResponse`).
+- **Control flow** — Sequence, Fallback, Parallel, RetryUntilSuccessful, **Repeat**, **KeepRunningUntilFailure**, **WhileDoElse**, ForceSuccess/Failure, Decorators, SubTree.
+- **Action nodes** — every `*/skills` advertisement registers as an XML tag. The executor reflects the action's Goal type to derive ports, applies `goal_defaults`, and runs `post_process_id` on the result before writing to the blackboard. Each action also carries an `idempotent` flag from its `SkillDescription`, used by the resume path (see "Long-lived tree resume" below).
+- **Utility nodes** — `WaitForDuration`, `WaitUntil` (wall-clock, deadline-preserving across restart), `Log`, `SetBlackboard`, **`BlackboardCondition`** (gate a subtree on a persistent flag), **`PopFromQueue`** / **`PushToQueue`** (list-valued blackboard queues), **`AdvancePlate`** (post-cycle bookkeeping for the campaign tree), plus human-interaction nodes (`HumanPrompt`, `WaitForHumanResponse`).
 - **Cancellation.** Terminal states are `SUCCESS` / `FAILURE` / `HALTED` (cancel publishes `HALTED`, not `CANCELLED`).
+- **Long-lived tree resume.** Every control / decorator / loop node persists its tick state to a per-task SQLite DB at `~/.local/state/skill_server/tasks/{task_id}/state.db` (WAL mode). Blackboard keys prefixed `persistent.` are mirrored to the same file (type-checked at write — JSON-serialisable values only). On restart, `BtExecutor` scans for incomplete tasks and the executor re-ticks each tree from the root; every `_Checkpoint` node hydrates its index/iteration so no work past the last successful child is repeated. `RosActionNode` records `(node_path, server_name, goal_uuid, idempotent)` before submission; on resume, idempotent goals auto-resubmit, non-idempotent goals refuse and surface an alert that the operator can resolve via `/bb_operator/operator_decision`.
 
 [bt_executor.py](src/robot_skill_server/robot_skill_server/bt_executor.py) hosts the [/skill_server/execute_behavior_tree](lib/robot_skills_msgs/action/ExecuteBehaviorTree.action) action, polls [src/robot_behaviors/trees/](src/robot_behaviors/trees/) every 2 s for changes, and publishes the latched tree list to `/skill_server/available_trees`.
 
@@ -175,6 +180,60 @@ The orchestrator can execute a tree against a simulator before committing to phy
 
 **Optional sim-variant tree.** The goal accepts an optional `sim_tree_xml` field that overrides `tree_xml` for the sim phase only — useful when the dry-run wants to elide steps that aren't worth simulating. Empty falls back to the real tree.
 
+## Long-lived campaign workflow
+
+For trees that must run for **weeks** (operators trickling plates through a Liconic ↔ Hamilton ↔ imaging-station cycle), the framework is designed so the tree itself carries the campaign state — there is no separate "campaign manager" service above the BT layer. Persistence is a property of every tree, not a special path.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Operator (browser / ROS service caller)                         │
+│   /bb_operator/add_plate          /bb_operator/pause_campaign   │
+│   /bb_operator/retire_plate       /bb_operator/operator_decision│
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ writes `persistent.*` keys
+                           ▼
+   ┌─────────────────────────────────────────────────────────────┐
+   │ SQLite per-task DB (WAL mode)                               │
+   │ ~/.local/state/skill_server/tasks/{task_id}/state.db        │
+   │   tables: blackboard, node_state, action_inflight, meta     │
+   └──────────────────────────┬──────────────────────────────────┘
+                              │ reads + writes
+                              ▼
+   ┌─────────────────────────────────────────────────────────────┐
+   │ BtExecutor + tree_executor                                  │
+   │   - Blackboard mirrors `persistent.*` to the DB             │
+   │   - Sequence / Repeat / KeepRunningUntilFailure / etc.      │
+   │     persist their advance points                            │
+   │   - RosActionNode records inflight before submit            │
+   │   - On startup: scan task DBs, hydrate, reconcile inflight  │
+   └─────────────────────────────────────────────────────────────┘
+```
+
+**Building blocks.**
+
+- **Persistent blackboard** ([persistent_blackboard.py](src/robot_skill_server/robot_skill_server/persistent_blackboard.py)) — SQLite WAL store with four tables: `blackboard` (kv), `node_state` (per-node tick state), `action_inflight` (open goals), `meta` (bt_xml_hash + timestamps). Type-checked at write; raises `PersistenceError` for non-JSON values.
+- **Per-node checkpoints** — `_Checkpoint` mixin on `Sequence`, `Fallback`, `RetryUntilSuccessful`, `Repeat`, `KeepRunningUntilFailure`. Each persists the index/iteration/attempt that has *successfully completed*. On a parent advance the child's subtree state is wiped via `clear_node_state_subtree` so a future re-invocation (e.g., next Repeat iteration) re-executes rather than short-circuiting on a stale cached result.
+- **Action-inflight reconciliation** — every `RosActionNode` records `(node_path, server_name, action_type, goal_uuid, idempotent)` before submitting and clears the row on terminal result. After a `skill_server` crash, the resume path inspects the row: idempotent → log warning, clear, fall through and re-submit; non-idempotent → log error with the DB path, on_skill_failed, return FAILURE so the tree halts. The operator either clears the row by hand or resolves it via `/bb_operator/operator_decision` (`retry` / `skip-as-success` / `skip-as-failure` / `abort-tree`).
+- **Wall-clock primitives** — `WaitUntil timestamp="{persistent.next_due_at}"` checkpoints the deadline, so a mid-sleep crash that resumes after the deadline returns SUCCESS immediately rather than re-arming a fresh sleep.
+- **Operator services** — the `bb_operator` sidecar is *thin*: each handler opens the active task's DB, mutates one or two `persistent.*` keys, closes the DB. No campaign logic — that lives in the BT.
+
+**The campaign tree** ([src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml](src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml)):
+
+```
+KeepRunningUntilFailure
+  └─ BlackboardCondition (key=persistent.paused, expected=false)
+      └─ Sequence
+          ├─ PopFromQueue   ← persistent.plate_queue → persistent.current_plate
+          ├─ WaitUntil      ← timestamp = current_plate.next_due_at
+          ├─ SubTree         PlateImageCycle (Liconic Fetch → iSWAP →
+          │                  ImagePlate → reverse → Liconic TakeIn,
+          │                  wrapped in RetryUntilSuccessful num_attempts=2)
+          └─ AdvancePlate    increment cycle, recompute next_due_at,
+                             requeue unless retiring or target reached
+```
+
+**Skill idempotency** is declared per-atom via `SkillDescription.idempotent` (default false). The `imaging_station` provider sets `idempotent: true` because re-imaging a plate is cheap and overwriting the previous capture is safe; motion atoms (Hamilton iSWAP, Meca500 moves) keep the conservative default so the operator-decision flow gates re-execution.
+
 ## Resource leases
 
 [lease_broker.py](src/robot_skill_server/robot_skill_server/lease_broker.py) provides exclusive named resource leases with TTL and renewal — used to gate concurrent access to shared hardware (e.g. the deck on the Hamilton, the Meca500 arm). Services: `acquire_lease`, `renew_lease`, `release_lease`. Latched snapshot on `/skill_server/leases`; lifecycle stream on `/skill_server/lease_events`.
@@ -210,6 +269,7 @@ The orchestrator can execute a tree against a simulator before committing to phy
 - [meca500/src/](providers/meca500/src/) — Mecademic Meca500 6-DoF arm. Five packages: `meca500_description` / `_hardware` / `_moveit` / `_bringup` (subtree of `guyEIT/meca500_ros2`), plus the local [meca500_skill_server](providers/meca500/src/meca500_skill_server/) per-robot proxy that wraps MoveIt once and hosts all 12 arm atoms in-process.
 - [panda_sim/src/](providers/panda_sim/src/) — generic 7-DoF Panda sim. [robot_sim_config](providers/panda_sim/src/robot_sim_config/) (URDF/SRDF/MoveIt config) + [robot_mock_skill_atoms](providers/panda_sim/src/robot_mock_skill_atoms/) (mock backend, fake_hardware). Used by the dashboard dev path and `lab-sim`.
 - [pbi_liconic/ros2_ws/src/](providers/pbi_liconic/ros2_ws/src/) — Liconic STX44 incubator + Hamilton STAR liquid handler (subtree of `guyEIT/pbi_liconic`). Each runs a single Python action-server proxy.
+- [imaging_station/src/imaging_station/](providers/imaging_station/src/imaging_station/) — generic plate imaging-station provider, **fresh in-tree (not a subtree)**. Single ament-python package implementing `robot_skills_msgs/action/ImagePlate` (declared idempotent). Sim backend writes a placeholder PNG + JSON metadata per requested site under `~/.local/state/imaging_station/{plate_name}/{epoch_ms}_{counter}/`; a real driver backend (BMG / Tecan Spark / BioTek Cytation / microscope) drops in behind the same action interface.
 
 ## Deployment topologies
 

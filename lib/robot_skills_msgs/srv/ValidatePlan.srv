@@ -1,0 +1,22 @@
+# Plan-validation service: walks a sequence of skill steps and verifies
+# that each step's preconditions (from its SkillDescription) are satisfied
+# by either the initial state or the cumulative effects of prior steps.
+#
+# Pragmatic fact-based PDDL: each precondition / postcondition / effect is
+# a string literal; the validator treats `+fact` / `add fact` as adds,
+# `-fact` / `del fact` / `not fact` as deletions, and bare `fact` as adds.
+# This catches the most common plan errors (skill X needs `gripper_open`
+# but only `gripper_closed` was just achieved) without committing to a
+# full PDDL parser. Production planners that need quantifiers or typed
+# objects can layer on top by using `pddl_action` from SkillDescription.
+
+robot_skills_msgs/TaskStep[] steps      # the ordered plan to validate
+string[] initial_state                  # facts assumed true at start
+                                        # (e.g. ["robot_initialized", "gripper_open"])
+---
+bool valid
+string message                          # human-readable summary
+int32 first_failing_step                # 0-indexed, -1 if valid
+string[] missing_preconditions          # what was missing at that step
+string[] final_state                    # state after applying all steps
+                                        # (or up to the failing one)

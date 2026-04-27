@@ -1,0 +1,15 @@
+# Generic plate imaging station provider — sim backend only for now.
+# Real driver backend lands when imaging hardware is selected.
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+# ament_python sources / launches / tests aren't in pixi-build-ros's default
+# input set, so without these globs edits to *.py silently reuse the cache.
+extra-input-globs = [
+  "imaging_station/**/*.py",
+  "launch/**/*.py",
+  "test/**/*.py",
+  "resource/**/*",
+]

@@ -76,6 +76,37 @@ def generate_launch_description():
         }],
     )
 
+    # ── bb_operator sidecar — operator-facing services that mutate the
+    #    persistent blackboard of the active long-lived BT task. Stays up
+    #    even when no campaign is running so /bb_operator/* is always
+    #    discoverable. Services no-op (return success=False) until a long
+    #    tree is running and registered.
+    bb_operator_node = Node(
+        package="robot_skill_server",
+        executable="bb_operator_node",
+        name="bb_operator",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+    )
+
+    # ── imaging_station sim — exposes `ImagePlate` for the campaign tree
+    #    so a full Liconic ↔ Hamilton ↔ Imager ↔ Hamilton ↔ Liconic loop
+    #    runs in lite sim. Writes placeholder PNGs under
+    #    ~/.local/state/imaging_station/. Replace with the real driver
+    #    when imaging hardware is in.
+    imaging_station_sim_node = Node(
+        package="imaging_station",
+        executable="imaging_station_sim_node",
+        name="imaging_station_sim",
+        output="screen",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[{
+            "delay_per_site_sec": 0.5,
+            "default_site_count": 3,
+            "robot_id": "imaging_sim",
+        }],
+    )
+
     # ── Mock Skill Atoms ─────────────────────────────────────────────────────
     mock_move_to_named_config = Node(
         package="robot_mock_skill_atoms",
@@ -195,16 +226,34 @@ def generate_launch_description():
     )
 
     # ── Mock Joint State Publisher ───────────────────────────────────────────
+    # Drives the Meca500 6-DoF arm by default — the dashboard renders the
+    # actual customer-facing arm rather than a placeholder Panda. The mock
+    # atoms below stay robot-agnostic; only the displayed kinematic chain
+    # changes. To switch back to a Panda layout, override `joint_names` /
+    # `initial_positions` / `arm_joint_count` on the launch CLI.
+    meca500_joint_params = {
+        "publish_rate": 50.0,
+        "interpolation_speed": 1.0,
+        "joint_names": [
+            "joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
+        ],
+        # All-zero home — matches the Meca500's "home" named pose where
+        # axes align vertically. Operators can land any other named config
+        # via the mock_move_to_named_config skill.
+        "initial_positions": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "arm_joint_count": 6,
+    }
+
     mock_joint_state_pub = Node(
         package="robot_mock_skill_atoms",
         executable="mock_joint_state_publisher_node",
         name="mock_joint_state_publisher",
         output="screen",
         arguments=["--ros-args", "--log-level", log_level],
-        parameters=[mock_params],
+        parameters=[mock_params, meca500_joint_params],
     )
 
-    # ── Static TF: world -> panda_link0 ──────────────────────────────────────
+    # ── Static TF: world -> meca_base_link ───────────────────────────────────
     static_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -218,15 +267,20 @@ def generate_launch_description():
             "--pitch", "0",
             "--yaw", "0",
             "--frame-id", "world",
-            "--child-frame-id", "panda_link0",
+            "--child-frame-id", "meca_base_link",
         ],
     )
 
     # ── Robot State Publisher (joint_states -> TF) ─────────────────────────
-    urdf_path = os.path.join(
-        get_package_share_directory("robot_sim_config"), "urdf", "panda.urdf"
+    # The Meca500 .xacro is plain URDF (no xacro features) so we can read it
+    # straight from disk. Meshes are resolved via package:// — robot_state_
+    # publisher needs `meca500_description` to be discoverable in the env,
+    # which the lite-native feature in pixi.toml ensures.
+    meca500_urdf = os.path.join(
+        get_package_share_directory("meca500_description"),
+        "urdf", "meca500.xacro",
     )
-    with open(urdf_path, "r") as f:
+    with open(meca500_urdf, "r") as f:
         robot_description = f.read()
 
     robot_state_publisher = Node(
@@ -311,6 +365,8 @@ def generate_launch_description():
         mock_check_system_ready,
         # Tree execution server + orchestrator
         skill_server_node,
+        bb_operator_node,
+        imaging_station_sim_node,
         # Monitoring
         diagnostic_aggregator_node,
         rosboard_process,

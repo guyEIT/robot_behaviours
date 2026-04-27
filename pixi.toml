@@ -72,6 +72,9 @@ ros-jazzy-tf2-ros = "*"
 ros-jazzy-tf2-geometry-msgs = "*"
 ros-jazzy-robot-state-publisher = "*"
 ros-jazzy-rosbridge-suite = "*"
+# rosbridge-suite on robostack doesn't pull in cbor2 automatically; without it
+# rosbridge_websocket crashes with ModuleNotFoundError on startup.
+cbor2 = "*"
 ros-jazzy-behaviortree-cpp = "*"
 ros-jazzy-moveit-resources-panda-description = "*"
 
@@ -100,6 +103,15 @@ ros-jazzy-robot-mock-skill-atoms = { path = "providers/panda_sim/src/robot_mock_
 ros-jazzy-robot-behaviors        = { path = "src/robot_behaviors" }
 ros-jazzy-robot-dashboard        = { path = "src/robot_dashboard" }
 ros-jazzy-robot-sim-config       = { path = "providers/panda_sim/src/robot_sim_config" }
+# Meca500 description — provides the URDF + meshes for the dashboard's
+# joint viewer. The lite stack still uses the (robot-agnostic) mock atoms
+# for fast startup, but renders the actual Meca500 6-DoF arm in 3D so the
+# dev experience matches the real hardware. Switch back to the Panda model
+# by overriding `urdf_path` on the launch file.
+ros-jazzy-meca500-description    = { path = "providers/meca500/src/meca500_description" }
+ros-jazzy-xacro                  = "*"
+# Imaging-station provider — sim backend for the campaign tree's ImagePlate.
+ros-jazzy-imaging-station        = { path = "providers/imaging_station/src/imaging_station" }
 # rosbridge-suite on robostack doesn't pull in cbor2 automatically; without it
 # rosbridge_websocket crashes with ModuleNotFoundError on startup.
 cbor2 = "*"
@@ -351,6 +363,8 @@ liconic_ros           = { path = "providers/pbi_liconic/ros2_ws/src/liconic_ros"
 hamilton_star_msgs    = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_msgs" }
 hamilton_star_ros     = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_ros" }
 hamilton_star_bringup = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup" }
+# Imaging-station provider (sim backend; real driver swap-in later)
+ros-jazzy-imaging-station = { path = "providers/imaging_station/src/imaging_station" }
 # rosbridge + dashboard runtime
 cbor2 = "*"
 ros-jazzy-rosbridge-suite = "*"
@@ -477,6 +491,15 @@ real-native-up      = { cmd = "pixi run real-native-run", depends-on = ["real-na
 # ── Shared native helpers ────────────────────────────────────────────────────
 native-clean = { cmd = "rm -rf .pixi/build .pixi/envs/lite-native .pixi/envs/real-native .pixi/envs/orchestrator .pixi/envs/meca500-host .pixi/envs/liconic-host .pixi/envs/lab-sim", description = "Delete pixi-build cache and native envs (keeps ~/channel — use `rm -rf ~/channel` to wipe msgs too)" }
 
+# Hard-stop every framework / provider process this workspace can spawn —
+# skill_server, bb_operator, atoms, rosbridge, sim launches, MoveIt, the
+# dashboard static server, etc. Useful when two stacks (e.g. lite-native +
+# lab-sim) are both running and registering the same skill tags, which
+# tanks BT parsing with "advertised by multiple robots". Greedy on
+# purpose; pkill ignores patterns that don't match anything. Leaves
+# ~/channel and the experiment_collector Docker stack alone.
+kill-all = { cmd = "pkill -9 -f 'robot_skill_server|skill_server_lite|skill_server_node|skill_server_imaging_only|sim_lab|lab_sim|skill_atom|skill_advertise|bb_operator_node|imaging_station_sim|hamilton_star|liconic|move_group|ros2_control|controller_manager|robot_state_publisher|joint_state_publisher|rosbridge_websocket|serve_dashboard|publish_table_scene|component_container_mt|meca500_manifest|ros2 launch robot_skill_server|ros2 launch meca500|ros2 launch lab_sim'; pkill -9 -f 'static_transform_publisher.*meca'; sleep 1; echo 'killed'", description = "pkill -9 every framework/provider/sim process this workspace can spawn (skill_server, atoms, sims, rosbridge, dashboard server, MoveIt, …). Survives most race conditions; leaves ~/channel and unrelated Docker stacks." }
+
 # ── Orchestrator PC (skill_server + dashboard only) ──────────────────────────
 orchestrator-install = { cmd = "pixi install --environment orchestrator", depends-on = ["update-msgs", "dashboard-build"], description = "Rebuild msgs + dashboard + resolve orchestrator env" }
 orchestrator-up      = { cmd = "pixi run orchestrator-run", depends-on = ["orchestrator-install"], description = "Launch skill_server + dashboard on the orchestrator PC (no local atoms)" }
@@ -520,7 +543,7 @@ status = { cmd = "pixi run dev-status", description = "Show local ROS graph stat
 test = { cmd = "pixi run dev-test", description = "Run local ROS tests in the Pixi environment" }
 
 # ── Dashboard ───────────────────────────────────────────────────────────────
-dashboard-dev = { cmd = "cd src/robot_dashboard/frontend && npx vite --host", description = "Run dashboard dev server with hot-reload" }
+dashboard-dev = { cmd = "cd src/robot_dashboard/frontend && npx vite --host", description = "Vite dev server (HMR) on http://localhost:8080. Run alongside `pixi run lab-sim-up` (or any backend) — HMR talks to the source tree, rosbridge connects to ws://localhost:9090 regardless of UI port. lab-sim-up by itself does NOT hot-reload; it serves the production `dist/` build via serve_dashboard.py on 8081." }
 dashboard-build = { cmd = "cd src/robot_dashboard/frontend && npm ci && npm run build", description = "Build dashboard frontend for production" }
 
 # ── Lite sim (no MoveIt2, single container) ──────────────────────────────────

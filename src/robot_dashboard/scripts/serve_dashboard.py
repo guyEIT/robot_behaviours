@@ -24,7 +24,14 @@ from functools import partial
 
 class NoCacheHandler(SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
-        path = self.path.split("?", 1)[0]
+        # `self.path` is set by parse_request — but when a client speaks TLS
+        # at the HTTP port (someone scanning, or pointing https:// at us),
+        # parse_request raises ValueError before assigning .path and then
+        # calls send_error → end_headers. Fall back to a safe default so
+        # send_error can finish writing the 400 response instead of
+        # double-faulting with AttributeError.
+        raw_path = getattr(self, "path", "") or ""
+        path = raw_path.split("?", 1)[0]
         # Hashed bundles in /assets/ never change for a given hash —
         # cache them forever. Everything else (index.html, env-config.js,
         # / itself) must revalidate every load so the browser picks up

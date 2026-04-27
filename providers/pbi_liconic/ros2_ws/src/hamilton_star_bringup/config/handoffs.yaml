@@ -23,6 +23,7 @@ hamilton_star_action_server:
   ros__parameters:
     handoff_names:
       - incubator_handoff
+      - imaging_handoff
     handoff:
       incubator_handoff:
         x: -216.1
@@ -30,4 +31,17 @@ hamilton_star_action_server:
         z: 123.6
         plate_width: 80.0
         rotation: LEFT
+        wrist: STRAIGHT
+      # imaging_handoff — placeholder calibration for the campaign tree's
+      # iSWAP-to-imaging-station leg. Mirrors the incubator side until a
+      # real imager is bolted to the deck and `recalibrate_handoff.xml`
+      # is run to teach the actual coordinates. The values below are
+      # deliberately offset so a lab running both sites can't accidentally
+      # use one calibration for the other.
+      imaging_handoff:
+        x: -216.1
+        y: 350.0
+        z: 123.6
+        plate_width: 80.0
+        rotation: RIGHT
         wrist: STRAIGHT

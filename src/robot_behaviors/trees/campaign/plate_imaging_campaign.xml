@@ -1,0 +1,114 @@
+<!--
+  Plate Imaging Campaign — long-lived BT for weeks-long Liconic ↔ Hamilton
+  cycling. Designed to run continuously while operators trickle plates in
+  and out via /bb_operator/* services.
+
+  Loop shape:
+    KeepRunningUntilFailure
+      └─ BlackboardCondition (gates on persistent.paused)
+          └─ Sequence
+              ├─ PopFromQueue   ← persistent.plate_queue → persistent.current_plate
+              ├─ WaitUntil      ← timestamp from current_plate.next_due_at
+              ├─ SubTree         PlateImageCycle (parameterized per plate)
+              └─ AdvancePlate    re-queue with updated next_due_at, or retire
+
+  Failure handling: if the cycle's RetryUntilSuccessful exhausts its
+  attempts, the sequence returns FAILURE and KeepRunningUntilFailure exits
+  the whole tree. For a production campaign that should keep running other
+  plates after one fails, wrap the Sequence in a Fallback that catches
+  failures into a quarantine path (week-3+).
+
+  Resume: every advance is checkpointed via the persistent SQLite store.
+  After a skill_server crash:
+    - PopFromQueue's pop is durable (the popped item is no longer on the
+      queue when we restart).
+    - The current_plate remains on persistent.* and the cycle resumes from
+      whichever Sequence index the inner SubTree had reached.
+    - Idempotent skill atoms (LogEvent, ImagePlate stub) auto-resubmit; any
+      non-idempotent atom (HandoffTransfer, etc.) that crashed mid-flight
+      will refuse to re-run until the operator clears action_inflight or
+      issues an OperatorDecision.
+
+  Operator-driven services (provided by bb_operator_node):
+    /bb_operator/add_plate          — append to persistent.plate_queue
+    /bb_operator/retire_plate       — flag plate.retiring = true
+    /bb_operator/pause_campaign     — toggle persistent.paused
+    /bb_operator/operator_decision  — resolve a stuck non-idempotent action
+-->
+<root BTCPP_format="4" main_tree_to_execute="PlateImagingCampaign">
+
+  <BehaviorTree ID="PlateImagingCampaign">
+    <KeepRunningUntilFailure name="campaign_loop">
+      <BlackboardCondition name="gate_paused"
+                           key="persistent.paused"
+                           expected="false">
+        <Sequence name="one_cycle">
+          <PopFromQueue name="pop_next_plate"
+                        key="persistent.plate_queue"
+                        output="{persistent.current_plate}"/>
+
+          <WaitUntil name="wait_for_due"
+                     timestamp="{persistent.current_plate.next_due_at}"/>
+
+          <LogEvent name="log_cycle_start"
+                    event_name="plate_cycle_start"
+                    severity="info"
+                    message="Starting cycle for plate"/>
+
+          <SubTree ID="PlateImageCycle"/>
+
+          <AdvancePlate name="advance_plate"/>
+        </Sequence>
+      </BlackboardCondition>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+
+  <!-- One round-trip: Liconic Fetch → iSWAP to deck → iSWAP to imaging
+       station → ImagePlate → iSWAP back to deck → iSWAP back to incubator
+       handoff → Liconic TakeIn. Bounded ~5–15 min depending on imaging
+       protocol. RetryUntilSuccessful gives every step one retry before
+       failing the cycle.
+  -->
+  <BehaviorTree ID="PlateImageCycle">
+    <RetryUntilSuccessful name="cycle_retry" num_attempts="2">
+      <Sequence name="cycle_steps">
+        <LogEvent name="log_fetch"
+                  event_name="cycle_fetch"
+                  message="Liconic Fetch"/>
+
+        <!-- Liconic Fetch: pull plate from cassette to transfer tray. -->
+        <LiconicFetch name="fetch_from_incubator"
+                      plate_name="{persistent.current_plate.name}"/>
+
+        <!-- iSWAP picks plate at incubator_handoff and places on a
+             deck holder; then traverses to the imaging_handoff. The
+             deck holder name is a parameter — adjust per-deck. -->
+        <HamiltonHandoffTransfer name="iswap_in_to_deck"
+                                 source="incubator_handoff"
+                                 target="deck_holder_a"/>
+        <HamiltonHandoffTransfer name="iswap_deck_to_imaging"
+                                 source="deck_holder_a"
+                                 target="imaging_handoff"/>
+
+        <!-- ImagePlate is currently a stub atom (week-2). Replaced by the
+             real imaging_station driver in week-3. -->
+        <ImagePlate name="image_plate"
+                    plate_name="{persistent.current_plate.name}"
+                    protocol="{persistent.current_plate.imaging_protocol}"/>
+
+        <!-- Reverse traversal back to the incubator. -->
+        <HamiltonHandoffTransfer name="iswap_imaging_to_deck"
+                                 source="imaging_handoff"
+                                 target="deck_holder_a"/>
+        <HamiltonHandoffTransfer name="iswap_deck_to_in"
+                                 source="deck_holder_a"
+                                 target="incubator_handoff"/>
+
+        <!-- Liconic TakeIn: receive plate from transfer tray into cassette. -->
+        <LiconicTakeIn name="takein_to_incubator"
+                       plate_name="{persistent.current_plate.name}"/>
+      </Sequence>
+    </RetryUntilSuccessful>
+  </BehaviorTree>
+
+</root>

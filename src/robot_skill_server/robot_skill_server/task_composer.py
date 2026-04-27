@@ -30,8 +30,9 @@ from diagnostic_updater import Updater
 from diagnostic_msgs.msg import DiagnosticStatus
 
 from robot_skills_msgs.msg import SkillDescription, TaskStep
-from robot_skills_msgs.srv import ComposeTask
+from robot_skills_msgs.srv import ComposeTask, ValidatePlan
 
+from .pddl_validator import SkillSpec, validate_plan
 from .skill_registry import SkillRegistry
 
 
@@ -57,14 +58,29 @@ class TaskComposer(Node):
       5. Call ExecuteBehaviorTree to run the task
     """
 
-    def __init__(self, skill_registry: SkillRegistry):
+    def __init__(self, skill_registry: SkillRegistry, skill_discovery=None):
         super().__init__("task_composer")
         self._registry = skill_registry
+        # Optional: when set, validate_plan also pulls advertised atom
+        # descriptions from runtime discovery, not just SkillRegistry's
+        # vetted-compound catalog. None preserves legacy behaviour for
+        # tests that construct TaskComposer with just a registry.
+        self._discovery = skill_discovery
 
         self._compose_srv = self.create_service(
             ComposeTask,
             "/skill_server/compose_task",
             self._handle_compose_task,
+        )
+
+        # Plan validator — pragmatic fact-based PDDL check, returns the
+        # first failing step + missing preconditions. Covers ~80% of plan
+        # bugs (forgot gripper_open, didn't initialise the robot, …)
+        # without committing to a full PDDL planner.
+        self._validate_srv = self.create_service(
+            ValidatePlan,
+            "/skill_server/validate_plan",
+            self._handle_validate_plan,
         )
 
         self._total_compositions = 0
@@ -74,7 +90,10 @@ class TaskComposer(Node):
         self._diag_updater.setHardwareID("task_composer")
         self._diag_updater.add("composer_status", self._produce_diagnostics)
 
-        self.get_logger().info("TaskComposer started on /skill_server/compose_task")
+        self.get_logger().info(
+            "TaskComposer started on /skill_server/compose_task + "
+            "/skill_server/validate_plan"
+        )
 
     # ── Service handler ───────────────────────────────────────────────────────
 
@@ -124,6 +143,74 @@ class TaskComposer(Node):
         stat.summary(DiagnosticStatus.OK, "Operational")
         stat.add("total_compositions", str(self._total_compositions))
         return stat
+
+    # ── Plan validation ───────────────────────────────────────────────────────
+
+    def _build_skill_spec_table(self) -> dict[str, "SkillSpec"]:
+        """Snapshot every known skill (registry + discovery) into the
+        validator's typed view. Names are unprefixed: a robot_id-qualified
+        registry entry like ``meca500:move_to_named_config`` is exposed
+        under both ``move_to_named_config`` and ``meca500:move_to_named_config``
+        so callers can refer to skills either way.
+        """
+        out: dict[str, SkillSpec] = {}
+
+        def _add_desc(desc: SkillDescription) -> None:
+            spec = SkillSpec(
+                name=desc.name,
+                preconditions=tuple(desc.preconditions),
+                postconditions=tuple(desc.postconditions),
+                effects=tuple(desc.effects),
+            )
+            # Prefer SkillRegistry's per-robot keying when available; fall
+            # back to bare name so callers can drop the robot prefix.
+            if desc.robot_id:
+                out[f"{desc.robot_id}:{desc.name}"] = spec
+            out.setdefault(desc.name, spec)
+
+        try:
+            for desc in self._registry._skills.values():  # type: ignore[attr-defined]
+                _add_desc(desc)
+        except AttributeError:
+            pass
+
+        if self._discovery is not None:
+            try:
+                for entry in self._discovery.snapshot().values():
+                    # ActionEntry doesn't carry the full SkillDescription, but
+                    # its `bt_tag` corresponds to the skill name in the
+                    # registry; pre/post/effects come through the manifest's
+                    # SkillDescription if the publisher populated them. Until
+                    # ActionEntry mirrors those fields, we rely on the
+                    # registry path above and leave discovery-only skills
+                    # un-validated (the validator will report them as
+                    # unknown if they're referenced).
+                    _ = entry
+            except AttributeError:
+                pass
+
+        return out
+
+    def _handle_validate_plan(
+        self,
+        request: ValidatePlan.Request,
+        response: ValidatePlan.Response,
+    ) -> ValidatePlan.Response:
+        skills = self._build_skill_spec_table()
+        plan = [
+            {
+                "skill_name": s.skill_name,
+                "parameters_json": s.parameters_json,
+            }
+            for s in request.steps
+        ]
+        result = validate_plan(plan, skills, list(request.initial_state))
+        response.valid = result.valid
+        response.message = result.message
+        response.first_failing_step = result.first_failing_step
+        response.missing_preconditions = list(result.missing_preconditions)
+        response.final_state = list(result.final_state)
+        return response
 
     # ── XML generation ────────────────────────────────────────────────────────
 

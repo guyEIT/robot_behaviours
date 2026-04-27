@@ -145,11 +145,29 @@ def generate_launch_description():
         }.items(),
     )
 
+    # ── Imaging station sim — ImagePlate action for the campaign tree.
+    # Stays as a sim until real imager hardware lands; the action interface
+    # is the same so swapping in a real driver is a launch-file change.
+    imaging_station_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            FindPackageShare("imaging_station"),
+            "/launch/imaging_station_sim.launch.py",
+        ]),
+    )
+
     # ── Orchestrator ──────────────────────────────────────────────────────
     skill_server = Node(
         package="robot_skill_server",
         executable="skill_server_node",
         name="skill_server_node",
+        output="screen",
+    )
+
+    # bb_operator sidecar — operator-facing services for long-lived campaigns.
+    bb_operator = Node(
+        package="robot_skill_server",
+        executable="bb_operator_node",
+        name="bb_operator",
         output="screen",
     )
 
@@ -183,6 +201,8 @@ def generate_launch_description():
         sim_hamilton,
         real_liconic,
         sim_liconic,
+        imaging_station_sim,
         skill_server,
+        bb_operator,
         dashboard,
     ])

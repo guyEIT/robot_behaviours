@@ -60,6 +60,7 @@ def _stub_ros_modules():
             self.display_name = ""
             self.description = ""
             self.version = ""
+            self.robot_id = ""
             self.category = ""
             self.tags = []
             self.preconditions = []
@@ -73,6 +74,7 @@ def _stub_ros_modules():
             self.pddl_action = ""
             self.action_server_name = ""
             self.action_type = ""
+            self.idempotent = False
             self.created_at = None
             self.updated_at = None
 

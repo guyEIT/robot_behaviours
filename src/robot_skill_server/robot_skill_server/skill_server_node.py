@@ -29,7 +29,6 @@ def main(args=None):
 
     # SkillRegistry is shared by TaskComposer (needs skill metadata for XML gen)
     registry = SkillRegistry()
-    composer = TaskComposer(skill_registry=registry)
     lease_broker = LeaseBroker()
     # Phase 3: SkillDiscovery is now passed into BtExecutor so parse_trees
     # consults the runtime registry (advertised `*/skills` topics) before
@@ -37,6 +36,12 @@ def main(args=None):
     # service-based SkillRegistry stays alongside as the persistent
     # vetted-shared-skills path; the diff topic confirms parity.
     skill_discovery = SkillDiscovery()
+    # TaskComposer also receives discovery so /skill_server/validate_plan
+    # can sanity-check plans against advertised atom preconditions in
+    # addition to the registry's vetted compounds.
+    composer = TaskComposer(
+        skill_registry=registry, skill_discovery=skill_discovery
+    )
     bt_executor = BtExecutor(skill_discovery=skill_discovery)
 
     executor.add_node(registry)
@@ -54,6 +59,7 @@ def main(args=None):
             "║  Services:                                           ║\n"
             "║    /skill_server/get_skill_descriptions              ║\n"
             "║    /skill_server/compose_task                        ║\n"
+            "║    /skill_server/validate_plan                       ║\n"
             "║    /skill_server/register_compound_skill             ║\n"
             "║    /skill_server/register_skill  (for atoms)         ║\n"
             "║    /skill_server/acquire_lease                       ║\n"

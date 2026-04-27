@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>imaging_station</name>
+  <version>0.1.0</version>
+  <description>
+    Generic plate imaging station provider. Exposes the ImagePlate action
+    used by long-running campaign behaviour trees. Ships a sim backend that
+    writes placeholder image files so the campaign loop can be exercised
+    end-to-end without real imager hardware. Future driver backends (BMG /
+    Tecan / BioTek / microscope) plug into the same action interface.
+  </description>
+  <maintainer email="guy.burroughes@eit.org">Guy Burroughes</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>action_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>robot_skills_msgs</depend>
+  <depend>robot_skill_advertise</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

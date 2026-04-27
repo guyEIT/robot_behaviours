@@ -88,7 +88,10 @@ def _stub_ros_modules():
 
     # Service stubs
     srv_mod = sys.modules["robot_skills_msgs.srv"]
-    for svc_name in ["ComposeTask", "RegisterSkill", "GetSkillDescriptions", "RegisterCompoundSkill"]:
+    for svc_name in [
+        "ComposeTask", "RegisterSkill", "GetSkillDescriptions",
+        "RegisterCompoundSkill", "ValidatePlan",
+    ]:
         setattr(srv_mod, svc_name, MagicMock())
 
     # std_msgs stub

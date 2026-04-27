@@ -1,0 +1,21 @@
+# Operator service: trickle a plate into a running long-lived campaign tree.
+#
+# The bb_operator sidecar resolves the currently active task (from
+# /skill_server/task_state) and appends a plate dict onto
+# `persistent.plate_queue` in that task's SQLite blackboard. The campaign
+# tree's PopFromQueue picks it up on the next iteration boundary.
+#
+# `cadence_min` and `target_cycles` apply per-plate; if zero they fall back
+# to the campaign default. `imaging_protocol` selects which ImagePlate
+# protocol the per-cycle subtree should run.
+
+string plate_name              # unique plate id (matches Liconic registry)
+string barcode                 # optional barcode for cross-reference
+int32 target_cycles            # 0 → campaign default
+int32 cadence_min              # 0 → campaign default
+string imaging_protocol        # blank → campaign default
+int32 liconic_slot             # 0 → wherever Liconic puts it
+---
+bool success
+string message
+string task_id                 # the task into which the plate was queued

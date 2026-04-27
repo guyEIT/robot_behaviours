@@ -1,0 +1,12 @@
+# Operator service: mark a plate retiring in the active campaign.
+#
+# Sets `persistent.plates.{name}.retiring = true`. The campaign tree's
+# AdvancePlate node sees the flag at the end of the in-flight cycle and
+# does not re-queue the plate. An alert tells the operator when it's safe
+# to physically remove.
+
+string plate_name
+string reason                  # operator note, recorded to operator_events
+---
+bool success
+string message

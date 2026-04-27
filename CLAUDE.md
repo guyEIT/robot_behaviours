@@ -136,11 +136,12 @@ Framework (at `src/`):
 
   Could eventually become `providers/panda_sim/` for consistency with the providers pattern, but leaving as-is to avoid churn in lite-native / docker-sim callers.
 
-Providers (at `providers/`) — each is a git subtree of an upstream repo that contributes skills to the SkillRegistry:
+Providers (at `providers/`) — each is a git subtree of an upstream repo OR a fresh in-tree provider that contributes skills to the SkillRegistry:
 - `providers/meca500/` — Mecademic Meca500 arm (upstream: `guyEIT/meca500_ros2` @ main). ROS 2 Jazzy. Four packages: `meca500_description`, `meca500_hardware`, `meca500_moveit`, `meca500_bringup`.
 - `providers/pbi_liconic/` — PBI Liconic STX44 incubator + Hamilton STAR liquid handler (upstream: `guyEIT/pbi_liconic` @ master). Originally ROS 2 Humble; **migrated to Jazzy locally** so it can share the root pixi workspace's solve (the per-package `distro = "jazzy"` changes are a local divergence from upstream — push back via `git subtree push` once validated on real hardware). Five packages under `ros2_ws/src/`: `liconic_msgs`, `liconic_ros`, `hamilton_star_msgs`, `hamilton_star_ros`, `hamilton_star_bringup`.
+- `providers/imaging_station/` — generic plate imaging-station provider, **fresh in-tree (not a subtree)**. Single ament-python package at `providers/imaging_station/src/imaging_station/`. Owns the `robot_skills_msgs/action/ImagePlate` interface (declared `idempotent=true` in its manifest) and ships a sim backend that writes a placeholder PNG + JSON metadata per requested site under `~/.local/state/imaging_station/{plate_name}/{epoch_ms}_{counter}/`. Real driver backends (BMG / Tecan Spark / BioTek Cytation / microscope) plug into the same action — the directory layout and launch-file already make room for the swap.
 
-The provider pattern: any upstream workspace that provides skills (arm, instrument, software-only vision/planner) goes under `providers/<name>/`. Generic framework atoms stay in `src/robot_arm_skills/` — a skill atom belongs in a provider's own `<provider>_skill_atoms/` package only when its implementation depends on a vendor SDK or a robot-specific behavior that can't be parameterized via ROS params.
+The provider pattern: any upstream workspace OR fresh in-tree component that provides skills (arm, instrument, imager, software-only vision/planner) goes under `providers/<name>/`. Generic framework atoms stay in `src/robot_arm_skills/` — a skill atom belongs in a provider's own package only when its implementation depends on a vendor SDK or a robot-specific behavior that can't be parameterized via ROS params.
 
 ### Per-PC pixi environments
 
@@ -238,6 +239,26 @@ git subtree push --prefix=providers/pbi_liconic liconic <branch>
 ```
 
 Remotes are already configured (`meca500` → `guyEIT/meca500_ros2.git`, `liconic` → `guyEIT/pbi_liconic.git`).
+
+### Long-lived BT support (added 2026-04-27)
+
+Framework persistence so a single tree can run for weeks while the operator
+trickles plates in and out of the imaging campaign:
+
+- **Persistent blackboard layer** ([persistent_blackboard.py](src/robot_skill_server/robot_skill_server/persistent_blackboard.py)) — SQLite WAL store at `~/.local/state/skill_server/tasks/{task_id}/state.db`. Keys with prefix `persistent.` mirror automatically; type-checked at write (raises `PersistenceError` for non-JSON values).
+- **Per-node tick checkpoints** — `_Checkpoint` mixin on `Sequence`, `Fallback`, `RetryUntilSuccessful`, plus the new `Repeat`, `KeepRunningUntilFailure`, `WhileDoElse`. Each persists the index/iteration/attempt that has *successfully completed*; on resume, the parent re-ticks the next child.
+- **Action-inflight reconciliation** — `RosActionNode` records `(node_path, server_name, goal_uuid, idempotent)` before submit; on resume, idempotent → auto-resubmit, non-idempotent → log error with the DB path and FAIL the tree (operator clears the row or issues an `OperatorDecision` to proceed). Idempotency is declared per-skill in `SkillDescription.idempotent` (default false).
+- **New leaf nodes** — `WaitUntil timestamp="..."` (deadline-preserving across restart), `BlackboardCondition`, `PopFromQueue` / `PushToQueue`, `AdvancePlate` (post-cycle bookkeeping).
+- **bb_operator sidecar** ([bb_operator_node.py](src/robot_skill_server/robot_skill_server/bb_operator_node.py)) — operator services that mutate the active task's persistent blackboard. Endpoints: `/bb_operator/{add_plate,retire_plate,pause_campaign,operator_decision}`. Tracks the active task via `/skill_server/task_state` and writes through SQLite WAL — both processes interleave safely.
+- **Campaign tree** at [src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml](src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml) — `KeepRunningUntilFailure → BlackboardCondition(paused == false) → Sequence(Pop → WaitUntil → SubTree → AdvancePlate)`. Inner `PlateImageCycle` wraps the iSWAP transfers + `ImagePlate` + Liconic round-trip in `RetryUntilSuccessful num_attempts=2`.
+- **Imaging station calibration** — `imaging_handoff` site added to [providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup/config/handoffs.yaml](providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup/config/handoffs.yaml). Placeholder coordinates — needs a real `recalibrate_handoff.xml` run when the imager is physically positioned.
+- **Dashboard mirror topic** — `bb_operator` publishes `/skill_server/persistent_state` (latched `std_msgs/String` JSON snapshot of the active task's `persistent.*` blackboard + derived `task_id` / `task_status` / `paused`). Republished after every successful service handler and on a 1 Hz timer when a task is active. The dashboard's **Campaign** panel ([src/robot_dashboard/frontend/src/components/campaign/](src/robot_dashboard/frontend/src/components/campaign/)) subscribes to it; AddPlate / Pause / Cancel / Retire buttons call back through `/bb_operator/*` and `/skill_server/cancel_active_task`.
+- **Framework-level execution control on `BtExecutor`**:
+  - `/skill_server/pause_execution` (`PauseCampaign.srv` shape — generic, not campaign-specific) sets `ctx.paused` honoured at step boundaries.
+  - `/skill_server/cancel_active_task` (`CancelActiveTask.srv`) — session-independent hard cancel. Walks `_current_ctx`, sets `cancelled`, and calls `_cancel_inflight`. Reachable by any client (the action-cancel handshake needs the original goal id, which a restarted dashboard doesn't have).
+- **Bug fixes during integration**: (1) `Blackboard` for `persistent.*` keys now reads through to SQLite on every access (no in-memory cache) — operator writes via `bb_operator` are immediately visible to the running tree. (2) `Blackboard.resolve()` walks dotted paths into dict-valued blackboard keys (`{persistent.current_plate.next_due_at}` works). (3) `BlackboardCondition` treats unset keys (None) as falsy via Python truthiness — so `expected="false"` gates on `persistent.paused` admit the loop *before* the first Pause call has touched the flag. (4) `_publish_available_trees` / `_check_trees_changed` skip files that vanish between `glob()` and `stat()` (race on symlink-installed trees during a concurrent build). (5) `colcon symlink-install` of the dashboard's `dist/` doesn't pick up new bundle hashes after a `npm run build` — operator workaround: `rm -rf .pixi/colcon/install/robot_dashboard .pixi/colcon/build/robot_dashboard` then re-run colcon build.
+
+Tests cover all of this: `test_persistent_blackboard.py` (20), `test_tree_resume.py` (25), `test_bb_operator.py` (8), and the imaging provider's `test_sim_backend.py` (13). End-to-end validation in chromium via Playwright walks empty-state → submit campaign → AddPlate → Pause → Resume → Cancel, taking screenshots of each transition. Run via `cd /tmp/dash-test && node test_campaign_panel.mjs` (after `pixi run -e local-dev` has installed the playwright chromium under `~/.cache/ms-playwright/`).
 
 ### Known follow-ups (flagged by the providers integration)
 

@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { useSkillStore } from "../../stores/skill-store";
+import { useTaskStore } from "../../stores/task-store";
 import { useServiceCall } from "../../hooks/useServiceCall";
 import { useActionClient } from "../../hooks/useActionClient";
 import { useAvailableTrees } from "../../hooks/useAvailableTrees";
@@ -27,6 +29,7 @@ import {
   GripVertical,
   Pencil,
   Check,
+  Pause,
 } from "lucide-react";
 import clsx from "clsx";
 import {
@@ -289,7 +292,73 @@ export default function BehaviorExecutorPanel() {
     "robot_skills_msgs/action/ExecuteBehaviorTree"
   );
 
-  const isRunning = actionStatus === "active" || actionStatus === "pending";
+  // Generic pause/resume — same service the Campaign panel uses, so behaviour
+  // is identical regardless of which panel runs the tree.
+  const { call: callPauseExecution, loading: pauseLoading } = useServiceCall<
+    { paused: boolean; reason: string },
+    { success: boolean; message: string }
+  >("/skill_server/pause_execution", "robot_skills_msgs/srv/PauseCampaign");
+
+  // Session-independent cancel — works for any active tree, not just one
+  // submitted from this panel/browser session. Mirrors CampaignPanel.
+  const { call: callCancelActive } = useServiceCall<
+    { reason: string },
+    { success: boolean; message: string; task_id: string }
+  >("/skill_server/cancel_active_task", "robot_skills_msgs/srv/CancelActiveTask");
+
+  const taskState = useTaskStore((s) => s.taskState);
+  const isPaused = taskState?.status === "PAUSED";
+  // True for any active task on the server, regardless of whether THIS
+  // client submitted it. Without this, opening the dashboard against an
+  // already-running task showed a passive screen with no Pause/Cancel
+  // affordances; same affliction the Campaign panel's switch to
+  // /skill_server/cancel_active_task fixed.
+  const taskActiveOnServer =
+    taskState?.status === "RUNNING" ||
+    taskState?.status === "PAUSED" ||
+    taskState?.status === "AWAITING_APPROVAL";
+  const isRunning =
+    actionStatus === "active" || actionStatus === "pending" || taskActiveOnServer;
+
+  const togglePause = useCallback(async () => {
+    try {
+      const res = await callPauseExecution({
+        paused: !isPaused,
+        reason: isPaused
+          ? "operator resume from executor panel"
+          : "operator pause from executor panel",
+      });
+      if (res.success) {
+        toast.success(isPaused ? "Execution resumed" : "Pausing after current step");
+      } else {
+        toast.error("Pause/Resume refused", { description: res.message });
+      }
+    } catch {
+      // toasted by useServiceCall
+    }
+  }, [callPauseExecution, isPaused]);
+
+  // Cancel chooses between action-handle cancel (when this client owns the
+  // goal) and the service-based cancel (when the task was started elsewhere
+  // — restarted browser, campaign panel, or a CLI submission).
+  const handleCancel = useCallback(async () => {
+    if (actionStatus === "active" || actionStatus === "pending") {
+      cancel();
+      toast.info("Task cancel requested");
+      return;
+    }
+    if (!taskActiveOnServer) return;
+    try {
+      const res = await callCancelActive({ reason: "operator cancel from executor panel" });
+      if (res.success) {
+        toast.warning(`Task ${res.task_id} cancelling`);
+      } else {
+        toast.error("Cancel refused", { description: res.message });
+      }
+    } catch {
+      // toasted
+    }
+  }, [actionStatus, cancel, callCancelActive, taskActiveOnServer]);
 
   // Auto-scroll execution log
   useEffect(() => {
@@ -472,11 +541,31 @@ export default function BehaviorExecutorPanel() {
           <h2 className="text-[13px] font-medium text-ink">Behavior Executor</h2>
         </div>
 
-        {/* Header cancel — pinned next to the title so it stays visible
-             regardless of scroll position in the running banner / bottom bar. */}
+        {/* Header pause + cancel — pinned next to the title so they stay
+             visible regardless of scroll position. Pause toggles ctx.paused
+             via /skill_server/pause_execution; control-flow nodes honour it
+             at step boundaries (mid-action goals complete naturally). */}
         {isRunning && (
           <Button
-            onClick={cancel}
+            onClick={togglePause}
+            variant="secondary"
+            size="sm"
+            leftIcon={isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+            className="shrink-0"
+            disabled={pauseLoading}
+            title={
+              isPaused
+                ? "Resume execution"
+                : "Pause after the current step completes"
+            }
+          >
+            {isPaused ? "Resume" : "Pause after step"}
+          </Button>
+        )}
+
+        {isRunning && (
+          <Button
+            onClick={handleCancel}
             variant="danger"
             size="sm"
             leftIcon={<Square className="w-3 h-3" />}
@@ -513,7 +602,7 @@ export default function BehaviorExecutorPanel() {
           taskName={taskName}
           currentNode={currentNode}
           progress={progress}
-          onCancel={cancel}
+          onCancel={handleCancel}
         />
       )}
 
@@ -580,7 +669,7 @@ export default function BehaviorExecutorPanel() {
         runMode={runMode}
         onRunModeChange={setRunMode}
         onRun={handleExecute}
-        onCancel={cancel}
+        onCancel={handleCancel}
         onCompose={handleCompose}
       />
 

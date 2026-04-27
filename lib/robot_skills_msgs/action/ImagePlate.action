@@ -1,0 +1,28 @@
+# Image a plate that has been handed off to the imaging station via the
+# Hamilton iSWAP. The action server may be a real driver (BMG / Tecan /
+# BioTek / microscope) or the in-process sim shipped under `imaging_station`.
+#
+# Idempotent: the result of imaging is a freshly-written image set keyed by
+# (plate_name, cycle_index), so a re-submit after a skill_server crash
+# overwrites the previous attempt rather than corrupting state. The BT
+# executor's resume path uses this flag to auto-resubmit on goal-gone.
+
+# Goal
+string plate_name                # source-of-truth identifier (matches Liconic registry)
+string protocol                  # named protocol the imager driver understands
+                                 # (e.g. "brightfield_3site_v1"); blank → driver default
+int32 site_count                 # 0 → driver default
+string output_root               # blank → driver default
+                                 # (~/.local/state/imaging_station/{plate_name}/{cycle}/)
+---
+# Result
+bool success
+string message
+string[] image_uris              # absolute paths or file:// URIs of the captured frames
+string metadata_json             # free-form JSON the driver chose to surface
+                                 # (focus score, exposure used, well grid, etc.)
+---
+# Feedback (per-site progress)
+int32 sites_completed
+int32 sites_total
+string current_stage             # "warming_up" | "focusing" | "site_{n}" | "writing" | "done"

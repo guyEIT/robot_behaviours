@@ -1,0 +1,22 @@
+# Operator service: resolve a non-idempotent action that crashed mid-flight.
+#
+# When the BT executor's resume path encounters an `action_inflight` row
+# whose skill is not idempotent, it refuses to re-submit and instead waits
+# for the operator to inspect physical state and pick an outcome. Their
+# decision is written to `persistent.operator_decisions.{node_path}` and
+# the action node consumes it on its next tick.
+#
+# choice values:
+#   "retry"            — clear the inflight row, re-submit the goal fresh
+#   "skip-as-success"  — pretend the action succeeded; cache an empty
+#                        result so downstream consumers see SUCCESS
+#   "skip-as-failure"  — pretend the action failed; tree unwinds via FAIL
+#   "abort-tree"       — cancel the whole tree; SUCCESS path runs the
+#                        store's reap routine
+
+string node_path               # path of the stuck action (from action_inflight)
+string choice                  # one of: retry / skip-as-success / skip-as-failure / abort-tree
+string reason
+---
+bool accepted
+string message

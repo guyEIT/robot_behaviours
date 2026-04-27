@@ -1,0 +1,21 @@
+<!--
+  Dashboard campaign smoke — a long-running tree that keeps a campaign
+  "active" so the dashboard's CampaignPanel has time for an operator to
+  click through Add Plate / Pause / Resume.
+
+  Loop body: WaitForDuration 1s. Outer KeepRunningUntilFailure with a
+  BlackboardCondition gate on `persistent.paused` so the operator can
+  pause/resume from the UI. Cancel via the action client to terminate.
+-->
+<root BTCPP_format="4" main_tree_to_execute="DashboardCampaignSmoke">
+  <BehaviorTree ID="DashboardCampaignSmoke">
+    <KeepRunningUntilFailure name="campaign_outer">
+      <BlackboardCondition key="persistent.paused"
+                           expected="false">
+        <Sequence name="cycle">
+          <WaitForDuration name="cycle_step" seconds="1.0"/>
+        </Sequence>
+      </BlackboardCondition>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+</root>

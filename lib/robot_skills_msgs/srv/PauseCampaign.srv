@@ -1,0 +1,14 @@
+# Operator service: pause / resume a running long-lived campaign tree.
+#
+# Pause sets `persistent.paused = true` so the BlackboardCondition gate at
+# the top of the campaign loop short-circuits the next iteration. Any
+# in-flight cycle finishes naturally — never killed mid-transfer.
+#
+# Resume sets the flag back to false. The same service is used for both;
+# inspect `paused` to choose.
+
+bool paused                    # true → pause, false → resume
+string reason                  # recorded to operator_events
+---
+bool success
+string message

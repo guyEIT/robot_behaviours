@@ -770,6 +770,7 @@ environments:
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: lib/robot_arm_skills
+      - conda: providers/imaging_station/src/imaging_station
       - conda: providers/meca500/src/meca500_bringup
       - conda: providers/meca500/src/meca500_description
       - conda: providers/meca500/src/meca500_hardware
@@ -1698,6 +1699,8 @@ environments:
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skill-advertise-0.1.0-hb0f4dca_0.conda
       - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
       - conda: lib/robot_arm_skills
+      - conda: providers/imaging_station/src/imaging_station
+      - conda: providers/meca500/src/meca500_description
       - conda: providers/panda_sim/src/robot_mock_skill_atoms
       - conda: providers/panda_sim/src/robot_sim_config
       - conda: src/robot_behaviors
@@ -1724,6 +1727,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/c-compiler-1.11.0-h4d9bdce_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/ca-certificates-2026.4.22-hbd8a1cb_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/catkin_pkg-1.1.0-pyhd8ed1ab_0.conda
+      - conda: https://prefix.dev/conda-forge/linux-64/cbor2-5.9.0-py312h5253ce2_0.conda
       - conda: https://prefix.dev/conda-forge/linux-64/cmake-4.3.2-hc85cc9f_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/colcon-argcomplete-0.3.3-pyhd8ed1ab_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/colcon-bash-0.5.0-pyhd8ed1ab_1.conda
@@ -15065,6 +15069,28 @@ packages:
   license: BSD-3-Clause
   size: 578963
   timestamp: 1771187526810
+- conda: providers/imaging_station/src/imaging_station
+  name: ros-jazzy-imaging-station
+  version: 0.1.0
+  build: hb0f4dca_0
+  subdir: linux-64
+  variants:
+    target_platform: linux-64
+  depends:
+  - ros-jazzy-rclpy
+  - ros-jazzy-std-msgs
+  - ros-jazzy-action-msgs
+  - ros-jazzy-builtin-interfaces
+  - ros-jazzy-robot-skills-msgs
+  - ros-jazzy-robot-skill-advertise
+  - ros2-distro-mutex
+  - ros2-distro-mutex >=0.14.0,<0.15.0a0
+  - libgcc >=15
+  - libgcc >=15
+  - libstdcxx >=15
+  - python_abi 3.12.* *_cp312
+  - numpy >=1.23,<3
+  license: LicenseRef-Apache-2.0
 - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-imu-sensor-broadcaster-4.37.0-np2py312h2ed9cc7_16.conda
   sha256: f7251aca2d5abb316ee6866372d4a59ab1a948d95b60e28e6efdb756e1c09f8b
   md5: 32601838f9bcc39d6bb44e898122e187
@@ -19149,8 +19175,8 @@ packages:
   license: LicenseRef-Apache-2.0
 - conda: /home/eit/channel/linux-64/ros-jazzy-robot-skills-msgs-0.1.0-hb0f4dca_0.conda
   subdir: linux-64
-  sha256: 3be0afad2a8e51dc0f9d7ac56f83d187fe678e98f2cf502aee2058b2c4fc7180
-  md5: 04d42d5354af862e3b2062846ad61820
+  sha256: 6eb7276633ff3ec2bed765b3a13fb03c22c72fd87efbb8f8933ecf07d1463a3f
+  md5: cb64f92d2dd6ed56aac44f49617e012e
   depends:
   - ros-jazzy-rosidl-default-runtime
   - ros-jazzy-builtin-interfaces
@@ -19166,8 +19192,8 @@ packages:
   - numpy >=1.23,<3
   channel: file:///home/eit/channel
   license: LicenseRef-Apache-2.0
-  size: 1738103
-  timestamp: 1777038970808
+  size: 2495832
+  timestamp: 1777295968765
 - conda: https://prefix.dev/robostack-jazzy/linux-64/ros-jazzy-robot-state-publisher-3.3.3-np2py312h2ed9cc7_16.conda
   sha256: 9469e55b1e37a86cf7c694078dec1e0c36af85debf3545f75bf695e93b66754f
   md5: e53e8fb082f5b920abf528980b7e8016

@@ -2,7 +2,15 @@
 export interface TaskState {
   task_id: string;
   task_name: string;
-  status: "IDLE" | "RUNNING" | "SUCCESS" | "FAILURE" | "CANCELLED";
+  status:
+    | "IDLE"
+    | "RUNNING"
+    | "PAUSED"
+    | "AWAITING_APPROVAL"
+    | "SUCCESS"
+    | "FAILURE"
+    | "CANCELLED"
+    | "HALTED";
   current_skill: string;
   current_bt_node: string;
   progress: number;

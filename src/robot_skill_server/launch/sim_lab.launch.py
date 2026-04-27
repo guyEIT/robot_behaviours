@@ -92,11 +92,33 @@ def generate_launch_description():
         launch_arguments={"simulation": "true"}.items(),
     )
 
+    # ── Imaging-station sim — exposes the ImagePlate action so the
+    #    long-lived campaign tree can run a full Liconic ↔ Hamilton ↔
+    #    Imager ↔ Hamilton ↔ Liconic round-trip in lab-sim. Writes
+    #    placeholder PNGs under ~/.local/state/imaging_station/.
+    imaging_station_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            FindPackageShare("imaging_station"),
+            "/launch/imaging_station_sim.launch.py",
+        ]),
+    )
+
     # ── Skill server orchestrator (BtExecutor + SkillRegistry) ───────────
     skill_server = Node(
         package="robot_skill_server",
         executable="skill_server_node",
         name="skill_server_node",
+        output="screen",
+    )
+
+    # ── bb_operator sidecar — operator services for long-lived campaigns
+    #    (AddPlate / RetirePlate / PauseCampaign / OperatorDecision). Stays
+    #    up alongside skill_server so /bb_operator/* is always discoverable
+    #    even when no campaign is currently running.
+    bb_operator = Node(
+        package="robot_skill_server",
+        executable="bb_operator_node",
+        name="bb_operator",
         output="screen",
     )
 
@@ -119,6 +141,8 @@ def generate_launch_description():
         meca500_atoms,
         hamilton,
         liconic,
+        imaging_station_sim,
         skill_server,
+        bb_operator,
         dashboard,
     ])

@@ -1,0 +1,47 @@
+<!--
+  bb_operator smoke test — validates that the operator-services sidecar
+  can write to the active task's persistent blackboard while the tree is
+  running.
+
+  Sequence:
+    1. WaitForDuration (3s) — gives the operator (or test driver in another
+       shell) time to call /bb_operator/add_plate.
+    2. PopFromQueue — should return SUCCESS if AddPlate was called, FAILURE
+       (and tree halts) if it wasn't.
+    3. LogEvent on the popped plate name.
+    4. WaitForDuration (1s) — settle.
+
+  Submit:
+    ros2 action send_goal /skill_server/execute_behavior_tree \
+      robot_skills_msgs/action/ExecuteBehaviorTree \
+      "$(python3 -c 'import yaml,sys; xml=open(sys.argv[1]).read(); \
+        print(yaml.safe_dump({"tree_xml": xml, "tree_name": "bb_operator_smoke"}, \
+        default_style="|"))' src/robot_behaviors/trees/test_bb_operator_smoke.xml)"
+
+  In another shell, within ~3 seconds of submission:
+    ros2 service call /bb_operator/add_plate robot_skills_msgs/srv/AddPlate \
+      "{plate_name: smoke_p1, target_cycles: 1, cadence_min: 0}"
+-->
+<root BTCPP_format="4" main_tree_to_execute="BbOperatorSmoke">
+  <BehaviorTree ID="BbOperatorSmoke">
+    <Sequence name="bb_smoke_main">
+      <LogEvent name="log_start"
+                event_name="bb_smoke_start"
+                severity="info"
+                message="Waiting 3s — call /bb_operator/add_plate now"/>
+
+      <WaitForDuration name="wait_for_operator" seconds="3.0"/>
+
+      <PopFromQueue name="pop_added_plate"
+                    key="persistent.plate_queue"
+                    output="{persistent.popped}"/>
+
+      <LogEvent name="log_popped"
+                event_name="bb_smoke_popped"
+                severity="info"
+                message="Popped a plate from the queue (operator AddPlate worked)"/>
+
+      <WaitForDuration name="settle" seconds="0.5"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

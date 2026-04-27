@@ -37,6 +37,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RenewLease.srv"
   "srv/ReleaseLease.srv"
   "srv/ApproveDryRun.srv"
+  # Long-lived campaign operator services (week-2)
+  "srv/AddPlate.srv"
+  "srv/RetirePlate.srv"
+  "srv/PauseCampaign.srv"
+  "srv/OperatorDecision.srv"
+  "srv/CancelActiveTask.srv"
+  "srv/ValidatePlan.srv"
   # Actions
   "action/MoveToCartesianPose.action"
   "action/MoveToNamedConfig.action"
@@ -54,6 +61,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/CheckSystemReady.action"
   "action/ExecuteBehaviorTree.action"
   "action/RunScript.action"
+  "action/ImagePlate.action"
   DEPENDENCIES
     builtin_interfaces
     geometry_msgs

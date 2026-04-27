@@ -30,6 +30,12 @@ from rclpy.node import Node
 from robot_skills_msgs.msg import HumanPrompt, HumanResponse, LogEvent, TaskState
 from robot_skills_msgs.srv import AcquireLease, ReleaseLease, RenewLease
 
+from robot_skill_server.persistent_blackboard import (
+    PERSISTENT_PREFIX,
+    PersistenceError,
+    PersistentStore,
+)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Node status
@@ -46,11 +52,39 @@ class NodeStatus(enum.Enum):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class Blackboard:
-    def __init__(self, parent: Optional[Blackboard] = None):
+    """In-memory key/value store with optional SQLite-backed `persistent.*`.
+
+    Keys with the ``persistent.`` prefix are routed directly to the attached
+    :class:`PersistentStore` on every read and write — *no in-memory cache*.
+    This is deliberate: the bb_operator sidecar writes to the same SQLite
+    file from another process while the tree is ticking, and the tree must
+    see those operator-driven mutations (AddPlate, RetirePlate, Pause, …)
+    on its next read. Transient keys stay in the in-memory dict and chain
+    through `parent` blackboards as before.
+
+    Reads of `persistent.*` are still cheap — SQLite WAL hits the OS page
+    cache for sub-microsecond latency. Trees don't read these keys in
+    tight loops anyway; reads happen between actions, not within them.
+    """
+
+    def __init__(
+        self,
+        parent: Optional["Blackboard"] = None,
+        persistent_store: Optional[PersistentStore] = None,
+    ):
         self._data: dict[str, Any] = {}
         self._parent = parent
+        self._store = persistent_store
+        # Inherit store from parent so subtrees share the same backing file.
+        if self._store is None and parent is not None:
+            self._store = parent._store
 
     def get(self, key: str, default=None):
+        # `persistent.*` keys are authoritative on disk so operator writes
+        # via bb_operator are immediately visible to the running tree.
+        if key.startswith(PERSISTENT_PREFIX) and self._store is not None:
+            value = self._store.get_kv(key)
+            return default if value is None else value
         if key in self._data:
             return self._data[key]
         if self._parent:
@@ -58,13 +92,56 @@ class Blackboard:
         return default
 
     def set(self, key: str, value: Any):
+        if key.startswith(PERSISTENT_PREFIX) and self._store is not None:
+            # Raises PersistenceError on non-JSON values.
+            self._store.set_kv(key, value)
+            return
         self._data[key] = value
 
+    def delete(self, key: str):
+        self._data.pop(key, None)
+        if key.startswith(PERSISTENT_PREFIX) and self._store is not None:
+            self._store.delete_kv(key)
+
+    @property
+    def store(self) -> Optional[PersistentStore]:
+        return self._store
+
     def resolve(self, value: str):
-        """Resolve '{var}' references to blackboard values."""
-        if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
-            return self.get(value[1:-1])
-        return value
+        """Resolve a ``{var}`` reference. Supports dotted paths into
+        dict-valued keys (e.g. ``{persistent.current_plate.next_due_at}``
+        → ``self.get("persistent.current_plate")["next_due_at"]``).
+        Returns ``None`` if any segment is missing rather than raising —
+        callers (WaitUntil, RosActionNode goal-build) decide how to react
+        to an unresolved reference.
+        """
+        if not (isinstance(value, str) and value.startswith("{") and value.endswith("}")):
+            return value
+        path = value[1:-1]
+        # Try the literal key first (preserves back-compat with flat keys
+        # like ``{robot_pose}``, and avoids splitting across dots that are
+        # part of the key itself, e.g. ``persistent.next_due_at``).
+        looked_up = self.get(path)
+        if looked_up is not None:
+            return looked_up
+        # Walk dotted segments greedily — try the longest prefix that
+        # resolves to a non-None value, then index into it.
+        parts = path.split(".")
+        for i in range(len(parts) - 1, 0, -1):
+            head = ".".join(parts[:i])
+            tail = parts[i:]
+            obj = self.get(head)
+            if obj is None:
+                continue
+            for seg in tail:
+                if isinstance(obj, dict) and seg in obj:
+                    obj = obj[seg]
+                else:
+                    obj = None
+                    break
+            if obj is not None:
+                return obj
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -76,6 +153,9 @@ class TreeNode:
         self.name = name
         self.attrs = attrs
         self.children: list[TreeNode] = []
+        # Set by ``_assign_node_paths`` after parse. Stable across restarts as
+        # long as the BT XML shape is unchanged.
+        self.node_path: str = ""
 
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
         raise NotImplementedError
@@ -84,24 +164,97 @@ class TreeNode:
         for child in self.children:
             await child.halt(ctx)
 
+    def _clear_persisted(self, ctx: "ExecutionContext") -> None:
+        """Drop any persisted state for this node and its descendants.
+
+        Called by parent control nodes when they advance past a child so a
+        future re-tick (e.g., next iteration of a Repeat) starts fresh
+        rather than seeing stale cached results.
+        """
+        store = ctx.persistent_store
+        if store is None or not self.node_path:
+            return
+        store.clear_node_state_subtree(self.node_path)
+
+
+class _Checkpoint:
+    """Mixin: helpers for nodes that persist their tick state.
+
+    All methods are no-ops when the execution context has no persistent
+    store, so non-resumable executions (tests, short trees) pay nothing.
+    """
+
+    def _ckpt_save(self, ctx: "ExecutionContext", state: dict) -> None:
+        store = ctx.persistent_store
+        if store is None:
+            return
+        store.save_node_state(self.node_path, type(self).__name__, state)
+
+    def _ckpt_load(self, ctx: "ExecutionContext") -> dict:
+        store = ctx.persistent_store
+        if store is None:
+            return {}
+        return store.load_node_state(self.node_path) or {}
+
+    def _ckpt_clear(self, ctx: "ExecutionContext") -> None:
+        store = ctx.persistent_store
+        if store is None:
+            return
+        store.clear_node_state_subtree(self.node_path)
+
 
 # ── Control flow ─────────────────────────────────────────────────────────────
 
-class SequenceNode(TreeNode):
+class SequenceNode(TreeNode, _Checkpoint):
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
-        for child in self.children:
-            status = await child.tick(bb, ctx)
+        state = self._ckpt_load(ctx)
+        start_idx = int(state.get("idx", 0))
+        # Defensive: if the tree was edited and now has fewer children,
+        # restart rather than IndexError.
+        if start_idx > len(self.children):
+            start_idx = 0
+        for i in range(start_idx, len(self.children)):
+            # Pause point: between siblings. A pause requested mid-step
+            # parks here once the in-flight child returns.
+            try:
+                await pause_or_halt(ctx)
+            except HaltedError:
+                self._ckpt_clear(ctx)
+                return NodeStatus.FAILURE
+            status = await self.children[i].tick(bb, ctx)
             if status != NodeStatus.SUCCESS:
+                # Clear our subtree so a parent retry starts fresh.
+                self._ckpt_clear(ctx)
                 return status
+            # Wipe child's persisted state — its subtree should re-execute
+            # from scratch on a future re-tick (e.g., next Repeat iteration).
+            self.children[i]._clear_persisted(ctx)
+            # Advance only after a child SUCCEEDS; persist before the next tick
+            # so a crash here resumes at i+1.
+            self._ckpt_save(ctx, {"idx": i + 1})
+        self._ckpt_clear(ctx)
         return NodeStatus.SUCCESS
 
 
-class FallbackNode(TreeNode):
+class FallbackNode(TreeNode, _Checkpoint):
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
-        for child in self.children:
-            status = await child.tick(bb, ctx)
+        state = self._ckpt_load(ctx)
+        start_idx = int(state.get("idx", 0))
+        if start_idx > len(self.children):
+            start_idx = 0
+        for i in range(start_idx, len(self.children)):
+            try:
+                await pause_or_halt(ctx)
+            except HaltedError:
+                self._ckpt_clear(ctx)
+                return NodeStatus.FAILURE
+            status = await self.children[i].tick(bb, ctx)
             if status != NodeStatus.FAILURE:
+                self._ckpt_clear(ctx)
                 return status
+            self.children[i]._clear_persisted(ctx)
+            self._ckpt_save(ctx, {"idx": i + 1})
+        self._ckpt_clear(ctx)
         return NodeStatus.FAILURE
 
 
@@ -145,14 +298,99 @@ class ParallelNode(TreeNode):
         return NodeStatus.SUCCESS if successes >= target_successes else NodeStatus.FAILURE
 
 
-class RetryNode(TreeNode):
+class RetryNode(TreeNode, _Checkpoint):
     async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
         attempts = int(self.attrs.get("num_attempts", "3"))
-        for i in range(attempts):
+        state = self._ckpt_load(ctx)
+        start_attempt = int(state.get("attempt", 0))
+        for i in range(start_attempt, attempts):
+            try:
+                await pause_or_halt(ctx)
+            except HaltedError:
+                self._ckpt_clear(ctx)
+                return NodeStatus.FAILURE
             status = await self.children[0].tick(bb, ctx)
             if status == NodeStatus.SUCCESS:
+                self._ckpt_clear(ctx)
                 return NodeStatus.SUCCESS
             ctx.log(f"Retry {i + 1}/{attempts} failed for '{self.name}'", "warn")
+            self._ckpt_save(ctx, {"attempt": i + 1})
+        self._ckpt_clear(ctx)
+        return NodeStatus.FAILURE
+
+
+class RepeatNode(TreeNode, _Checkpoint):
+    """Tick child ``num_cycles`` times. SUCCESS when all complete; FAILURE on
+    first child failure. ``num_cycles=-1`` means run forever (until failure)."""
+
+    async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
+        num_cycles = int(self.attrs.get("num_cycles", "1"))
+        state = self._ckpt_load(ctx)
+        start_iter = int(state.get("iter", 0))
+        i = start_iter
+        while num_cycles < 0 or i < num_cycles:
+            try:
+                await pause_or_halt(ctx)
+            except HaltedError:
+                self._ckpt_clear(ctx)
+                return NodeStatus.FAILURE
+            status = await self.children[0].tick(bb, ctx)
+            if status == NodeStatus.FAILURE:
+                self._ckpt_clear(ctx)
+                return NodeStatus.FAILURE
+            # Child succeeded this iteration — wipe its persisted state so
+            # the next iteration re-executes rather than short-circuiting.
+            self.children[0]._clear_persisted(ctx)
+            i += 1
+            self._ckpt_save(ctx, {"iter": i})
+        self._ckpt_clear(ctx)
+        return NodeStatus.SUCCESS
+
+
+class KeepRunningUntilFailureNode(TreeNode, _Checkpoint):
+    """Tick child until it returns FAILURE; restart on SUCCESS. Always
+    terminates with FAILURE (when child fails). Iteration counter is purely
+    for observability — the loop never exits on count alone."""
+
+    async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
+        state = self._ckpt_load(ctx)
+        i = int(state.get("iter", 0))
+        while True:
+            # Check halt + pause at the loop boundary so a long campaign
+            # yields to operator cancel/pause between iterations even if
+            # the inner subtree is fully synchronous.
+            if ctx.is_halted():
+                self._ckpt_clear(ctx)
+                raise HaltedError(ctx.halt_reason)
+            try:
+                await pause_or_halt(ctx)
+            except HaltedError:
+                self._ckpt_clear(ctx)
+                raise
+            status = await self.children[0].tick(bb, ctx)
+            if status == NodeStatus.FAILURE:
+                self._ckpt_clear(ctx)
+                return NodeStatus.FAILURE
+            self.children[0]._clear_persisted(ctx)
+            i += 1
+            self._ckpt_save(ctx, {"iter": i})
+
+
+class WhileDoElseNode(TreeNode, _Checkpoint):
+    """Three-child control: ``[condition, do, else]``.
+
+    Re-evaluates the condition each tick. SUCCESS → tick ``do``; FAILURE →
+    tick ``else`` (or return FAILURE if no else child).
+    """
+
+    async def tick(self, bb: Blackboard, ctx: ExecutionContext) -> NodeStatus:
+        if len(self.children) < 2:
+            return NodeStatus.FAILURE
+        cond_status = await self.children[0].tick(bb, ctx)
+        if cond_status == NodeStatus.SUCCESS:
+            return await self.children[1].tick(bb, ctx)
+        if len(self.children) >= 3:
+            return await self.children[2].tick(bb, ctx)
         return NodeStatus.FAILURE
 
 
@@ -171,7 +409,8 @@ class SubTreeNode(TreeNode):
 
 class RosActionNode(TreeNode):
     def __init__(self, name, attrs, action_type, server_name, input_map,
-                 output_map, goal_defaults=None, post_process=None):
+                 output_map, goal_defaults=None, post_process=None,
+                 idempotent: bool = False):
         super().__init__(name, attrs)
         self.action_type = action_type
         self.server_name = attrs.get("server_name", server_name)
@@ -179,8 +418,18 @@ class RosActionNode(TreeNode):
         self.output_map = output_map    # {result_field: xml_attr}
         self.goal_defaults = goal_defaults or {}
         self.post_process = post_process
+        # Whether this action can safely be re-submitted on resume after a
+        # crash. Defaults to False (operator must intervene) — opt in per skill
+        # via SkillDescription.idempotent.
+        self.idempotent = idempotent
         self._client: Optional[ActionClient] = None
         self._goal_handle = None
+
+    @property
+    def _action_type_name(self) -> str:
+        mod = getattr(self.action_type, "__module__", "")
+        name = getattr(self.action_type, "__name__", str(self.action_type))
+        return f"{mod}.{name}" if mod else name
 
     def _get_client(self, ctx: ExecutionContext) -> ActionClient:
         if self._client is None:
@@ -220,6 +469,54 @@ class RosActionNode(TreeNode):
             )
             return NodeStatus.FAILURE
 
+        # Resume path: did we already complete this action in a prior run?
+        # _ckpt_load returns the cached terminal result (success+outputs) if
+        # the action returned SUCCESS but we crashed before the parent could
+        # advance past us. Returning here is safe because the result was
+        # written persistently before the inflight row was cleared. We do
+        # this BEFORE instantiating an ActionClient so a missing action
+        # server post-crash can still complete the resume — the server is
+        # only needed when we actually have to send a new goal.
+        cached = self._load_cached_result(ctx)
+        if cached is not None:
+            ctx.on_skill_started(self.name)
+            self._apply_cached_result(cached, bb)
+            ctx.on_skill_completed(self.name)
+            self._clear_cached_result(ctx)
+            return NodeStatus.SUCCESS
+
+        # Resume path: was a goal in flight when we last crashed?
+        #
+        # ROS2 doesn't reliably let a new client re-attach to an old goal_uuid
+        # across server restarts, so the choice on resume is binary:
+        #   - idempotent actions: clear the row, fall through, re-submit fresh
+        #   - non-idempotent actions: refuse to auto-resubmit, log loudly,
+        #     return FAILURE so the tree halts and the operator can decide
+        #     (issue OperatorDecision via bb_operator, or manually clear the
+        #     action_inflight row in the task DB).
+        existing_inflight = self._load_inflight(ctx)
+        if existing_inflight is not None:
+            if existing_inflight.get("idempotent"):
+                logger.warning(
+                    f"[{self.name}] inflight goal "
+                    f"{existing_inflight['goal_uuid'][:8]} from a prior run "
+                    f"(server={existing_inflight['server_name']}) — idempotent, "
+                    f"re-submitting"
+                )
+                self._clear_inflight(ctx)
+            else:
+                logger.error(
+                    f"[{self.name}] non-idempotent action crashed mid-flight on "
+                    f"a prior run (goal_uuid={existing_inflight['goal_uuid']}, "
+                    f"server={existing_inflight['server_name']}); refusing to "
+                    f"re-submit. Operator must inspect physical state and clear "
+                    f"the action_inflight row at "
+                    f"{ctx.persistent_store.db_path if ctx.persistent_store else '<no store>'}"
+                )
+                ctx.on_skill_started(self.name)
+                ctx.on_skill_failed(self.name)
+                return NodeStatus.FAILURE
+
         # Mark this skill as currently running BEFORE wait_for_server / build,
         # so the dashboard's BT viewer highlights the node even if those
         # steps fail (e.g. action server missing → 5 s timeout). Otherwise
@@ -246,6 +543,11 @@ class RosActionNode(TreeNode):
             )
             ctx.on_skill_failed(self.name)
             return NodeStatus.FAILURE
+
+        # Pre-submit: record the inflight intent so a crash between here and
+        # the result-handling block leaves a row the resume path can find.
+        goal_uuid = uuid.uuid4().hex
+        self._record_inflight(ctx, goal_uuid)
 
         send_future = client.send_goal_async(goal)
         try:
@@ -306,11 +608,18 @@ class RosActionNode(TreeNode):
                 # against _POST_PROCESSORS by SkillDiscovery / static
                 # registry); call it directly.
                 self.post_process(result, self.attrs, bb)
+            # Persist a tombstone so a crash between now and the parent's
+            # advance lets us short-circuit on resume rather than re-submit.
+            # Cleared either by the next visit to this node (Repeat / fresh
+            # invocation) or by the parent's subtree-clear when it advances.
+            self._save_cached_result(ctx, result, bb)
+            self._clear_inflight(ctx)
             ctx.on_skill_completed(self.name)
             return NodeStatus.SUCCESS
         else:
             msg = getattr(result, "message", "")
             logger.warn(f"[{self.name}] action returned success=False: {msg}")
+            self._clear_inflight(ctx)
             ctx.on_skill_failed(self.name)
             return NodeStatus.FAILURE
 
@@ -318,6 +627,91 @@ class RosActionNode(TreeNode):
         if self._goal_handle is not None:
             self._goal_handle.cancel_goal_async()
             self._goal_handle = None
+
+    # ── persistence helpers ─────────────────────────────────────────────────
+
+    def _record_inflight(self, ctx: "ExecutionContext", goal_uuid: str) -> None:
+        store = ctx.persistent_store
+        if store is None:
+            return
+        store.record_inflight(
+            self.node_path,
+            self.server_name,
+            self._action_type_name,
+            goal_uuid,
+            self.idempotent,
+        )
+
+    def _clear_inflight(self, ctx: "ExecutionContext") -> None:
+        store = ctx.persistent_store
+        if store is None:
+            return
+        store.clear_inflight(self.node_path)
+
+    def _load_inflight(self, ctx: "ExecutionContext"):
+        store = ctx.persistent_store
+        if store is None:
+            return None
+        return store.get_inflight(self.node_path)
+
+    def _save_cached_result(
+        self, ctx: "ExecutionContext", result, bb: "Blackboard"
+    ) -> None:
+        """Persist a "result already happened" tombstone for this node.
+
+        Stored under ``node_state`` with kind=``RosActionNode``. The state
+        records only the ``success`` flag and any output-mapped scalar values
+        the resume path would need to repopulate the blackboard — complex
+        ROS messages aren't JSON-serializable so we drop them, accepting that
+        downstream non-scalar consumers may have to be re-derived.
+        """
+        store = ctx.persistent_store
+        if store is None:
+            return
+        outputs: dict[str, Any] = {}
+        for result_field, xml_attr in self.output_map.items():
+            if xml_attr in self.attrs:
+                bb_key = self.attrs[xml_attr]
+                if bb_key.startswith("{") and bb_key.endswith("}"):
+                    val = getattr(result, result_field, None)
+                    try:
+                        # Round-trip through json to confirm serializable; if
+                        # not, skip it (caller will recompute or accept loss).
+                        import json as _json
+                        _json.dumps(val)
+                        outputs[bb_key[1:-1]] = val
+                    except (TypeError, ValueError):
+                        pass
+        try:
+            store.save_node_state(
+                self.node_path,
+                "RosActionNode",
+                {"completed": True, "outputs": outputs},
+            )
+        except PersistenceError:
+            # Outputs not all serializable — store just the completion marker.
+            store.save_node_state(
+                self.node_path, "RosActionNode", {"completed": True, "outputs": {}}
+            )
+
+    def _load_cached_result(self, ctx: "ExecutionContext"):
+        store = ctx.persistent_store
+        if store is None:
+            return None
+        state = store.load_node_state(self.node_path)
+        if state and state.get("completed"):
+            return state
+        return None
+
+    def _apply_cached_result(self, cached: dict, bb: "Blackboard") -> None:
+        for k, v in (cached.get("outputs") or {}).items():
+            bb.set(k, v)
+
+    def _clear_cached_result(self, ctx: "ExecutionContext") -> None:
+        store = ctx.persistent_store
+        if store is None:
+            return
+        store.clear_node_state(self.node_path)
 
 
 # ── Utility nodes (pure Python, synchronous) ────────────────────────────────
@@ -471,6 +865,26 @@ async def sleep_or_halt(
         await _rclpy_sleep(ctx.ros_node, min(remaining, poll_interval))
 
 
+async def pause_or_halt(
+    ctx: "ExecutionContext", poll_interval: float = 0.05
+) -> None:
+    """Park the tick loop while ``ctx.is_paused()`` is true.
+
+    Called by control-flow nodes at "step boundaries" (between Sequence
+    children, between Repeat iterations, between Retry attempts). Returns
+    immediately when not paused. While parked, polls for halt every
+    ``poll_interval`` seconds so an operator Cancel still breaks out
+    promptly. Action nodes do NOT pause mid-flight — the in-flight goal
+    completes naturally; pause only kicks in at the next boundary.
+    """
+    if not ctx.is_paused():
+        return
+    while ctx.is_paused():
+        if ctx.is_halted():
+            raise HaltedError(ctx.halt_reason)
+        await _rclpy_sleep(ctx.ros_node, poll_interval)
+
+
 class WaitForDurationNode(SyncNode):
     async def tick(self, bb, ctx):
         # Override SyncNode.tick because we need an async sleep, but mirror
@@ -489,6 +903,200 @@ class WaitForDurationNode(SyncNode):
             ctx.on_skill_failed(self.name)
             raise
         ctx.on_skill_completed(self.name)
+        return NodeStatus.SUCCESS
+
+
+class WaitUntilNode(TreeNode, _Checkpoint):
+    """Sleep (halt-aware) until an absolute wall-clock timestamp.
+
+    The timestamp is read from ``timestamp`` attr — either a literal float
+    (seconds since epoch) or a ``{var}`` reference into the blackboard.
+    Survives a restart: if ``now() >= wake_at`` after resume, returns
+    SUCCESS immediately; otherwise sleeps the remaining delta. The wake_at
+    value is checkpointed so that mid-sleep crashes don't lose the deadline.
+    """
+
+    async def tick(self, bb, ctx):
+        ctx.on_skill_started(self.name)
+        # Resolve timestamp once, then persist so a blackboard mutation after
+        # the first tick doesn't shift the deadline (or — if the operator
+        # WANTS to shift it — they can clear our state explicitly).
+        state = self._ckpt_load(ctx)
+        wake_at = state.get("wake_at")
+        if wake_at is None:
+            raw = self.attrs.get("timestamp", "")
+            resolved = bb.resolve(raw)
+            try:
+                wake_at = float(resolved)
+            except (TypeError, ValueError):
+                ctx.log(
+                    f"[{self.name}] WaitUntil: bad timestamp {resolved!r}",
+                    "error",
+                )
+                ctx.on_skill_failed(self.name)
+                return NodeStatus.FAILURE
+            self._ckpt_save(ctx, {"wake_at": wake_at})
+
+        try:
+            while True:
+                remaining = wake_at - time.time()
+                if remaining <= 0:
+                    break
+                if ctx.is_halted():
+                    raise HaltedError(ctx.halt_reason)
+                await _rclpy_sleep(ctx.ros_node, min(remaining, 0.05))
+        except HaltedError:
+            self._ckpt_clear(ctx)
+            ctx.on_skill_failed(self.name)
+            return NodeStatus.FAILURE
+
+        self._ckpt_clear(ctx)
+        ctx.on_skill_completed(self.name)
+        return NodeStatus.SUCCESS
+
+
+class BlackboardConditionNode(TreeNode):
+    """Decorator: tick child only when ``key`` resolves to ``expected``.
+
+    When the condition fails, returns FAILURE without ticking the child.
+    Used to gate a long-lived loop on a ``persistent.paused`` flag — when
+    paused, this returns FAILURE which terminates a KeepRunningUntilFailure
+    parent. (For "skip iteration but don't terminate" semantics, wrap in a
+    Fallback.)
+
+    Attrs:
+      key       — blackboard key (literal name, not ``{var}`` form)
+      expected  — string-coerced value to compare against (default "true")
+      invert    — if "true", flip the comparison
+    """
+
+    async def tick(self, bb, ctx):
+        if not self.children:
+            return NodeStatus.FAILURE
+        key = self.attrs.get("key", "")
+        expected = self.attrs.get("expected", "true").lower()
+        invert = self.attrs.get("invert", "false").lower() in ("true", "1", "yes")
+        # Strip {} if user wrote {key} form — both are tolerated.
+        if key.startswith("{") and key.endswith("}"):
+            key = key[1:-1]
+        actual = bb.get(key)
+        # Coerce to a "true"/"false" string for comparison. An unset key
+        # (None) is treated as falsy — same as Python truthiness — so
+        # a campaign tree's `BlackboardCondition expected="false"` gate on
+        # `persistent.paused` runs the child even before any operator has
+        # touched the pause flag.
+        if expected in ("true", "false"):
+            actual_b = bool(actual) if not isinstance(actual, str) else (
+                actual.strip().lower() in ("true", "1", "yes")
+            )
+            actual_s = "true" if actual_b else "false"
+        else:
+            actual_s = str(actual) if actual is not None else ""
+        match = (actual_s == expected) ^ invert
+        if not match:
+            return NodeStatus.FAILURE
+        return await self.children[0].tick(bb, ctx)
+
+
+class PopFromQueueNode(SyncNode):
+    """Atomically pop the head of a JSON-list-valued blackboard key.
+
+    Used by long-lived loops (campaign tree) to consume work items from a
+    queue maintained by an external operator service. Returns FAILURE when
+    the queue is empty so the caller can decide whether to wait or exit.
+
+    Attrs:
+      key     — blackboard key holding the list (literal name)
+      output  — ``{var}`` form to receive the popped item
+    """
+
+    def execute(self, bb, ctx):
+        key = self.attrs.get("key", "")
+        if key.startswith("{") and key.endswith("}"):
+            key = key[1:-1]
+        queue = bb.get(key)
+        if not isinstance(queue, list) or not queue:
+            return NodeStatus.FAILURE
+        item = queue[0]
+        # Re-set the truncated list — bb.set mirrors to the persistent store
+        # if this is a `persistent.` key.
+        bb.set(key, queue[1:])
+        out = self.attrs.get("output", "")
+        if out.startswith("{") and out.endswith("}"):
+            bb.set(out[1:-1], item)
+        return NodeStatus.SUCCESS
+
+
+class PushToQueueNode(SyncNode):
+    """Append a value to a JSON-list-valued blackboard key.
+
+    Attrs:
+      key   — blackboard key holding the list (literal name; created if absent)
+      value — literal or ``{var}`` reference to append
+    """
+
+    def execute(self, bb, ctx):
+        key = self.attrs.get("key", "")
+        if key.startswith("{") and key.endswith("}"):
+            key = key[1:-1]
+        raw_value = self.attrs.get("value", "")
+        value = bb.resolve(raw_value) if raw_value else raw_value
+        queue = bb.get(key)
+        if not isinstance(queue, list):
+            queue = []
+        queue.append(value)
+        bb.set(key, queue)
+        return NodeStatus.SUCCESS
+
+
+class AdvancePlateNode(SyncNode):
+    """Post-cycle bookkeeping for the campaign loop.
+
+    Reads the plate dict from ``persistent.current_plate``, increments its
+    ``cycle`` counter, computes ``next_due_at = now + cadence_min*60``, and
+    re-queues it onto ``persistent.plate_queue`` unless retiring or the
+    target cycle count has been reached. Mirrors the per-name index at
+    ``persistent.plates.{name}`` so RetirePlate / dashboard can find the
+    canonical plate state.
+
+    Returns SUCCESS as long as ``persistent.current_plate`` is well-formed.
+    """
+
+    def execute(self, bb, ctx):
+        plate = bb.get("persistent.current_plate")
+        if not isinstance(plate, dict) or "name" not in plate:
+            ctx.log("AdvancePlate: no current_plate on blackboard", "error")
+            return NodeStatus.FAILURE
+
+        plate = dict(plate)  # don't mutate the popped reference
+        plate["cycle"] = int(plate.get("cycle", 0)) + 1
+        cadence_sec = float(plate.get("cadence_min", 60)) * 60.0
+        plate["next_due_at"] = time.time() + cadence_sec
+        plate["last_completed_at"] = time.time()
+
+        # Refresh the per-name index regardless of retire/target outcome —
+        # the dashboard reads it for cycle counts.
+        plates = bb.get("persistent.plates") or {}
+        if not isinstance(plates, dict):
+            plates = {}
+        plates[plate["name"]] = plate
+        bb.set("persistent.plates", plates)
+
+        target = int(plate.get("target_cycles", 0))
+        retiring = bool(plate.get("retiring", False))
+        if retiring or (target > 0 and plate["cycle"] >= target):
+            ctx.publish_log_event(
+                "plate_done",
+                f"Plate {plate['name']!r} done after {plate['cycle']} cycles "
+                f"({'retired' if retiring else 'target reached'})",
+            )
+            return NodeStatus.SUCCESS
+
+        queue = bb.get("persistent.plate_queue") or []
+        if not isinstance(queue, list):
+            queue = []
+        queue.append(plate)
+        bb.set("persistent.plate_queue", queue)
         return NodeStatus.SUCCESS
 
 
@@ -826,10 +1434,16 @@ class ExecutionContext:
         trees: dict[str, TreeNode],
         task_id: str = "",
         task_name: str = "",
+        persistent_store: Optional[PersistentStore] = None,
     ):
         self.ros_node = ros_node
         self.trees = trees
         self.task_id = task_id
+        # Optional SQLite-backed store. When None, every Checkpointable /
+        # _Checkpoint operation is a no-op and the tree behaves identically
+        # to pre-resume behaviour. BtExecutor supplies a real store for
+        # long-lived trees; tests / short bounded trees may pass None.
+        self.persistent_store = persistent_store
         # task_name and started_at are populated by BtExecutor before tick;
         # they're echoed into every per-skill TaskState publish so the
         # dashboard's BT viewer can correlate updates with the running task.
@@ -851,6 +1465,15 @@ class ExecutionContext:
         # whichever path triggers the halt; surfaced through HaltedError so
         # downstream logging can identify the cause.
         self.halt_reason = ""
+
+        # Cooperative pause flag — checked at "step boundaries" by control-flow
+        # nodes (Sequence between children, Repeat between iterations, etc.).
+        # Mid-action ticks (RosActionNode goal in flight) DO NOT yield to pause
+        # so an in-flight transfer always finishes naturally. Cancel still
+        # works mid-action via the halt path. Pause is in-memory: survives a
+        # tree's lifetime, not a process restart.
+        self.paused = False
+        self.pause_reason = ""
 
         # Lease keepalive bookkeeping. Keys are lease_ids; values are the
         # rclpy timer driving the renewer and the resource_id it guards.
@@ -896,24 +1519,37 @@ class ExecutionContext:
 
     def on_skill_started(self, name: str):
         self.current_skill = name
-        self.publish_log_event("skill_started", f"Running: {_humanise(name)}", "debug")
-        self._publish_task_state("RUNNING")
+        # Tag "skill" not "human": these fire for every SyncNode tick (incl.
+        # structural names like "cycle_steps") and the dashboard already
+        # surfaces the active node via the BT viewer + task_state.
+        self.publish_log_event(
+            "skill_started", f"Running: {_humanise(name)}", "debug", tags=["skill"]
+        )
+        self._publish_task_state(self._live_status())
 
     def on_skill_completed(self, name: str):
         self.completed_skills.append(name)
-        self.publish_log_event("skill_completed", f"Completed: {_humanise(name)}")
+        self.publish_log_event(
+            "skill_completed", f"Completed: {_humanise(name)}", tags=["skill"]
+        )
         # Stay in RUNNING — overall task hasn't ended yet. The dashboard
         # uses progress + completed_skills to update the BT visualizer
         # between this skill's completion and the next one starting.
-        self._publish_task_state("RUNNING")
+        self._publish_task_state(self._live_status())
 
     def on_skill_failed(self, name: str):
         self.failed_skills.append(name)
-        self.publish_log_event("skill_failed", f"Failed: {_humanise(name)}", "error")
+        self.publish_log_event(
+            "skill_failed", f"Failed: {_humanise(name)}", "error", tags=["skill"]
+        )
         # Still RUNNING here too — a Fallback / RetryUntilSuccessful might
         # consume the failure and continue. BtExecutor publishes the
         # terminal FAILURE/SUCCESS once the whole tree.tick returns.
-        self._publish_task_state("RUNNING")
+        self._publish_task_state(self._live_status())
+
+    def _live_status(self) -> str:
+        """RUNNING unless the operator has parked execution via set_paused."""
+        return "PAUSED" if self.paused else "RUNNING"
 
     def _publish_task_state(self, status: str):
         if not self.task_id:
@@ -1096,6 +1732,32 @@ class ExecutionContext:
         awaits as soon as the operator clicks Cancel."""
         return self.cancelled or self.abort_requested
 
+    def is_paused(self) -> bool:
+        return self.paused
+
+    def set_paused(self, paused: bool, reason: str = "") -> None:
+        """Toggle the cooperative pause flag.
+
+        State change is published to ``/skill_server/task_state`` (status
+        flips between RUNNING and PAUSED) and recorded as a human-tagged
+        log event so the dashboard log stream picks it up. Idempotent —
+        re-setting the same value is a no-op aside from refreshing the
+        reason string.
+        """
+        was_paused = self.paused
+        self.paused = bool(paused)
+        self.pause_reason = reason if paused else ""
+        if was_paused == self.paused:
+            return
+        self._publish_task_state("PAUSED" if self.paused else "RUNNING")
+        verb = "paused" if self.paused else "resumed"
+        msg = f"Execution {verb}" + (f": {reason}" if reason else "")
+        self.publish_log_event(
+            f"execution_{verb}", msg,
+            severity="warn" if self.paused else "info",
+            tags=["human"],
+        )
+
 
 UTILITY_REGISTRY: dict[str, type[TreeNode]] = {
     "SetPose": SetPoseNode,
@@ -1103,6 +1765,7 @@ UTILITY_REGISTRY: dict[str, type[TreeNode]] = {
     "TransformPose": TransformPoseNode,
     "CheckGraspSuccess": CheckGraspSuccessNode,
     "WaitForDuration": WaitForDurationNode,
+    "WaitUntil": WaitUntilNode,
     "SetVelocityOverride": SetVelocityOverrideNode,
     "LogEvent": LogEventNode,
     "LookupTransform": LookupTransformNode,
@@ -1110,6 +1773,9 @@ UTILITY_REGISTRY: dict[str, type[TreeNode]] = {
     "EmergencyStop": EmergencyStopNode,
     "PublishStaticTF": PublishStaticTFNode,
     "ScriptCondition": ScriptConditionNode,
+    "PopFromQueue": PopFromQueueNode,
+    "PushToQueue": PushToQueueNode,
+    "AdvancePlate": AdvancePlateNode,
     # Human interaction
     "HumanNotification": HumanNotificationNode,
     "HumanWarning": HumanWarningNode,
@@ -1128,6 +1794,10 @@ CONTROL_REGISTRY: dict[str, type[TreeNode]] = {
     "ReactiveFallback": FallbackNode,
     "Parallel": ParallelNode,
     "RetryUntilSuccessful": RetryNode,
+    "Repeat": RepeatNode,
+    "KeepRunningUntilFailure": KeepRunningUntilFailureNode,
+    "WhileDoElse": WhileDoElseNode,
+    "BlackboardCondition": BlackboardConditionNode,
     "SubTree": SubTreeNode,
 }
 
@@ -1169,11 +1839,32 @@ def parse_trees(
         children = list(bt_elem)
         if children:
             inherited_robot_id = bt_elem.get("robot_id", "")
-            trees[tree_id] = _parse_node(
+            root_node = _parse_node(
                 children[0], discovery, inherited_robot_id, sim_namespace_prefix
             )
+            # Stamp every node with a stable path before the tree ever ticks.
+            # Path includes the BehaviorTree ID so SubTree-shared nodes don't
+            # collide when two trees use the same shape.
+            _assign_node_paths(root_node, f"/{tree_id}")
+            trees[tree_id] = root_node
 
     return trees
+
+
+def _assign_node_paths(node: TreeNode, parent_path: str) -> None:
+    """Walk the tree and assign a stable ``node_path`` to each node.
+
+    The path encodes class name + position in parent so any structural change
+    in the XML (insert / delete / reorder a sibling) shifts the affected
+    descendants' paths and invalidates their persisted state — which is the
+    desired behaviour: a tree-shape change should not silently resume into
+    state that no longer matches.
+    """
+    if not node.node_path:
+        node.node_path = f"{parent_path}/{type(node).__name__}"
+    for idx, child in enumerate(node.children):
+        child.node_path = f"{node.node_path}/{type(child).__name__}[{idx}]"
+        _assign_node_paths(child, child.node_path)
 
 
 def _parse_node(
@@ -1274,6 +1965,7 @@ def _resolve_via_discovery(
         output_map=entry.outputs,
         goal_defaults=entry.defaults,
         post_process=post_process,
+        idempotent=getattr(entry, "idempotent", False),
     )
 
 

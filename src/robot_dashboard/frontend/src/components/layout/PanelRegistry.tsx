@@ -12,6 +12,7 @@ import {
   HeartPulse,
   ShieldAlert,
   MessageSquareMore,
+  FlaskConical,
 } from "lucide-react";
 import type { PanelId } from "../../stores/layout-types";
 
@@ -28,6 +29,7 @@ import JointStateViewer from "../joint-viewer/JointStateViewer";
 import DiagnosticsPanel from "../diagnostics/DiagnosticsPanel";
 import InterventionPanel from "../intervention/InterventionPanel";
 import HumanPromptPanel from "../human-prompts/HumanPromptPanel";
+import CampaignPanel from "../campaign/CampaignPanel";
 
 export interface PanelInfo {
   id: PanelId;
@@ -42,6 +44,7 @@ export const PANELS: PanelInfo[] = [
   { id: "executor", label: "Execute", icon: <Rocket className="w-3.5 h-3.5" />, group: "behavior", component: <BehaviorExecutorPanel /> },
   { id: "monitor", label: "Task", icon: <Activity className="w-3.5 h-3.5" />, group: "behavior", component: <TaskMonitorPanel /> },
   { id: "skills", label: "Skills", icon: <Puzzle className="w-3.5 h-3.5" />, group: "behavior", component: <SkillBrowserPanel /> },
+  { id: "campaign", label: "Campaign", icon: <FlaskConical className="w-3.5 h-3.5" />, group: "behavior", component: <CampaignPanel /> },
   { id: "joints", label: "Joints", icon: <Gauge className="w-3.5 h-3.5" />, group: "monitor", component: <JointStateViewer /> },
   { id: "tf", label: "TF", icon: <Box className="w-3.5 h-3.5" />, group: "monitor", component: <TfFrameViewer /> },
   { id: "topics", label: "Topics", icon: <Radio className="w-3.5 h-3.5" />, group: "tools", component: <TopicListPanel /> },

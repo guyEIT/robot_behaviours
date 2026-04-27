@@ -28,6 +28,13 @@ bool is_compound                   # True if this skill is composed from atoms
 string bt_xml                      # BT XML definition (populated if is_compound=true)
 string[] component_skills          # Names of constituent skills (if compound)
 
+# Resume / idempotency
+bool idempotent                    # True if the BT executor's resume path may
+                                   # auto-resubmit a goal whose server forgot
+                                   # it after a skill_server crash. False (the
+                                   # default) makes the resume path prompt the
+                                   # operator before re-execution.
+
 # Metadata
 builtin_interfaces/Time created_at
 builtin_interfaces/Time updated_at

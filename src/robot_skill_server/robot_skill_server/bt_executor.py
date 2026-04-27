@@ -33,7 +33,12 @@ from std_msgs.msg import String
 
 from robot_skills_msgs.action import ExecuteBehaviorTree
 from robot_skills_msgs.msg import DryRunStatus, LeaseEvent, LogEvent, TaskState
-from robot_skills_msgs.srv import ApproveDryRun, ReleaseLease
+from robot_skills_msgs.srv import (
+    ApproveDryRun,
+    CancelActiveTask,
+    PauseCampaign,
+    ReleaseLease,
+)
 
 from robot_skill_server.tree_executor import (
     Blackboard,
@@ -42,6 +47,13 @@ from robot_skill_server.tree_executor import (
     count_action_nodes,
     get_main_tree_name,
     parse_trees,
+)
+from robot_skill_server.persistent_blackboard import (
+    PersistentStore,
+    hash_tree_xml,
+    list_incomplete_tasks,
+    reap_task,
+    task_db_path,
 )
 
 
@@ -104,6 +116,29 @@ class BtExecutor(Node):
             callback_group=callback_group,
         )
 
+        # Session-independent cancel — long-lived campaigns can outlive the
+        # browser session that started them, so the action-cancel handshake
+        # (which requires the original goal id) isn't reachable from a
+        # restarted dashboard. This service walks current_ctx and triggers
+        # the same halt path that goal_handle.cancel_callback does.
+        self._cancel_service = self.create_service(
+            CancelActiveTask,
+            "/skill_server/cancel_active_task",
+            self._on_cancel_active_task,
+            callback_group=callback_group,
+        )
+
+        # Generic pause/resume — sets ctx.paused which control-flow nodes
+        # honour at "step boundaries". Same mechanism for any tree (not
+        # campaign-specific). Reuses PauseCampaign srv shape: bool paused,
+        # string reason.
+        self._pause_service = self.create_service(
+            PauseCampaign,
+            "/skill_server/pause_execution",
+            self._on_pause_execution,
+            callback_group=callback_group,
+        )
+
         # Listen for lease lifecycle; 'revoked' on a lease we hold triggers
         # hard-cancel of the executing tree.
         self._lease_event_sub = self.create_subscription(
@@ -152,6 +187,13 @@ class BtExecutor(Node):
         self._diag_updater = Updater(self)
         self._diag_updater.setHardwareID("bt_executor")
         self._diag_updater.add("executor_status", self._produce_diagnostics)
+
+        # Surface any leftover task DBs from a previous run. Full
+        # reconciliation (action_inflight goal-status query, operator-decision
+        # on non-idempotent goals) is week-2 work; for now we just log and
+        # leave them in place so an operator-triggered resume / inspection
+        # can pick them up. Clean SUCCESS would have reaped them already.
+        self._scan_for_incomplete_tasks()
 
         self.get_logger().info(
             "BtExecutor started on /skill_server/execute_behavior_tree"
@@ -377,25 +419,42 @@ class BtExecutor(Node):
                 f"Available: {list(trees.keys())}"
             )
 
+        # One persistent store per task. Created on entry, reaped when the
+        # tree terminates SUCCESS. Survives crashes — on next startup,
+        # ``_scan_for_incomplete_tasks`` will surface it as resumable.
+        store = PersistentStore(task_db_path(task_id))
+        store.stamp_started(hash_tree_xml(xml))
+
         ctx = ExecutionContext(
             self, trees, task_id=task_id, task_name=task_name,
+            persistent_store=store,
         )
         ctx.started_at = self._task_started_at
         ctx.total_action_nodes = count_action_nodes(main_tree)
         self._current_ctx = ctx
 
-        bb = Blackboard()
+        bb = Blackboard(persistent_store=store)
         ctx.root_bb = bb
         try:
             tree_status = await main_tree.tick(bb, ctx)
         finally:
             self._release_surviving_leases(ctx)
+            store.stamp_tick()
 
         if ctx.cancelled:
             await main_tree.halt(ctx)
+            # HALTED leaves the store on disk so an operator-driven cancel
+            # can be resumed (vs. a clean abort that should reap).
+            store.close()
             return "HALTED", ctx
         if tree_status == NodeStatus.SUCCESS:
+            store.close()
+            reap_task(task_id)
             return "SUCCESS", ctx
+        # FAILURE: leave the store on disk for post-mortem inspection.
+        # A future operator-decision flow will let the operator either reap
+        # it (ack) or resume from the failed point.
+        store.close()
         return "FAILURE", ctx
 
     def _finalise_goal(
@@ -664,7 +723,7 @@ class BtExecutor(Node):
         self._publish_task_state(
             task_id=self._current_task_id,
             task_name=self._current_task_name or "",
-            status="RUNNING",
+            status="PAUSED" if ctx.is_paused() else "RUNNING",
             current_node=ctx.current_skill,
             progress=ctx.progress,
             completed_skills=list(ctx.completed_skills),
@@ -771,12 +830,18 @@ class BtExecutor(Node):
         msg = String()
         msg.data = json.dumps(trees)
         self._available_trees_pub.publish(msg)
-        # Track mtimes for change detection
+        # Track mtimes for change detection. A file can disappear between
+        # glob() returning it and stat() being called (the trees dir is
+        # symlink-installed and another build can sweep it out from under
+        # us); skip vanished entries rather than crashing the node startup.
         if self._trees_dir:
-            self._last_tree_scan = {
-                f.name: f.stat().st_mtime
-                for f in Path(self._trees_dir).glob("*.xml")
-            }
+            scan: dict[str, float] = {}
+            for f in Path(self._trees_dir).glob("*.xml"):
+                try:
+                    scan[f.name] = f.stat().st_mtime
+                except FileNotFoundError:
+                    continue
+            self._last_tree_scan = scan
         self.get_logger().info(
             f"Published {len(trees)} available trees from {self._trees_dir}"
         )
@@ -785,12 +850,89 @@ class BtExecutor(Node):
         """Re-publish if any tree files were added, removed, or modified."""
         if not self._trees_dir or not os.path.isdir(self._trees_dir):
             return
-        current = {
-            f.name: f.stat().st_mtime
-            for f in Path(self._trees_dir).glob("*.xml")
-        }
+        # Skip files that vanished between glob() and stat() — same race
+        # as `_publish_available_trees` above.
+        current: dict[str, float] = {}
+        for f in Path(self._trees_dir).glob("*.xml"):
+            try:
+                current[f.name] = f.stat().st_mtime
+            except FileNotFoundError:
+                continue
         if current != self._last_tree_scan:
             self._publish_available_trees()
+
+    def _on_pause_execution(self, request, response):
+        """Service handler — toggle ctx.paused on the active execution.
+
+        No-op when no task is active. Reuses ``PauseCampaign`` srv shape so
+        existing rosbridge/operator clients can drive both per-campaign
+        (``/bb_operator/pause_campaign``) and generic (``/skill_server/
+        pause_execution``) pauses with the same payload.
+        """
+        ctx = self._current_ctx
+        if ctx is None or self._current_task_id is None:
+            response.success = False
+            response.message = "no active execution"
+            return response
+        reason = (request.reason or "").strip()
+        ctx.set_paused(bool(request.paused), reason)
+        verb = "paused" if request.paused else "resumed"
+        response.success = True
+        response.message = f"execution {verb}"
+        return response
+
+    def _on_cancel_active_task(self, request, response):
+        """Service handler — cancel whichever BT goal is currently running.
+
+        Mirrors `_cancel_callback` (which the goal_handle invokes when the
+        action client's cancel_action_goal arrives), but reachable from any
+        ROS client without holding the original goal id.
+        """
+        ctx = self._current_ctx
+        if ctx is None or self._current_task_id is None:
+            response.success = False
+            response.message = "no active task"
+            response.task_id = ""
+            return response
+        reason = (request.reason or "operator cancel via service").strip()
+        self.get_logger().info(
+            f"cancel_active_task: halting task {self._current_task_id} "
+            f"(reason={reason!r})"
+        )
+        ctx.cancelled = True
+        if not ctx.halt_reason:
+            ctx.halt_reason = reason
+        # Hard-cancel any in-flight action goals so the inner await returns
+        # within ~1 poll period rather than waiting for the action server.
+        self._cancel_inflight(ctx)
+        response.success = True
+        response.task_id = self._current_task_id
+        response.message = f"cancelling {self._current_task_id}: {reason}"
+        return response
+
+    def _scan_for_incomplete_tasks(self) -> None:
+        """Inspect ``~/.local/state/skill_server/tasks/`` for DBs left behind
+        by a previous skill_server process. Logs a warning per task so the
+        dashboard / operator is aware they need attention.
+
+        Resume reconciliation (attach to / re-submit / quarantine each
+        in-flight goal) is the next milestone — this method just announces
+        their existence and does not delete or modify anything.
+        """
+        try:
+            incomplete = list_incomplete_tasks()
+        except Exception as exc:
+            self.get_logger().warning(
+                f"failed to scan for incomplete tasks: {exc}"
+            )
+            return
+        if not incomplete:
+            return
+        for path in incomplete:
+            self.get_logger().warning(
+                f"incomplete task DB present at {path} — left from a prior "
+                f"run; resume support is week-2, leaving in place"
+            )
 
     def _produce_diagnostics(self, stat):
         if self._current_task_id:

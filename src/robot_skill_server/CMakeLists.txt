@@ -15,6 +15,12 @@ install(PROGRAMS
   RENAME skill_server_node
 )
 
+install(PROGRAMS
+  robot_skill_server/bb_operator_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME bb_operator_node
+)
+
 # bt_executor_mcp moved to agent/robot_skill_mcp — it runs on the agent's
 # machine, not the orchestrator (see plan section C, "Trust model").
 
@@ -39,6 +45,22 @@ if(BUILD_TESTING)
     TIMEOUT 60
   )
   ament_add_pytest_test(test_skill_registry test/test_skill_registry.py
+    PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
+    TIMEOUT 60
+  )
+  ament_add_pytest_test(test_persistent_blackboard test/test_persistent_blackboard.py
+    PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
+    TIMEOUT 60
+  )
+  ament_add_pytest_test(test_tree_resume test/test_tree_resume.py
+    PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
+    TIMEOUT 60
+  )
+  ament_add_pytest_test(test_bb_operator test/test_bb_operator.py
+    PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
+    TIMEOUT 60
+  )
+  ament_add_pytest_test(test_pddl_validator test/test_pddl_validator.py
     PYTHON_EXECUTABLE "${PYTHON_EXECUTABLE}"
     TIMEOUT 60
   )

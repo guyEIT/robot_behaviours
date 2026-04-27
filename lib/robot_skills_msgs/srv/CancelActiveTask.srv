@@ -1,0 +1,16 @@
+# Operator service: cancel whichever BT goal is currently executing on
+# /skill_server/execute_behavior_tree, regardless of which client started it.
+#
+# Why a service rather than the action's cancel handshake: rosbridge's
+# action client must hold the goal id assigned at submit time to cancel it.
+# Long-lived campaigns can outlive the browser session that started them
+# (or the operator triggers cancel from a different machine), so the
+# action-cancel path is unreachable. This service walks the BtExecutor's
+# internal state and triggers the same halt path the goal-handle's
+# cancel_callback does.
+
+string reason
+---
+bool success
+string message
+string task_id           # the task that was cancelled (empty if none was active)

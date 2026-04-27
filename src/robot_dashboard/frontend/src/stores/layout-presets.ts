@@ -54,6 +54,33 @@ export const PRESET_LAYOUTS: Record<string, LayoutNode> = {
     ],
   },
 
+  Campaign: {
+    type: "split",
+    direction: "horizontal",
+    size: 100,
+    children: [
+      {
+        type: "split",
+        direction: "vertical",
+        size: 60,
+        children: [
+          { type: "leaf", panelId: "campaign", size: 65 },
+          { type: "leaf", panelId: "monitor", size: 35 },
+        ],
+      },
+      {
+        type: "split",
+        direction: "vertical",
+        size: 40,
+        children: [
+          { type: "leaf", panelId: "executor", size: 35 },
+          { type: "leaf", panelId: "tree", size: 40 },
+          { type: "leaf", panelId: "logs", size: 25 },
+        ],
+      },
+    ],
+  },
+
   Monitoring: {
     type: "split",
     direction: "horizontal",

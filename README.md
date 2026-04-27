@@ -32,11 +32,14 @@ Vector version: [architecture.svg](architecture.svg). Full text writeup: [archit
 | Provider | Code | Skills |
 |---|---|---|
 | Mecademic Meca500 6-DoF arm | [providers/meca500/](providers/meca500/) | 12 MoveIt2 atoms (MoveToNamed/Joint/Cartesian, Gripper, SetDIO, RobotEnable, CheckSystemReady, CheckCollision, UpdateSceneObject, …) |
-| Generic Panda 7-DoF (mock backend) | [providers/panda_sim/](providers/panda_sim/) | mock skill atoms used by `lab-sim` and `lite-native` |
+| Generic Panda 7-DoF (mock backend) | [providers/panda_sim/](providers/panda_sim/) | robot-agnostic mock skill atoms used by `lab-sim` and `lite-native`. The mocks no longer hardcode a robot — `lite-native` displays the Meca500 model in the dashboard while reusing the lightweight Python mocks; the panda URDF stays available for callers that override `joint_names` / `initial_positions` / `arm_joint_count` on the launch CLI. |
 | PBI Liconic STX44 incubator | [providers/pbi_liconic/](providers/pbi_liconic/) | TakeIn, Fetch (pylabrobot) |
 | Hamilton STAR liquid handler | [providers/pbi_liconic/](providers/pbi_liconic/) | MoveResource, HandoffTransfer, PickUpCoreGripper, ReturnCoreGripper |
+| Imaging station (sim) | [providers/imaging_station/](providers/imaging_station/) | ImagePlate — currently a sim that writes placeholder PNGs; real driver swaps in via the same action |
 
 Both Liconic and Hamilton are pulled from the `guyEIT/pbi_liconic` upstream as a `git subtree`. See [CLAUDE.md](CLAUDE.md) for the subtree pull/push commands.
+
+The imaging-station provider is a fresh in-tree provider, not a subtree — it owns the `robot_skills_msgs/action/ImagePlate` interface and ships a sim backend so the campaign behaviour tree can run a full Liconic ↔ Hamilton ↔ Imager ↔ Hamilton ↔ Liconic loop without imager hardware. Real driver backends (BMG / Tecan / BioTek / microscope) plug into the same action interface.
 
 ## Quick start
 
@@ -133,6 +136,19 @@ ros2 service call /skill_server/compose_task \
       {skill_name: "gripper_control",       parameters_json: "{\"command\": \"open\"}"}
     ]
   }'
+
+# Sanity-check a plan against PDDL preconditions / effects before running it
+ros2 service call /skill_server/validate_plan \
+  robot_skills_msgs/srv/ValidatePlan \
+  '{
+    initial_state: ["robot_initialized", "gripper_open"],
+    steps: [
+      {skill_name: "move_to_named_config", parameters_json: "{\"config_name\": \"home\"}"},
+      {skill_name: "pick_object",           parameters_json: "{}"}
+    ]
+  }'
+# Returns valid=true + final_state, OR valid=false + first_failing_step
+# + missing_preconditions[] pointing at the offending entry.
 ```
 
 `target_mode` on `ExecuteBehaviorTree`: `0 = MODE_REAL` (default, back-compat), `1 = MODE_SIM` (one-shot dry-run), `2 = MODE_SIM_THEN_REAL` (sim → operator approval gate → real).
@@ -145,6 +161,41 @@ Long-running plans (multi-step assays, hours-long incubations) get a fast pre-fl
 - `SkillDiscovery` filters out `/sim/*` manifests so the registry is single-source-of-truth on real entries.
 - `TreeExecutor` synthesises the sim path at parse time by string-prepending `/sim` — same XML, both phases.
 - On a successful sim phase, `BtExecutor` latches a `DryRunStatus` on `/skill_server/dryrun_status` and waits on `/skill_server/approve_dry_run` (`ApproveDryRun.srv`). The dashboard surfaces an approve/reject modal.
+
+## Long-lived campaign workflow ★
+
+For trees that run for **weeks** — operators trickling plates in and out of the Liconic, cycling each through the Hamilton-iSWAP to the imaging station and back — the framework persists tree state to SQLite and resumes after a `skill_server` crash without losing progress.
+
+**What survives a restart:**
+
+- A SQLite-backed *persistent blackboard*: any key prefixed `persistent.` is mirrored to `~/.local/state/skill_server/tasks/{task_id}/state.db` (WAL mode). Type-checked at write — only JSON-serialisable values land on disk.
+- *Per-node tick checkpoints* on every control / decorator / loop node (`Sequence` index, `Repeat` iteration, `RetryUntilSuccessful` attempt, `WaitUntil` deadline). On resume, the executor re-ticks from the root and each Checkpointable node hydrates its index — no work is repeated past the last successful child.
+- *Action-inflight reconciliation*: every `RosActionNode` records `(node_path, server_name, goal_uuid, idempotent)` before submitting. If a goal was in flight at crash time, the resume path inspects the row — idempotent skills auto-resubmit; non-idempotent skills refuse and surface an alert for the operator to resolve via `OperatorDecision`.
+
+**New control / utility nodes** in `tree_executor.py`:
+
+- `KeepRunningUntilFailure`, `Repeat num_cycles="N"`, `WhileDoElse`
+- `WaitUntil timestamp="{...}"` — wall-clock-aware sleep (deadline-preserving across restart)
+- `BlackboardCondition key="..." expected="..."` — gate a subtree on a persistent flag
+- `PopFromQueue` / `PushToQueue` — list-valued blackboard queues for operator-driven work
+- `AdvancePlate` — post-cycle bookkeeping (increments cycle, recomputes `next_due_at`, retires when target reached)
+
+**Operator services** — split between `bb_operator` (campaign-level state) and `skill_server` (framework-level execution control):
+
+| Service | Owner | Purpose |
+|---|---|---|
+| `/bb_operator/add_plate` | sidecar | append a plate dict to `persistent.plate_queue` (trickle-in) |
+| `/bb_operator/retire_plate` | sidecar | flag `plates.{name}.retiring = true` so the in-flight cycle finishes naturally and isn't re-queued |
+| `/bb_operator/pause_campaign` | sidecar | toggle `persistent.paused`; `BlackboardCondition` gate halts the next iteration boundary |
+| `/bb_operator/operator_decision` | sidecar | resolve a stuck non-idempotent action (`retry` / `skip-as-success` / `skip-as-failure` / `abort-tree`) |
+| `/skill_server/pause_execution` | bt_executor | framework-level pause that sets `ctx.paused`, honoured at step boundaries by every control-flow node — works for any tree, not just campaigns |
+| `/skill_server/cancel_active_task` | bt_executor | session-independent hard cancel; walks `_current_ctx`, sets `cancelled`, and tears down in-flight goals — reachable by *any* client (the action-cancel handshake requires the original goal id, which a restarted dashboard doesn't have) |
+
+**Live dashboard view.** The dashboard's **Campaign** panel (added 2026-04-27) subscribes to `/skill_server/persistent_state` — a latched JSON snapshot of the active task's persistent blackboard, republished by `bb_operator` after every service handler + a 1 Hz timer. Renders the plate queue + per-name index as a table with cycle / cadence / next-due / status; surfaces **Add Plate** (modal dialog), **Pause after step** / **Resume**, **Cancel** (hard halt via `/skill_server/cancel_active_task`), and per-row **Retire** trash icons. The `Campaign` preset layout (Layouts → CAMPAIGN) tiles it alongside Task Monitor + BT Tree + Executor + Logs. Validated end-to-end via Playwright + chromium-headless: empty-state → submit campaign tree → AddPlate → Pause → Resume → Cancel.
+
+**The campaign tree** lives at [src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml](src/robot_behaviors/trees/campaign/plate_imaging_campaign.xml). Outer loop is `KeepRunningUntilFailure → BlackboardCondition(paused == false) → Sequence(Pop → WaitUntil → SubTree → AdvancePlate)`. Inner `PlateImageCycle` subtree wraps the iSWAP transfers, ImagePlate, and Liconic round-trip in a `RetryUntilSuccessful num_attempts=2`.
+
+**Skill idempotency** is declared per atom in `SkillDescription.idempotent` (defaults to `false`). The resume path uses it to decide whether to auto-resubmit on goal-gone or to halt and ask the operator.
 
 ## MCP / agent surface
 

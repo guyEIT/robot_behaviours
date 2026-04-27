@@ -1,6 +1,7 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, Line, Text } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTopicSubscription } from "../../hooks/useTopicSubscription";
 import type { TFMessage } from "../../types/ros";
 import { useRobotSelectorStore } from "../../stores/robot-selector-store";
@@ -113,11 +114,19 @@ const TF_ORIGIN = "#A96D4B"; // terracotta
 const MESH_COLOR = "#C9B6A0"; // warm off-white for arm meshes
 const TABLE_COLOR = "#A17258"; // terracotta-soft for table
 
+// The whole TF scene sits inside a group rotated [-π/2, 0, 0] to convert
+// ROS Z-up to Three Y-up. OrbitControls operates in scene space, so click
+// targets need this same rotation applied.
+const ROS_TO_SCENE = new THREE.Euler(-Math.PI / 2, 0, 0);
+
 export default function TfFrameViewer() {
   const [frames, setFrames] = useState<Map<string, FrameData>>(buildInitialFrames);
   const [showLabels, setShowLabels] = useState(true);
   const [showTree, setShowTree] = useState(true);
   const [showMeshes, setShowMeshes] = useState(true);
+  const [centeredFrame, setCenteredFrame] = useState<string | null>(null);
+
+  const orbitRef = useRef<OrbitControlsImpl | null>(null);
 
   const selectedRobotId = useRobotSelectorStore((s) => s.selectedRobotId);
 
@@ -150,6 +159,46 @@ export default function TfFrameViewer() {
 
   const frameList = useMemo(() => Array.from(frames.values()), [frames]);
   const worldPoses = useMemo(() => computeWorldPoses(frames), [frames]);
+
+  const centerOnFrame = useCallback(
+    (frameName: string) => {
+      // Toggle off when re-clicking the centered frame so the user has a
+      // way to release tracking without picking some other frame.
+      if (centeredFrame === frameName) {
+        setCenteredFrame(null);
+        return;
+      }
+      const pose = worldPoses.get(frameName);
+      const controls = orbitRef.current;
+      if (!pose || !controls) return;
+
+      const sceneTarget = pose.position.clone().applyEuler(ROS_TO_SCENE);
+      const oldTarget = controls.target.clone();
+      const offset = controls.object.position.clone().sub(oldTarget);
+      controls.target.copy(sceneTarget);
+      controls.object.position.copy(sceneTarget).add(offset);
+      controls.update();
+      setCenteredFrame(frameName);
+    },
+    [centeredFrame, worldPoses],
+  );
+
+  // Live-track the centered frame: each TF update moves orbit target +
+  // camera by the same delta, preserving the user's manual orbit angle
+  // while the visual focus stays "stuck" to the moving frame. Skip
+  // sub-millimetre deltas to avoid OrbitControls jitter at idle.
+  useEffect(() => {
+    if (!centeredFrame) return;
+    const pose = worldPoses.get(centeredFrame);
+    const controls = orbitRef.current;
+    if (!pose || !controls) return;
+    const newTarget = pose.position.clone().applyEuler(ROS_TO_SCENE);
+    const delta = newTarget.clone().sub(controls.target);
+    if (delta.lengthSq() < 1e-8) return;
+    controls.target.copy(newTarget);
+    controls.object.position.add(delta);
+    controls.update();
+  }, [worldPoses, centeredFrame]);
 
   const frameTree = useMemo(() => {
     const children = new Map<string, string[]>();
@@ -185,7 +234,7 @@ export default function TfFrameViewer() {
             sectionColor={GRID_SECTION}
             fadeDistance={5}
           />
-          <OrbitControls makeDefault />
+          <OrbitControls makeDefault ref={orbitRef} />
 
           <group rotation={[-Math.PI / 2, 0, 0]}>
             <group>
@@ -229,6 +278,8 @@ export default function TfFrameViewer() {
                   meshStl={showMeshes && meshInfo ? meshInfo.stl : undefined}
                   meshRpy={meshInfo?.rpy}
                   meshScale={meshInfo?.scale}
+                  isCentered={centeredFrame === frame.child}
+                  onCenter={centerOnFrame}
                 />
               );
             })}
@@ -278,7 +329,7 @@ export default function TfFrameViewer() {
         </div>
 
         <div className="absolute bottom-3 left-3 font-mono text-[10px] text-muted tracking-[0.06em]">
-          {frameList.length} frames · drag to rotate, scroll to zoom
+          {frameList.length} frames · drag to rotate, scroll to zoom · click a frame to centre
         </div>
       </div>
 
@@ -301,6 +352,8 @@ export default function TfFrameViewer() {
                 frames={frames}
                 worldPoses={worldPoses}
                 depth={0}
+                centeredFrame={centeredFrame}
+                onCenter={centerOnFrame}
               />
             ))}
             {frameTree.roots.length === 0 && (
@@ -396,6 +449,8 @@ function FrameAxes({
   meshStl,
   meshRpy,
   meshScale,
+  isCentered,
+  onCenter,
 }: {
   name: string;
   position: THREE.Vector3;
@@ -404,19 +459,47 @@ function FrameAxes({
   meshStl?: string;
   meshRpy?: [number, number, number];
   meshScale?: number;
+  isCentered: boolean;
+  onCenter: (name: string) => void;
 }) {
   const axisLen = 0.04;
   const pos: [number, number, number] = [position.x, position.y, position.z];
   const quat: [number, number, number, number] = [quaternion.x, quaternion.y, quaternion.z, quaternion.w];
+  const [hovered, setHovered] = useState(false);
+
+  const handleClick = useCallback(
+    (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onCenter(name);
+    },
+    [name, onCenter],
+  );
+
+  const handlePointerOver = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setHovered(true);
+    document.body.style.cursor = "pointer";
+  }, []);
+  const handlePointerOut = useCallback(() => {
+    setHovered(false);
+    document.body.style.cursor = "";
+  }, []);
+
+  const sphereRadius = isCentered || hovered ? 0.009 : 0.006;
+  const sphereColor = isCentered ? "#2f7d5f" : hovered ? "#C97B4F" : TF_ORIGIN;
 
   return (
     <group position={pos} quaternion={quat}>
       <Line points={[[0, 0, 0], [axisLen, 0, 0]]} color="#9B2C2C" lineWidth={2} />
       <Line points={[[0, 0, 0], [0, axisLen, 0]]} color="#2f7d5f" lineWidth={2} />
       <Line points={[[0, 0, 0], [0, 0, axisLen]]} color="#51748C" lineWidth={2} />
-      <mesh>
-        <sphereGeometry args={[0.006, 8, 8]} />
-        <meshStandardMaterial color={TF_ORIGIN} />
+      <mesh
+        onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      >
+        <sphereGeometry args={[sphereRadius, 12, 12]} />
+        <meshStandardMaterial color={sphereColor} />
       </mesh>
       {meshStl && <StlMesh url={meshStl} rpy={meshRpy} scale={meshScale} />}
       {showLabel && (
@@ -440,35 +523,64 @@ function FrameTreeNode({
   frames,
   worldPoses,
   depth,
+  centeredFrame,
+  onCenter,
 }: {
   name: string;
   childrenMap: Map<string, string[]>;
   frames: Map<string, FrameData>;
   worldPoses: Map<string, WorldPose>;
   depth: number;
+  centeredFrame: string | null;
+  onCenter: (name: string) => void;
 }) {
   const kids = childrenMap.get(name) || [];
   const frame = frames.get(name);
   const pose = worldPoses.get(name);
   const age = frame ? (Date.now() - frame.lastUpdate) / 1000 : -1;
   const stale = age > 5;
+  const isCentered = centeredFrame === name;
 
+  // Each depth wraps in a div with constant marginLeft (not depth*N) so
+  // nesting gives natural linear indentation, and a left border draws a
+  // vertical guide line per level. Indent is small (8px) since the lines
+  // make the hierarchy readable without much horizontal space — important
+  // for a 6-link Meca chain in a 240px sidebar.
   return (
-    <div style={{ paddingLeft: depth * 12 }}>
-      <div className="flex items-center gap-1.5 py-0.5 text-[11px] hover:bg-cream px-1.5 group transition-colors">
+    <div
+      className={clsx(
+        depth > 0 && "ml-2 border-l border-hair-soft",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onCenter(name)}
+        title="Click to centre rotation on this frame"
+        className={clsx(
+          "w-full flex items-center gap-1.5 py-0.5 text-[11px] pl-1.5 pr-1.5 group transition-colors text-left cursor-pointer",
+          isCentered ? "bg-terracotta-tint" : "hover:bg-cream",
+        )}
+      >
         <span
           className={clsx(
             "w-1.5 h-1.5 rounded-full shrink-0",
-            stale && depth > 0 ? "bg-muted" : "bg-ok",
+            isCentered ? "bg-terracotta" : stale && depth > 0 ? "bg-muted" : "bg-ok",
           )}
         />
-        <span className="font-mono text-ink-soft truncate min-w-0 tracking-[0.04em]">{name}</span>
+        <span
+          className={clsx(
+            "font-mono truncate min-w-0 tracking-[0.04em]",
+            isCentered ? "text-terracotta" : "text-ink-soft",
+          )}
+        >
+          {name}
+        </span>
         {pose && (
           <span className="text-[9px] text-muted ml-auto hidden group-hover:inline font-mono tracking-[0.04em]">
             {pose.position.x.toFixed(2)}, {pose.position.y.toFixed(2)}, {pose.position.z.toFixed(2)}
           </span>
         )}
-      </div>
+      </button>
       {kids.map((kid) => (
         <FrameTreeNode
           key={kid}
@@ -477,6 +589,8 @@ function FrameTreeNode({
           frames={frames}
           worldPoses={worldPoses}
           depth={depth + 1}
+          centeredFrame={centeredFrame}
+          onCenter={onCenter}
         />
       ))}
     </div>

@@ -66,6 +66,10 @@ class ActionEntry:
     post_process: str = ""
     source_topic: str = ""           # publisher-side topic, used for liveliness eviction
     import_error: str = ""           # populated if action_type couldn't be imported
+    # Whether the BT executor's resume path may safely re-submit a goal whose
+    # action server forgot it across a skill_server restart. False (default)
+    # means a non-idempotent goal-gone case prompts the operator.
+    idempotent: bool = False
 
 
 def _pascal_case(name: str) -> str:
@@ -145,6 +149,7 @@ def _entry_from_advertisement(
         post_process=ad.post_process_id,
         source_topic=source_topic,
         import_error=err,
+        idempotent=bool(getattr(desc, "idempotent", False)),
     )
 
 
