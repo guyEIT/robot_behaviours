@@ -1,36 +1,36 @@
-"""In-process registry for active rosbag2 recorders.
+"""In-process registry for active rosbag2 recorder subprocesses.
 
 Both ``RecordRosbag`` (start) and ``StopRecording`` (stop) atoms run in
 the same Python process — composed by the per-robot proxy launch — so
-they share this module-level registry to look up active recorders by
-``bag_path``.
+they share this module-level registry to look up active recorder PIDs
+by ``bag_path``.
 
-Threading: the recorder runs ``Recorder.record(...)`` on its own daemon
-thread; the registry mutex protects the dict against concurrent
-register/lookup/remove.
+Why subprocess and not ``rosbag2_py.Recorder()`` in-process: the C++
+``Recorder`` internally calls ``rclcpp::init()`` which fails the second
+time it's invoked from inside an already-initialized rclpy interpreter
+("context is already initialized"). Each ``ros2 bag record`` subprocess
+gets its own ROS context, so back-to-back start/stop cycles work.
 """
 
 from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-
-from rosbag2_py import Recorder
+from subprocess import Popen
 
 
 @dataclass
 class _Entry:
-    recorder: Recorder
-    thread: threading.Thread
+    process: Popen
 
 
 _lock = threading.RLock()
 _recorders: dict[str, _Entry] = {}
 
 
-def register(bag_path: str, recorder: Recorder, thread: threading.Thread) -> None:
+def register(bag_path: str, process: Popen) -> None:
     with _lock:
-        _recorders[bag_path] = _Entry(recorder=recorder, thread=thread)
+        _recorders[bag_path] = _Entry(process=process)
 
 
 def pop(bag_path: str) -> _Entry | None:

@@ -109,13 +109,14 @@ public:
         moveit_msgs::msg::PlanningSceneComponents::LINK_PADDING_AND_SCALING |
         moveit_msgs::msg::PlanningSceneComponents::ROBOT_STATE_ATTACHED_OBJECTS;
 
+      // Hosted as a composable node inside a MultiThreadedExecutor — we can't
+      // spin_until_future_complete here (the node is already added to the
+      // container's executor). The MT executor delivers the service response
+      // in another thread; just wait on the future.
       auto future = client->async_send_request(request);
-      if (rclcpp::spin_until_future_complete(
-            this->get_node_base_interface(), future,
-            std::chrono::seconds(5)) != rclcpp::FutureReturnCode::SUCCESS)
-      {
+      if (future.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
         result->success = false;
-        result->message = "Failed to get planning scene";
+        result->message = "Failed to get planning scene (timeout)";
         return result;
       }
 

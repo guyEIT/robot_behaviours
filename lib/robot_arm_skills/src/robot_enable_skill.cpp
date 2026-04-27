@@ -111,11 +111,10 @@ public:
       }
       goal_handle->publish_feedback(feedback);
 
+      // See check_collision_skill.cpp: hosted in MT executor → wait on future
+      // directly (the executor delivers the response on another thread).
       auto future = client->async_send_request(request);
-      if (rclcpp::spin_until_future_complete(
-            this->get_node_base_interface(), future,
-            std::chrono::seconds(10)) != rclcpp::FutureReturnCode::SUCCESS)
-      {
+      if (future.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
         result->success = false;
         result->message = "SwitchController service call timed out";
         return result;

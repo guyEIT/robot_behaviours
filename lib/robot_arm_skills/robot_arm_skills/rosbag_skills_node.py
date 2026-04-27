@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Hosts RecordRosbag + StopRecording action servers in one Python process.
 
-Both atoms share the in-process ``_recorder_registry`` keyed by
-``bag_path`` — running them as separate ``Node()`` processes would put
-them in separate interpreters with disjoint registries, so they share
-this single executable.
+Records via ``ros2 bag record`` subprocesses (not in-process
+``rosbag2_py.Recorder``): the C++ recorder calls ``rclcpp::init()``
+which raises "context is already initialized" the second time it is
+constructed inside an existing rclpy interpreter. A subprocess per
+recording sidesteps that — each one has its own context.
 
-The advertise manifest is still published per-action (one
-``SkillAdvertisement`` per skill, both inside the same SkillManifest)
-because that's what SkillDiscovery expects. Only one is published per
-process — wired by the per-robot proxy.
+Both atoms share the in-process ``_recorder_registry`` keyed by
+``bag_path`` so StopRecording can find the PID started by RecordRosbag.
 """
 
 from __future__ import annotations
 
 import os
+import shlex
+import signal
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -24,8 +26,6 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-
-from rosbag2_py import RecordOptions, Recorder, StorageOptions
 
 from robot_skills_msgs.action import RecordRosbag, StopRecording
 
@@ -49,7 +49,7 @@ class RecordRosbagNode(Node):
             callback_group=self._cb_group,
         )
         self.get_logger().info(
-            "RecordRosbag (rosbag2_py): action /skill_atoms/record_rosbag"
+            "RecordRosbag (ros2 bag record): action /skill_atoms/record_rosbag"
         )
 
     def _execute(self, goal_handle):
@@ -69,57 +69,37 @@ class RecordRosbagNode(Node):
             self.get_parameter("default_storage_id")
             .get_parameter_value().string_value
         )
-        storage = StorageOptions(uri=bag_path, storage_id=storage_id)
-        rec_opts = RecordOptions()
+
+        cmd = ["ros2", "bag", "record", "-o", bag_path, "-s", storage_id]
         if goal.topics:
-            rec_opts.topics = list(goal.topics)
-            rec_opts.all_topics = False
+            cmd += list(goal.topics)
         else:
-            rec_opts.all_topics = True
-        rec_opts.disable_keyboard_controls = True
+            cmd += ["-a"]
 
-        recorder = Recorder()
-
-        # record() blocks for the lifetime of the recording — daemon thread.
-        # Recorder.cancel() (called by StopRecording) wakes the blocked
-        # thread and lets it return.
-        def _run():
-            try:
-                recorder.record(storage, rec_opts)
-            except Exception as e:  # surface in the parent log
-                self.get_logger().error(
-                    f"Recorder thread for {bag_path} crashed: {e}"
-                )
-
-        thread = threading.Thread(
-            target=_run, name=f"rosbag-{bag_path}", daemon=True
-        )
-        thread.start()
-
-        # `--max-duration`-equivalent: stop the recorder via a separate
-        # daemon thread once duration_sec elapses.
+        # `--max-duration`-equivalent: ros2 bag record has --max-duration
+        # in seconds (--max-duration 60.0). Use it when the goal sets one.
         if goal.duration_sec > 0.0:
-            def _auto_stop():
-                time.sleep(goal.duration_sec)
-                entry = registry.pop(bag_path)
-                if entry is not None:
-                    entry.recorder.stop()
-            threading.Thread(
-                target=_auto_stop,
-                name=f"rosbag-autostop-{bag_path}",
-                daemon=True,
-            ).start()
+            cmd += ["--max-duration", f"{goal.duration_sec:g}"]
 
-        registry.register(bag_path, recorder, thread)
+        # New process group so SIGINT to the group reaches all child
+        # processes (storage plugins, message converters) cleanly.
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            preexec_fn=os.setsid,
+        )
+
+        registry.register(bag_path, process)
 
         result = RecordRosbag.Result()
         result.bag_path = bag_path
         result.recorded_duration_sec = float(goal.duration_sec)
         result.num_messages = 0
-        result.recording_pid = os.getpid()
+        result.recording_pid = process.pid
         result.success = True
         result.message = (
-            f"Recording to '{bag_path}' (storage={storage_id})"
+            f"Recording to '{bag_path}' (storage={storage_id}, pid={process.pid})"
             + (
                 f" — auto-stops after {goal.duration_sec:g}s"
                 if goal.duration_sec > 0.0 else " — until StopRecording"
@@ -146,7 +126,7 @@ class StopRecordingNode(Node):
             callback_group=self._cb_group,
         )
         self.get_logger().info(
-            "StopRecording (rosbag2_py): action /skill_atoms/stop_recording"
+            "StopRecording (ros2 bag record): action /skill_atoms/stop_recording"
         )
 
     def _execute(self, goal_handle):
@@ -175,26 +155,36 @@ class StopRecordingNode(Node):
             .get_parameter_value().double_value
         )
 
+        proc = entry.process
         self.get_logger().info(
-            f"StopRecording: stop '{goal.bag_path}' (timeout={timeout:.1f}s)"
+            f"StopRecording: SIGINT pid={proc.pid} "
+            f"(bag={goal.bag_path}, timeout={timeout:.1f}s)"
         )
-        entry.recorder.stop()
-        entry.thread.join(timeout=timeout)
 
-        if entry.thread.is_alive():
-            result.success = False
-            result.stopped_pid = goal.recording_pid
-            result.message = (
-                f"Recorder thread for '{goal.bag_path}' did not exit "
-                f"within {timeout:.1f}s after stop()"
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGINT)
+        except ProcessLookupError:
+            # Already exited.
+            pass
+
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.get_logger().warning(
+                f"Recorder pid={proc.pid} did not exit within "
+                f"{timeout:.1f}s after SIGINT — escalating to SIGKILL"
             )
-            self.get_logger().warning(result.message)
-            goal_handle.abort()
-            return result
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                proc.wait(timeout=2.0)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                pass
 
         result.success = True
-        result.stopped_pid = goal.recording_pid
-        result.message = f"Recording '{goal.bag_path}' stopped"
+        result.stopped_pid = proc.pid
+        result.message = (
+            f"Recording '{goal.bag_path}' stopped (pid={proc.pid})"
+        )
         self.get_logger().info(result.message)
         goal_handle.succeed()
         return result
@@ -212,11 +202,15 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        # Stop any lingering recorders so daemon threads exit cleanly.
+        # Stop any lingering recorders so daemon subprocesses exit cleanly.
         for bag in list(registry.list_bags()):
             entry = registry.pop(bag)
             if entry is not None:
-                entry.recorder.stop()
+                try:
+                    os.killpg(os.getpgid(entry.process.pid), signal.SIGINT)
+                    entry.process.wait(timeout=3.0)
+                except Exception:
+                    pass
         executor.shutdown()
         record_node.destroy_node()
         stop_node.destroy_node()
