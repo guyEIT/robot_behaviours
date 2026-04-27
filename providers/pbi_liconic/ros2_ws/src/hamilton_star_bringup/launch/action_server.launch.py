@@ -10,9 +10,9 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushRosNamespace
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -27,6 +27,7 @@ def generate_launch_description() -> LaunchDescription:
     disconnect_on_shutdown = LaunchConfiguration("disconnect_on_shutdown")
     backend = LaunchConfiguration("backend")
     handoffs_file = LaunchConfiguration("handoffs_file")
+    namespace_prefix = LaunchConfiguration("namespace_prefix")
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -67,21 +68,33 @@ def generate_launch_description() -> LaunchDescription:
                 "handoffs.yaml; baked-in defaults also work if omitted."
             ),
         ),
-        Node(
-            package="hamilton_star_ros",
-            executable="action_server",
-            name="hamilton_star_action_server",
-            output="screen",
-            parameters=[
-                {
-                    "deck_file": deck_file,
-                    "core_grippers": core_grippers,
-                    "on_conflict": on_conflict,
-                    "num_channels": num_channels,
-                    "disconnect_on_shutdown": disconnect_on_shutdown,
-                    "backend": backend,
-                },
-                handoffs_file,
-            ],
+        DeclareLaunchArgument(
+            "namespace_prefix", default_value="",
+            description=(
+                "Top-level namespace prefix (e.g. \"/sim\"). Pushed via "
+                "PushRosNamespace so the action server lives at "
+                "<prefix>/hamilton_star_action_server/<name>. Default empty "
+                "= real-mode paths."
+            ),
         ),
+        GroupAction([
+            PushRosNamespace(namespace_prefix),
+            Node(
+                package="hamilton_star_ros",
+                executable="action_server",
+                name="hamilton_star_action_server",
+                output="screen",
+                parameters=[
+                    {
+                        "deck_file": deck_file,
+                        "core_grippers": core_grippers,
+                        "on_conflict": on_conflict,
+                        "num_channels": num_channels,
+                        "disconnect_on_shutdown": disconnect_on_shutdown,
+                        "backend": backend,
+                    },
+                    handoffs_file,
+                ],
+            ),
+        ]),
     ])

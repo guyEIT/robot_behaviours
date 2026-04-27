@@ -27,6 +27,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/HumanResponse.msg"
   "msg/LeaseState.msg"
   "msg/LeaseEvent.msg"
+  "msg/DryRunStatus.msg"
   # Services
   "srv/GetSkillDescriptions.srv"
   "srv/ComposeTask.srv"
@@ -35,6 +36,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/AcquireLease.srv"
   "srv/RenewLease.srv"
   "srv/ReleaseLease.srv"
+  "srv/ApproveDryRun.srv"
   # Actions
   "action/MoveToCartesianPose.action"
   "action/MoveToNamedConfig.action"

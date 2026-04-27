@@ -1143,6 +1143,7 @@ class BehaviorTreeParseError(Exception):
 def parse_trees(
     xml_string: str,
     discovery: Optional[Any] = None,
+    sim_namespace_prefix: str = "",
 ) -> dict[str, TreeNode]:
     """Parse BT.CPP v4 XML into a dict of {tree_id: root_node}.
 
@@ -1155,6 +1156,10 @@ def parse_trees(
        ``<BehaviorTree>`` element that set it.
     3. Else, look up by ``bt_tag`` alone — exactly one entry across all
        robots → use it; multiple → :class:`BehaviorTreeParseError`.
+
+    ``sim_namespace_prefix`` (e.g. ``"/sim"``) is prepended to every resolved
+    ``server_name``. The same XML can therefore execute against ``/sim/...``
+    sim atoms or the real namespace by re-parsing with a different prefix.
     """
     root = ElementTree.fromstring(xml_string)
     trees: dict[str, TreeNode] = {}
@@ -1164,7 +1169,9 @@ def parse_trees(
         children = list(bt_elem)
         if children:
             inherited_robot_id = bt_elem.get("robot_id", "")
-            trees[tree_id] = _parse_node(children[0], discovery, inherited_robot_id)
+            trees[tree_id] = _parse_node(
+                children[0], discovery, inherited_robot_id, sim_namespace_prefix
+            )
 
     return trees
 
@@ -1173,6 +1180,7 @@ def _parse_node(
     elem: ElementTree.Element,
     discovery: Optional[Any],
     inherited_robot_id: str,
+    sim_namespace_prefix: str = "",
 ) -> TreeNode:
     tag = elem.tag
     attrs = dict(elem.attrib)
@@ -1185,13 +1193,17 @@ def _parse_node(
     if tag in CONTROL_REGISTRY:
         node = CONTROL_REGISTRY[tag](name, attrs)
         for child in elem:
-            node.children.append(_parse_node(child, discovery, elem_robot_id))
+            node.children.append(
+                _parse_node(child, discovery, elem_robot_id, sim_namespace_prefix)
+            )
         return node
 
     if tag in UTILITY_REGISTRY:
         return UTILITY_REGISTRY[tag](name, attrs)
 
-    discovered = _resolve_via_discovery(tag, name, attrs, elem_robot_id, discovery)
+    discovered = _resolve_via_discovery(
+        tag, name, attrs, elem_robot_id, discovery, sim_namespace_prefix
+    )
     if discovered is not None:
         return discovered
 
@@ -1208,6 +1220,7 @@ def _resolve_via_discovery(
     attrs: dict,
     robot_id: str,
     discovery: Optional[Any],
+    sim_namespace_prefix: str = "",
 ) -> Optional[TreeNode]:
     """Resolve an action node from the runtime SkillDiscovery registry.
 
@@ -1245,6 +1258,8 @@ def _resolve_via_discovery(
         )
 
     server_name = attrs.pop("server_name", entry.server_name)
+    if sim_namespace_prefix:
+        server_name = _prepend_namespace(server_name, sim_namespace_prefix)
 
     post_process = (
         _POST_PROCESSORS.get(entry.post_process) if entry.post_process else None
@@ -1260,6 +1275,21 @@ def _resolve_via_discovery(
         goal_defaults=entry.defaults,
         post_process=post_process,
     )
+
+
+def _prepend_namespace(server_name: str, prefix: str) -> str:
+    """Prepend ``prefix`` (e.g. ``/sim``) to an absolute action server name.
+    Idempotent: a server_name already under the prefix is returned unchanged.
+    """
+    if not prefix:
+        return server_name
+    if not prefix.startswith("/"):
+        prefix = "/" + prefix
+    if not server_name.startswith("/"):
+        server_name = "/" + server_name
+    if server_name.startswith(prefix + "/") or server_name == prefix:
+        return server_name
+    return prefix + server_name
 
 
 def get_main_tree_name(xml_string: str) -> str:

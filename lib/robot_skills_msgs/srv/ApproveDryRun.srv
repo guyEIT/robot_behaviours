@@ -1,0 +1,15 @@
+# Approve or reject promoting a dry-run (sim phase) to the real phase.
+# Called while a target_mode=SIM_THEN_REAL ExecuteBehaviorTree goal is parked
+# in PHASE_AWAITING_APPROVAL. The most recent sim outcome is on the latched
+# topic /skill_server/dryrun_status (DryRunStatus).
+
+string task_id                     # Task ID of the goal awaiting approval
+                                   # (matches DryRunStatus.task_id). Empty -> apply
+                                   # to whichever goal is currently parked.
+bool approve                       # true: run real phase. false: skip real phase.
+string reason                      # Optional human-readable note (logged).
+---
+bool accepted                      # true: gate released (real run started, or
+                                   # rejection processed). false: no goal was
+                                   # waiting, or task_id mismatch.
+string message                     # diagnostic

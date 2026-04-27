@@ -38,6 +38,7 @@ class LiconicMachine:
         rack_model: str,
         total_cassettes: int,
         simulation: bool = False,
+        time_compression: float = 0.0,
     ) -> None:
         try:
             liconic_type = LiconicType(model)
@@ -69,7 +70,10 @@ class LiconicMachine:
         # (see liconic_ros.sim_backend.LiconicSimBackend). Same coroutine API,
         # so machine.py doesn't care which is live.
         if simulation:
-            self.backend = LiconicSimBackend(model=liconic_type, port=port)
+            self.backend = LiconicSimBackend(
+                model=liconic_type, port=port,
+                time_compression=time_compression,
+            )
         else:
             self.backend = ExperimentalLiconicBackend(
                 model=liconic_type, port=port

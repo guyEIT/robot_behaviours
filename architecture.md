@@ -21,15 +21,17 @@ A ROS 2 Jazzy workspace that exposes every robot/instrument skill — hardware-b
   │   live ROS via ws://9090            │    │  │ Agent / LLM (Claude Code, custom MCP client) │  │
   │   (rosbridge)                       │    │  │   spawns bt_executor_mcp as stdio subprocess │  │
   │                                     │    │  └──────────────────┬───────────────────────────┘  │
-  │   Surfaces: BT executor, task       │    │                     │ stdio                         │
-  │   monitor, skill browser, BT tree   │    │                     ▼                               │
-  │   viewer, log/plot/diagnostics      │    │  ┌──────────────────────────────────────────────┐  │
-  └────────────┬────────────────────────┘    │  │ bt_executor_mcp   (agent/robot_skill_mcp)    │  │
-               │ rosbridge JSON                │  │   FastMCP stdio + mcp_ros_bridge             │  │
-               │ over WebSocket                │  │   rclpy node — joins lab DDS                 │  │
-               │ ws://orchestrator:9090        │  │   tools: list_skills / list_trees /          │  │
-               │                               │  │          compose_task / execute_tree /       │  │
-               │                               │  │        ★ register_script                     │  │
+  │   Surfaces: BT executor (with       │    │                     │ stdio                         │
+  │     Real / Sim / Sim→Real toggle    │    │                     ▼                               │
+  │     + dry-run approval modal),      │    │  ┌──────────────────────────────────────────────┐  │
+  │     task monitor, skill browser,    │    │  │ bt_executor_mcp   (agent/robot_skill_mcp)    │  │
+  │     BT tree viewer, logs, plots,    │    │  │   FastMCP stdio + mcp_ros_bridge             │  │
+  │     diagnostics                     │    │  │   rclpy node — joins lab DDS                 │  │
+  └────────────┬────────────────────────┘    │  │   tools: list_skills / list_trees /          │  │
+               │ rosbridge JSON                │  │          compose_task / execute_tree /       │  │
+               │ over WebSocket                │  │        ★ register_script /                   │  │
+               │ ws://orchestrator:9090        │  │        ★ get_dryrun_status /                 │  │
+               │                               │  │        ★ approve_dry_run                     │  │
                │                               │  └────────────────────┬─────────────────────────┘  │
                │                               │                       │ owns                       │
                │                               │                       ▼                            │
@@ -56,19 +58,25 @@ A ROS 2 Jazzy workspace that exposes every robot/instrument skill — hardware-b
 │                    ▼                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────────────────────────────┐ │
 │  │ skill_server_node                          (src/robot_skill_server)                         │ │
-│  │   • SkillDiscovery — subscribes to every */skills topic; aggregates                         │ │
-│  │   • TreeExecutor    — async BT runtime; resolves (robot_id, bt_tag) → action server        │ │
-│  │   • BtExecutor      — hosts /skill_server/execute_behavior_tree                             │ │
+│  │   • SkillDiscovery — subscribes to every */skills topic; ignores /sim/*                     │ │
+│  │   • TreeExecutor    — async BT runtime; resolves (robot_id, bt_tag) → action server         │ │
+│  │                       prepends /sim to server_name when target_mode = SIM                   │ │
+│  │   • BtExecutor      — /skill_server/execute_behavior_tree (ExecuteBehaviorTree.action,      │ │
+│  │                       target_mode ∈ {REAL, SIM, SIM_THEN_REAL}, optional sim_tree_xml)      │ │
+│  │                     ★ Sim_then_Real: park, publish DryRunStatus, wait on ApproveDryRun      │ │
 │  │   • TaskComposer    — generates BT XML from TaskStep lists                                  │ │
 │  │   • LeaseBroker     — exclusive resource leases (TTL, renewal)                              │ │
 │  │   • SkillRegistry   — vetted shared compound skills (persistent on disk)                    │ │
 │  │   publishes:  /skill_server/skill_registry  /available_trees  /active_bt_xml                │ │
 │  │              /task_state  /log_events  /lease_events                                        │ │
+│  │            ★ /skill_server/dryrun_status (latched DryRunStatus)                             │ │
+│  │   services:                                                                                 │ │
+│  │            ★ /skill_server/approve_dry_run (ApproveDryRun)                                  │ │
 │  └─────────────────────────────────────────────────────────────────────────────────────────────┘ │
 └────────────────────┬───────────────────────────┬───────────────────────────────┬─────────────────┘
                      │                           │                               │
                      │ */skills (latched, TRANSIENT_LOCAL, LIVELINESS_AUTOMATIC) │
-                     │ + action goal calls                                       │
+                     │ + action goal calls (real path: bare; sim path: /sim/...) │
                      │                           │                               │
    ┌─────────────────┴─────┐  ┌─────────────────┴────────────┐  ┌────────────────┴───────────┐
    │ MECA500 PC            │  │ LICONIC PC                   │  │ DEV BOX (lite-native)      │
@@ -88,18 +96,22 @@ A ROS 2 Jazzy workspace that exposes every robot/instrument skill — hardware-b
    │  publishes:           │  │  publishes:                  │  │                            │
    │   /meca500_skill_     │  │   /liconic_action_server/    │  │                            │
    │     server/skills     │  │     skills                   │  │                            │
-   │  + MoveIt2 stack      │  │   /hamilton_star_action_     │  │                            │
-   │   (move_group,        │  │     server/skills            │  │                            │
-   │    ros2_control,      │  │                              │  │                            │
-   │    joint_traj_ctrl)   │  │  pkg dirs:                   │  │                            │
-   │                       │  │   providers/pbi_liconic/     │  │                            │
-   │  pkg dirs:            │  │     ros2_ws/src/{liconic_ros,│  │                            │
-   │   providers/meca500/  │  │     hamilton_star_ros, …}    │  │                            │
-   │     src/meca500_*     │  │                              │  │                            │
+   │   + paired sim under  │  │   /hamilton_star_action_     │  │                            │
+   │     /sim/...          │  │     server/skills            │  │                            │
+   │  + MoveIt2 stack      │  │   + paired sim under         │  │                            │
+   │   (move_group,        │  │     /sim/... (filtered by    │  │                            │
+   │    ros2_control,      │  │      discovery)              │  │                            │
+   │    joint_traj_ctrl)   │  │                              │  │                            │
+   │                       │  │  pkg dirs:                   │  │                            │
+   │  pkg dirs:            │  │   providers/pbi_liconic/     │  │                            │
+   │   providers/meca500/  │  │     ros2_ws/src/{liconic_ros,│  │                            │
+   │     src/meca500_*     │  │     hamilton_star_ros, …}    │  │                            │
    └───────────────────────┘  └──────────────────────────────┘  └────────────────────────────┘
 ```
 
 **Reading the diagram.** Two external client paths — browser and agent — neither runs on the orchestrator. Discovery flows up (every proxy publishes `<node>/skills`); action calls flow back down (the orchestrator's `TreeExecutor` resolves entries from the runtime registry, then dispatches the goal directly to the right host). Single-box deployments (`lab-sim`, `real-native`, `lite-native`) collapse all hosts onto one PC; the DDS graph is identical, the network just stops being involved.
+
+**Sim-before-real (★).** Each provider launch accepts `namespace_prefix:=/sim` and wraps its action servers in a `PushRosNamespace` group, producing a paired `/sim/<provider>/...` action surface. Discovery filters `/sim/*` manifests so the registry stays single-source-of-truth on real paths; the executor synthesises sim paths at parse time by string-prepending `/sim`. The `lab-up` topology brings up real and sim side-by-side on one box for the dry-run-then-real workflow.
 
 ## Skill discovery and advertisement
 
@@ -134,6 +146,34 @@ The architectural backbone. Every node hosting one or more skill action servers 
 The agent path uses [RunScript.action](lib/robot_skills_msgs/action/RunScript.action) — a generic action with `KeyValue[] inputs / outputs`. The script server hosts one action server per registered script at `/scripts_<session>/<name>`, and dispatches on `kind ∈ {bt_xml, action_sequence, python_callable}`. `python_callable` is gated behind `--allow-python-scripts` and only ever runs on the agent's host.
 
 The orchestrator's `SkillDiscovery` picks up agent-host scripts the same way it picks up hardware proxies; from the orchestrator's point of view an LLM-authored skill is indistinguishable from a Liconic action. From a security point of view the orchestrator never executes agent code.
+
+## Sim-before-real workflow
+
+The orchestrator can execute a tree against a simulator before committing to physical hardware. Long-running plans (Liconic incubations, multi-step assays running for hours or days) get a fast pre-flight that catches parameter mistakes, missing skills, and discovery failures without burning real-world time.
+
+**Three execution modes** on [ExecuteBehaviorTree.action](lib/robot_skills_msgs/action/ExecuteBehaviorTree.action):
+
+| `target_mode` | Phases | Use case |
+|---|---|---|
+| `MODE_REAL` (default) | real | Production. Back-compat — pre-existing callers behave unchanged. |
+| `MODE_SIM` | sim | One-shot dry-run; the orchestrator never touches real action servers. |
+| `MODE_SIM_THEN_REAL` | sim → approval gate → real | Operator-gated promotion. Sim runs first; on success the orchestrator parks the goal and waits for an explicit approval before running the real phase. |
+
+**Namespace pairing.** Each provider's launch takes a single new `namespace_prefix` argument (default empty for real, `/sim` for sim) which is applied via `PushRosNamespace`. The real and sim action surfaces coexist:
+
+| Provider | Real namespace (unchanged) | Sim namespace |
+|---|---|---|
+| Meca500 | `/meca500/skill_atoms/*` | `/sim/meca500/skill_atoms/*` |
+| Hamilton | `/hamilton_star_action_server/*` | `/sim/hamilton_star_action_server/*` |
+| Liconic | `/liconic_action_server/*` | `/sim/liconic_action_server/*` |
+
+`SkillDiscovery` filters out `/sim/*` manifest topics so the registry is single-source-of-truth on real entries. `parse_trees(..., sim_namespace_prefix="/sim")` synthesises the sim paths at parse time — no second registry, no extra `robots.yaml` plumbing, the same XML runs in both phases.
+
+**Approval gate.** When a `MODE_SIM_THEN_REAL` sim phase succeeds, [BtExecutor](src/robot_skill_server/robot_skill_server/bt_executor.py) latches a [DryRunStatus](lib/robot_skills_msgs/msg/DryRunStatus.msg) on `/skill_server/dryrun_status` and `await`s on a future until [ApproveDryRun.srv](lib/robot_skills_msgs/srv/ApproveDryRun.srv) is called on `/skill_server/approve_dry_run`. The dashboard subscribes to the latched status and surfaces an approve/reject modal; the MCP tool surface (`get_dryrun_status`, `approve_dry_run`) and any direct ROS client can release the gate the same way. On rejection (or if the sim phase fails) the real phase is `SKIPPED` and that lands in the result's `real_final_status` field.
+
+**Time compression.** Long-running provider operations honour an opt-in `time_compression` parameter on the sim backend so a multi-hour incubation collapses into seconds during a dry-run. Today this is wired on the [Liconic sim backend](providers/pbi_liconic/ros2_ws/src/liconic_ros/liconic_ros/sim_backend.py) (its actions return immediately, so the helper is a forward-looking lever for future long-duration skills). Meca500 and Hamilton sims already return in seconds and don't need it.
+
+**Optional sim-variant tree.** The goal accepts an optional `sim_tree_xml` field that overrides `tree_xml` for the sim phase only — useful when the dry-run wants to elide steps that aren't worth simulating. Empty falls back to the real tree.
 
 ## Resource leases
 
@@ -175,8 +215,9 @@ The orchestrator's `SkillDiscovery` picks up agent-host scripts the same way it 
 
 | Mode | What runs where |
 |---|---|
-| **Distributed prod** | Orchestrator PC: `skill_server_node` + dashboard + rosbridge. Meca500 PC: `meca500_skill_server` + MoveIt. Liconic PC: `liconic_action_server` + `hamilton_star_action_server`. Agent host: anywhere on DDS. |
-| **`lab-sim`** | Every provider sim + skill atoms + skill_server + dashboard, single `ros2 launch` on the dev box. Validated end-to-end (hamilton 0.54s, liconic 0.54s, meca500 8.80s). |
+| **Distributed prod** | Orchestrator PC: `skill_server_node` + dashboard + rosbridge. Meca500 PC: `meca500_skill_server` + MoveIt. Liconic PC: `liconic_action_server` + `hamilton_star_action_server`. Agent host: anywhere on DDS. Optional: a sim instance per provider under `/sim/*` for dry-run support. |
+| **`lab-sim`** | Every provider sim + skill atoms + skill_server + dashboard, single `ros2 launch` on the dev box. Atoms advertise under bare paths (no `/sim/` prefix). Validated end-to-end (hamilton 0.54s, liconic 0.54s, meca500 8.80s). |
+| **★ `lab-up`** | Like `lab-sim` plus a paired `/sim/*` instance of every provider running side-by-side. Dev-box test bed for `MODE_SIM_THEN_REAL`. The "real" side still uses mock backends on a hardware-less box; the point is to exercise the namespace rewrite and the approval gate. |
 | **`real-native`** | Single-box real-robot deployment on the orchestrator PC. |
 | **`lite-native`** | Dashboard + orchestration dev without MoveIt; uses `robot_mock_skill_atoms`. |
 | **Per-provider sim** | `meca500-sim-test` / `hamilton-sim-test` / `liconic-sim-test` — one provider in isolation. |

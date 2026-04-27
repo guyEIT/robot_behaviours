@@ -3,6 +3,7 @@ import { useSkillStore } from "../../stores/skill-store";
 import { useServiceCall } from "../../hooks/useServiceCall";
 import { useActionClient } from "../../hooks/useActionClient";
 import { useAvailableTrees } from "../../hooks/useAvailableTrees";
+import { useTopicSubscription } from "../../hooks/useTopicSubscription";
 import type {
   ComposeTaskRequest,
   ComposeTaskResponse,
@@ -229,6 +230,47 @@ export default function BehaviorExecutorPanel() {
     message?: string;
   } | null>(null);
 
+  // target_mode for ExecuteBehaviorTree: 0=real (default), 1=sim, 2=sim_then_real.
+  // Persisted as a string so the SegmentedControl labels stay readable.
+  const [runMode, setRunMode] = useState<"real" | "sim" | "sim_then_real">("real");
+  const targetModeInt = runMode === "sim" ? 1 : runMode === "sim_then_real" ? 2 : 0;
+
+  // Latched DryRunStatus → approval modal. Empty task_id means the gate has
+  // closed (sim failed, real already promoted, or rejection processed) — clear
+  // the prompt.
+  const [dryRunStatus, setDryRunStatus] = useState<{
+    task_id: string;
+    tree_name: string;
+    sim_status: string;
+    message: string;
+    sim_duration_sec: number;
+    completed_skills: string[];
+    failed_skills: string[];
+  } | null>(null);
+  useTopicSubscription<any>(
+    "/skill_server/dryrun_status",
+    "robot_skills_msgs/msg/DryRunStatus",
+    (msg) => {
+      if (!msg.task_id) {
+        setDryRunStatus(null);
+        return;
+      }
+      setDryRunStatus({
+        task_id: msg.task_id,
+        tree_name: msg.tree_name,
+        sim_status: msg.sim_status,
+        message: msg.message,
+        sim_duration_sec: Number(msg.sim_duration_sec) || 0,
+        completed_skills: msg.completed_skills ?? [],
+        failed_skills: msg.failed_skills ?? [],
+      });
+    },
+  );
+  const { call: approveDryRun, loading: approving } = useServiceCall<
+    { task_id: string; approve: boolean; reason: string },
+    { accepted: boolean; message: string }
+  >("/skill_server/approve_dry_run", "robot_skills_msgs/srv/ApproveDryRun");
+
   const skills = useSkillStore((s) => s.skills);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -395,6 +437,11 @@ export default function BehaviorExecutorPanel() {
         // schema. 5Hz is the expected ceiling if a future executor introduces
         // a TaskState publish rate cap.
         tick_rate_hz: 5.0,
+        target_mode: targetModeInt,
+        // No sim-variant tree from the dashboard for now — the same XML runs
+        // in both phases. Future enhancement: a "sim variant" pane that lets
+        // operators stub out long steps for the dry-run pass.
+        sim_tree_xml: "",
       });
       const elapsedSec = result.total_execution_time_sec ?? 0;
       const final = String(result.final_status || "").toUpperCase();
@@ -530,10 +577,57 @@ export default function BehaviorExecutorPanel() {
         mode={mode}
         composing={composing}
         composeReady={mode === "compose" && composedXml !== null}
+        runMode={runMode}
+        onRunModeChange={setRunMode}
         onRun={handleExecute}
         onCancel={cancel}
         onCompose={handleCompose}
       />
+
+      {dryRunStatus && (
+        <DryRunApprovalModal
+          status={dryRunStatus}
+          approving={approving}
+          onApprove={async () => {
+            try {
+              await approveDryRun({
+                task_id: dryRunStatus.task_id,
+                approve: true,
+                reason: "approved from dashboard",
+              });
+              setExecutionLog((log) => [
+                ...log,
+                `▶ Approved dry-run for ${dryRunStatus.tree_name}; running real phase`,
+              ]);
+              setDryRunStatus(null);
+            } catch (e: any) {
+              setExecutionLog((log) => [
+                ...log,
+                `✗ approve_dry_run failed: ${e.message}`,
+              ]);
+            }
+          }}
+          onReject={async () => {
+            try {
+              await approveDryRun({
+                task_id: dryRunStatus.task_id,
+                approve: false,
+                reason: "rejected from dashboard",
+              });
+              setExecutionLog((log) => [
+                ...log,
+                `✗ Rejected dry-run for ${dryRunStatus.tree_name}; real phase skipped`,
+              ]);
+              setDryRunStatus(null);
+            } catch (e: any) {
+              setExecutionLog((log) => [
+                ...log,
+                `✗ approve_dry_run failed: ${e.message}`,
+              ]);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -693,6 +787,8 @@ function RunBar({
   mode,
   composing,
   composeReady,
+  runMode,
+  onRunModeChange,
   onRun,
   onCancel,
   onCompose,
@@ -703,6 +799,8 @@ function RunBar({
   mode: Mode;
   composing: boolean;
   composeReady: boolean;
+  runMode: "real" | "sim" | "sim_then_real";
+  onRunModeChange: (m: "real" | "sim" | "sim_then_real") => void;
   onRun: () => void;
   onCancel: () => void;
   onCompose: () => void;
@@ -729,6 +827,18 @@ function RunBar({
             <span className="text-[12px] text-muted truncate">{placeholder}</span>
           )}
         </div>
+
+        {!isRunning && (
+          <SegmentedControl
+            options={[
+              { id: "real", label: "Real" },
+              { id: "sim", label: "Sim" },
+              { id: "sim_then_real", label: "Sim → Real" },
+            ]}
+            active={runMode}
+            onSelect={onRunModeChange}
+          />
+        )}
 
         {showComposeButton && (
           <Button
@@ -1149,6 +1259,79 @@ function DetailsPanel({
           <div className="text-[11px] text-muted italic">No activity yet</div>
         )}
         <div ref={logEndRef} />
+      </div>
+    </div>
+  );
+}
+
+function DryRunApprovalModal({
+  status,
+  approving,
+  onApprove,
+  onReject,
+}: {
+  status: {
+    task_id: string;
+    tree_name: string;
+    sim_status: string;
+    message: string;
+    sim_duration_sec: number;
+    completed_skills: string[];
+    failed_skills: string[];
+  };
+  approving: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const ok = status.sim_status === "SUCCESS";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-paper border border-hair rounded-md max-w-md w-[90%] p-5 shadow-lg">
+        <div className="flex items-center gap-2 mb-3">
+          <Eyebrow size="sm" tone="ink">
+            Dry-run complete
+          </Eyebrow>
+          <Chip state={ok ? "done" : "failed"}>{status.sim_status || "?"}</Chip>
+        </div>
+        <p className="text-[13px] text-ink mb-2">
+          Sim phase of <span className="font-medium">{status.tree_name}</span>{" "}
+          finished in {status.sim_duration_sec.toFixed(1)}s.
+        </p>
+        {status.message && (
+          <p className="text-[12px] text-muted mb-2">{status.message}</p>
+        )}
+        {status.completed_skills.length > 0 && (
+          <p className="text-[11px] text-muted mb-1">
+            Completed: {status.completed_skills.join(", ")}
+          </p>
+        )}
+        {status.failed_skills.length > 0 && (
+          <p className="text-[11px] text-terracotta mb-1">
+            Failed: {status.failed_skills.join(", ")}
+          </p>
+        )}
+        <p className="text-[12px] text-muted mt-3 mb-4">
+          Approve to run the same tree against the real action servers, or
+          reject to stop here.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button
+            onClick={onReject}
+            variant="secondary"
+            size="sm"
+            disabled={approving}
+          >
+            Reject
+          </Button>
+          <Button
+            onClick={onApprove}
+            variant="primary"
+            size="sm"
+            disabled={approving || !ok}
+          >
+            {approving ? "Releasing…" : "Approve & run real"}
+          </Button>
+        </div>
       </div>
     </div>
   );

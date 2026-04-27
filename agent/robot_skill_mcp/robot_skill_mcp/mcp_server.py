@@ -114,6 +114,8 @@ async def execute_tree(
     tick_rate_hz: float = 5.0,
     wait_for_completion: bool = True,
     timeout_sec: float = 300.0,
+    target_mode: str = "real",
+    sim_tree_xml: str | None = None,
 ) -> dict[str, Any]:
     """Submit a behavior tree to /skill_server/execute_behavior_tree.
 
@@ -123,6 +125,18 @@ async def execute_tree(
 
     tick_rate_hz controls the TaskState heartbeat publish rate (clamped
     server-side to [0.5, 20]). It does NOT control tree execution cadence.
+
+    target_mode is one of:
+      - "real" (default): run only against real action servers.
+      - "sim": run only against /sim/* action servers.
+      - "sim_then_real": run sim first; on success the orchestrator parks in
+        AWAITING_APPROVAL and publishes /skill_server/dryrun_status. Call
+        get_dryrun_status() to inspect the outcome and approve_dry_run() to
+        release the gate.
+
+    sim_tree_xml is an optional override BT XML for the sim phase only —
+    useful when the dry-run variant elides multi-hour steps. Empty falls back
+    to tree_xml.
 
     When wait_for_completion=True (default), blocks until the action
     completes or timeout_sec elapses. When False, returns immediately after
@@ -146,12 +160,48 @@ async def execute_tree(
             tree_name = name
     if tree_name is None:
         tree_name = "mcp_tree"
+    mode_map = {"real": 0, "sim": 1, "sim_then_real": 2}
+    mode = mode_map.get(target_mode.lower())
+    if mode is None:
+        return {
+            "accepted": False,
+            "message": f"target_mode must be one of {sorted(mode_map)}; got {target_mode!r}",
+        }
     return await _b().execute_tree(
         tree_xml=tree_xml,
         tree_name=tree_name,
         tick_rate_hz=tick_rate_hz,
         wait_for_completion=wait_for_completion,
         timeout_sec=timeout_sec if wait_for_completion else None,
+        target_mode=mode,
+        sim_tree_xml=sim_tree_xml or "",
+    )
+
+
+@mcp.tool()
+def get_dryrun_status() -> dict[str, Any] | None:
+    """Return the latest /skill_server/dryrun_status, or None if no goal is
+    awaiting approval. Latched topic — populates immediately on subscribe.
+    """
+    return _b().get_dryrun_status()
+
+
+@mcp.tool()
+async def approve_dry_run(
+    approve: bool,
+    task_id: str = "",
+    reason: str = "",
+) -> dict[str, Any]:
+    """Release the SIM_THEN_REAL approval gate.
+
+    approve=true → orchestrator runs the real phase. approve=false → real
+    phase is skipped (overall result remains the sim's SUCCESS).
+
+    task_id is optional: empty matches whichever goal is currently parked.
+    Pass it to assert that you're approving a specific run.
+    """
+    return await _b().approve_dry_run(
+        approve=approve, task_id=task_id, reason=reason,
     )
 
 

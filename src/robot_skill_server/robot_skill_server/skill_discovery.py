@@ -227,6 +227,15 @@ class SkillDiscovery(Node):
                     continue
                 if not name.endswith(f"/{SKILLS_TOPIC_SUFFIX}"):
                     continue
+                # Skip sim-namespaced manifests: when a provider is launched
+                # under PushRosNamespace("/sim") its skills topic surfaces at
+                # /sim/<provider>/skills with action paths under /sim/...
+                # The orchestrator derives sim paths by prepending /sim to
+                # the real-mode server_name at parse time, so the duplicate
+                # advertisement would just overwrite the real entry. Filter
+                # here keeps the registry single-source-of-truth on real.
+                if name.startswith("/sim/"):
+                    continue
                 if name in self._subs:
                     continue
                 self._subscribe(name)

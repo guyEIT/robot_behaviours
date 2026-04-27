@@ -80,6 +80,10 @@ class LiconicActionServer(Node):
         # liconic_ros.sim_backend). Lets BTs exercise TakeIn/Fetch/etc.
         # without real hardware.
         self.declare_parameter("simulation", False)
+        # time_compression: sim-only knob honoured by LiconicSimBackend to
+        # collapse multi-hour incubations / shaker waits into seconds. 0.0
+        # disables compression (default). Real backend ignores this.
+        self.declare_parameter("time_compression", 0.0)
 
         port = self._str_param("port")
         model = self._str_param("model")
@@ -92,6 +96,9 @@ class LiconicActionServer(Node):
         )
         simulation = bool(
             self.get_parameter("simulation").get_parameter_value().bool_value
+        )
+        time_compression = float(
+            self.get_parameter("time_compression").get_parameter_value().double_value
         )
 
         # Resolve state_file. If the operator passed an explicit value it
@@ -126,10 +133,15 @@ class LiconicActionServer(Node):
         self._machine = LiconicMachine(
             port=port, model=model, rack_model=rack_model,
             total_cassettes=total_cassettes, simulation=simulation,
+            time_compression=time_compression,
         )
         if simulation:
+            tc_note = (
+                f" (time_compression={time_compression:g})" if time_compression > 0
+                else ""
+            )
             self.get_logger().info(
-                "simulation=true — using LiconicSimBackend (no PLC, no serial)"
+                f"simulation=true — using LiconicSimBackend (no PLC, no serial){tc_note}"
             )
 
         self._bridge = AsyncioBridge()

@@ -1,251 +1,204 @@
-# Robot Skills Framework — ROS2 Jazzy
+# Robot Skills Framework — ROS 2 Jazzy
 
-A hierarchical, extensible, agent-callable robot control framework for the **Meca500 manipulator** with **Intel RealSense** camera, built on **ROS2 Jazzy** + **MoveIt2** + **BehaviorTree.CPP v4**.
+A discovery-based robot/instrument orchestration framework. Every skill — hardware-bound (MoveIt2 arm motion, pylabrobot instrument calls) or software-only (LLM-authored scripts) — is exposed as a self-advertising **ROS 2 action**. The orchestrator never hardcodes endpoints; it subscribes to latched `<node>/skills` manifests and dispatches goals over DDS.
+
+Built on **ROS 2 Jazzy** + **MoveIt2** + a Python BehaviorTree.CPP-v4-compatible executor.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  AI Agent / LLM / PlanSys2 / External Scheduler             │
-│  QuerySkills → ComposeTask → RegisterSkill → Execute         │
-└──────────────────┬───────────────────────────────────────────┘
-                   │  ROS2 Services + Actions
-┌──────────────────▼───────────────────────────────────────────┐
-│  robot_skill_server (Python)                                 │
-│  SkillRegistry │ TaskComposer │ BtExecutor                   │
-└──────┬───────────────────────────────────┬────────────────────┘
-       │ runs BT trees                     │ direct calls
-┌──────▼──────────┐         ┌──────────────▼──────────────────┐
-│ robot_behaviors  │         │ robot_arm_skills (C++)          │
-│ (XML trees)     │         │ MoveToNamedConfig                │
-└──────┬──────────┘         │ MoveToCartesianPose              │
-       │                    │ GripperControl                   │
-┌──────▼──────────┐         │ DetectObject                     │
-│ robot_bt_nodes  │─────────│                                  │
-│ (C++ BT plugins)│         └──────────────┬───────────────────┘
-└─────────────────┘                        │
-              ┌────────────────────────────┼──────────────┐
-       ┌──────▼──────┐  ┌─────────────────▼──┐  ┌────────▼──────┐
-       │   MoveIt2   │  │ realsense2_camera   │  │ ros2_control  │
-       └─────────────┘  └────────────────────┘  └───────────────┘
-```
+![Architecture diagram](architecture.png)
 
-## Quick Start
+Vector version: [architecture.svg](architecture.svg). Full text writeup: [architecture.md](architecture.md). Editable source: [architecture.excalidraw](architecture.excalidraw) (open at [excalidraw.com](https://excalidraw.com)).
+
+**Core principles**
+
+1. **A ROS action is the only skill API.** C++/MoveIt arm skills, Python/pylabrobot instrument skills, and agent-authored scripts all advertise the same way and are dispatched the same way.
+2. **Discovery, not registration.** Every node hosting skills publishes a latched `<node>/skills` manifest with `TRANSIENT_LOCAL` durability and `LIVELINESS_AUTOMATIC` QoS. Restart and late-join are handled by DDS, not heartbeats.
+3. **Topology = trust.** Code runs on the host that owns its execution context. The orchestrator never executes agent-authored code; it dispatches to ROS endpoints.
+4. **One process per provider host.** Each robot/instrument PC runs a single skill-server-proxy node hosting all of that host's actions.
+5. **Each top-level directory maps to one deployment role.**
+
+## Directory layout
+
+| Top-level dir | Role | Runs on |
+|---|---|---|
+| [lib/](lib/) | Shared libraries — host-agnostic, no runtime | Consumed by every host |
+| [src/](src/) | Orchestrator processes + assets | Orchestrator PC |
+| [agent/](agent/) | MCP-host processes + agent-local services | Agent's machine (anywhere on DDS) |
+| [providers/](providers/) | Per-robot/instrument code | The robot/instrument PC |
+
+### Providers
+
+| Provider | Code | Skills |
+|---|---|---|
+| Mecademic Meca500 6-DoF arm | [providers/meca500/](providers/meca500/) | 12 MoveIt2 atoms (MoveToNamed/Joint/Cartesian, Gripper, SetDIO, RobotEnable, CheckSystemReady, CheckCollision, UpdateSceneObject, …) |
+| Generic Panda 7-DoF (mock backend) | [providers/panda_sim/](providers/panda_sim/) | mock skill atoms used by `lab-sim` and `lite-native` |
+| PBI Liconic STX44 incubator | [providers/pbi_liconic/](providers/pbi_liconic/) | TakeIn, Fetch (pylabrobot) |
+| Hamilton STAR liquid handler | [providers/pbi_liconic/](providers/pbi_liconic/) | MoveResource, HandoffTransfer, PickUpCoreGripper, ReturnCoreGripper |
+
+Both Liconic and Hamilton are pulled from the `guyEIT/pbi_liconic` upstream as a `git subtree`. See [CLAUDE.md](CLAUDE.md) for the subtree pull/push commands.
+
+## Quick start
 
 ### Prerequisites
 
-- Pixi
-- Linux desktop for the local ROS2 Jazzy runtime
+- Pixi (Linux desktop). Docker Compose remains as a fallback path.
+- A populated local conda channel at `~/channel` hosting `ros-jazzy-robot-skills-msgs` (one-time bootstrap).
 
-Docker and Docker Compose are still available as a fallback, but the normal
-development loop is local through Pixi.
-
-### 1. Build and start locally
-
-```bash
-pixi run dev
-```
-
-This builds the dashboard, builds the lite ROS workspace with `colcon`, and
-launches the local lite stack:
-
-1. mock skill atoms
-2. skill server, task composer, and BT executor
-3. robot state publisher, diagnostics, rosbridge, and dashboard
-
-The dashboard is served at `http://localhost:8080`. Stop the local stack with
-`Ctrl+C`.
-
-### 2. Local development loop
-
-```bash
-# Rebuild ROS packages after Python/XML/C++ changes
-pixi run dev-build-fast
-
-# Relaunch without rebuilding
-pixi run dev-run
-
-# Open a sourced local ROS shell
-pixi run dev-shell
-
-# Inspect the local ROS graph
-pixi run status
-```
-
-Use `pixi run dashboard-dev` when you want the React dev server with hot
-reload. Use `pixi run dashboard-build` before `dev-build-fast` when frontend
-assets should be installed into the ROS package.
-
-### 3. Run tests
-
-```bash
-pixi run test
-```
-
-### 4. Call skills
-
-```bash
-# Open a local ROS shell
-pixi run dev-shell
-
-# List all available skills
-ros2 service call /skill_server/get_skill_descriptions \
-  robot_skills_msgs/srv/GetSkillDescriptions \
-  '{include_compounds: true, include_pddl: false}'
-
-# Move to home
-ros2 action send_goal /skill_server/execute_behavior_tree \
-  robot_skills_msgs/action/ExecuteBehaviorTree \
-  '{tree_name: "home", tree_xml: "'"$(cat src/robot_behaviors/trees/move_to_home.xml)"'"}'
-
-# Compose a custom task from skill steps
-ros2 service call /skill_server/compose_task \
-  robot_skills_msgs/srv/ComposeTask \
-  '{
-    task_name: "my_task",
-    task_description: "Custom pick sequence",
-    sequential: true,
-    steps: [
-      {skill_name: "move_to_named_config", parameters_json: "{\"config_name\": \"observe\"}"},
-      {skill_name: "detect_object", parameters_json: "{\"object_class\": \"seed\", \"timeout_sec\": 5.0}"},
-      {skill_name: "gripper_control", parameters_json: "{\"command\": \"open\"}"}
-    ]
-  }'
-```
-
-### 5. Groot2 (BT monitoring)
-
-Groot2 is no longer managed through Pixi. If you run Groot2 separately, connect
-it to the running skill server with `Connect -> ZMQ Server -> Port 1666`.
-
-### 6. Native pixi build (no Docker)
-
-`pixi-build-ros` builds each ROS package as a conda package inside a pixi
-environment. Sibling packages (e.g. `robot_mock_skill_atoms` including message
-headers from `robot_skills_msgs`) can't be chained through pixi-build's build
-environments in pixi ≤ 0.67, so `robot_skills_msgs` is hosted in a local conda
-channel at `~/channel`. Every other package is declared as a path-dependency
-and rebuilt by pixi-build-ros on source change.
-
-#### First time per machine
+### One-time bootstrap
 
 ```bash
 bash scripts/bootstrap-msgs.sh
 ```
 
-Creates `~/channel/` and builds `robot_skills_msgs` into it. Run this once on
-a clean machine. It bypasses `pixi run` because pixi 0.67 eagerly resolves all
-declared environments, and the `lite-native` / `real-native` envs reference
-`~/channel` — so no `pixi run *` task can start until `~/channel` exists.
+Builds `robot_skills_msgs` into `~/channel/`. Required because pixi 0.67 eagerly resolves all envs and the native envs reference `~/channel`.
 
-#### Run natively
-
-After the bootstrap, one command handles everything:
+### Run the whole lab in sim (single command)
 
 ```bash
-pixi run lite-native-up   # rebuild msgs + dashboard + all path-deps, then launch lite stack
-pixi run real-native-up   # same, but builds skill_atoms (MoveIt2) instead of mock atoms
+pixi run lab-sim-up
+# open http://localhost:8081 — pick test_meca500_sim / test_hamilton_sim / test_liconic_smoke
 ```
 
-Both tasks `depends-on` `update-msgs` and `dashboard-build`, so you don't need
-to chain commands — source edits anywhere in the workspace are picked up on
-the next `*-native-up`.
+Brings up *every* provider sim + skill atoms + skill_server + dashboard in one `ros2 launch`. Validated end-to-end (hamilton 0.54 s, liconic 0.54 s, meca500 8.80 s).
 
-`real-native-up` expects the host's `move_group` (Meca500 MoveIt2) to already
-be running; it connects over the shared DDS domain.
-
-#### Common workflows
+### Per-provider sim (one provider in isolation)
 
 ```bash
-# Rebuild only msgs (after editing a .msg/.srv/.action):
+pixi run meca500-sim-test    # MoveIt fake_hardware + Meca atoms + skill_server
+pixi run hamilton-sim-test   # STAR sim backend + skill_server
+pixi run liconic-sim-test    # Liconic sim backend + skill_server
+```
+
+Submit the matching test tree from [src/robot_behaviors/trees/](src/robot_behaviors/trees/).
+
+### Single-box deployments
+
+| Mode | Command | What runs |
+|---|---|---|
+| `lite-native` | `pixi run lite-native-up` | dashboard + orchestration with mock atoms (no MoveIt2) |
+| `real-native` | `pixi run real-native-up` | full real-robot stack on one PC |
+| `lab-sim` | `pixi run lab-sim-up` | every provider sim + dashboard |
+| ★ `lab-up` | `pixi run lab-up` | `lab-sim` + paired `/sim/*` instances for `MODE_SIM_THEN_REAL` testing |
+
+### Distributed production
+
+Per-PC pixi envs install only what each box needs. All share `ros-jazzy-robot-skills-msgs` from `~/channel`.
+
+| Env | Target PC | Tasks |
+|---|---|---|
+| `orchestrator` | control PC | `orchestrator-up` |
+| `meca500-host` | Meca500 robot PC | `meca500-moveit-run` + `meca500-atoms-run`; `meca500-sim-up` for fake_hardware |
+| `liconic-host` | Liconic / Hamilton PC | `liconic-up`, `liconic-sim-up`, `hamilton-up`, `hamilton-sim-up` |
+| `lite-native` | dev box | `lite-native-up` |
+| `real-native` | single-box real robot | `real-native-up` |
+
+### Common workflows
+
+```bash
+# Rebuild only msgs after editing a .msg/.srv/.action
 pixi run update-msgs
 
-# Launch without rebuilding anything:
-pixi run lite-native-run          # or real-native-run (auto-picks the right env)
+# Open a sourced ROS shell
+pixi run lite-native-shell        # or real-native-shell, meca500-host shell, etc.
 
-# Open a shell in the native env:
-pixi run lite-native-shell        # or real-native-shell
+# Inspect the running ROS graph
+pixi run status
 
-# Wipe the native envs (keeps ~/channel):
-pixi run native-clean
-
-# Nuke everything and start over:
-pixi run native-clean && rm -rf ~/channel && bash scripts/bootstrap-msgs.sh
+# Run the test suite
+pixi run test
 ```
 
-The native tasks launch the dashboard on **port 8081** (matching the Docker-lite
-convention) and rosbridge on **port 9090**. Override with a launch arg:
+## Calling skills
 
 ```bash
-pixi run lite-native-run dashboard_port:=8082 rosbridge_port:=9091
+# List the skill registry (merged view of every */skills topic)
+ros2 service call /skill_server/get_skill_descriptions \
+  robot_skills_msgs/srv/GetSkillDescriptions \
+  '{include_compounds: true, include_pddl: false}'
+
+# Execute a behavior tree XML
+ros2 action send_goal /skill_server/execute_behavior_tree \
+  robot_skills_msgs/action/ExecuteBehaviorTree \
+  "$(python3 -c 'import yaml,sys; xml=open(sys.argv[1]).read(); print(yaml.safe_dump({"tree_xml": xml, "tree_name": "demo", "target_mode": 0}, default_style="|"))' src/robot_behaviors/trees/move_to_home.xml)"
+
+# Compose a tree from skill steps
+ros2 service call /skill_server/compose_task \
+  robot_skills_msgs/srv/ComposeTask \
+  '{
+    task_name: "my_task",
+    sequential: true,
+    steps: [
+      {skill_name: "move_to_named_config", parameters_json: "{\"config_name\": \"home\"}"},
+      {skill_name: "gripper_control",       parameters_json: "{\"command\": \"open\"}"}
+    ]
+  }'
 ```
 
-If the Docker lite container is running, stop it first to free the ports:
+`target_mode` on `ExecuteBehaviorTree`: `0 = MODE_REAL` (default, back-compat), `1 = MODE_SIM` (one-shot dry-run), `2 = MODE_SIM_THEN_REAL` (sim → operator approval gate → real).
+
+## Sim-before-real workflow ★
+
+Long-running plans (multi-step assays, hours-long incubations) get a fast pre-flight against a paired `/sim/*` action surface, then a human approval gate before the real phase runs.
+
+- Each provider launch accepts `namespace_prefix:=/sim` and wraps its action servers in a `PushRosNamespace` group.
+- `SkillDiscovery` filters out `/sim/*` manifests so the registry is single-source-of-truth on real entries.
+- `TreeExecutor` synthesises the sim path at parse time by string-prepending `/sim` — same XML, both phases.
+- On a successful sim phase, `BtExecutor` latches a `DryRunStatus` on `/skill_server/dryrun_status` and waits on `/skill_server/approve_dry_run` (`ApproveDryRun.srv`). The dashboard surfaces an approve/reject modal.
+
+## MCP / agent surface
+
+Agents (LLMs, MCP clients) drive the lab through [agent/robot_skill_mcp/](agent/robot_skill_mcp/) — a FastMCP stdio server bridged into ROS:
+
+| Tool | Purpose |
+|---|---|
+| `list_skills`, `list_trees` | introspect the runtime registry |
+| `compose_task` | build a BT XML from steps |
+| `execute_tree` | dispatch `/skill_server/execute_behavior_tree` |
+| `register_script`, `list_scripts`, `delete_script` | session-scoped agent-authored skills |
+| `get_dryrun_status`, `approve_dry_run` | drive the sim-then-real gate |
+
+Agent-authored scripts run on the agent's host via [agent/robot_script_server/](agent/robot_script_server/) — the orchestrator never executes agent code; from its point of view a registered script is just another `RunScript`-typed action.
+
+## Live update
+
+`./src` is bind-mounted into the dev container; `colcon build --symlink-install` symlinks Python and XML share files back to source.
+
+| Change type | Action |
+|---|---|
+| Behavior tree XML | save the file — `BtExecutor` polls every 2 s, dashboard updates over the latched topic |
+| Python orchestrator code | save the file — symlinked. Restart the node only if it caches state at startup |
+| C++ atoms | `colcon build --packages-select <pkg>` + node restart |
+| Frontend | `vite build` + `colcon build --symlink-install --packages-select robot_dashboard` (or `pixi run dashboard-dev` for hot reload) |
+
+## Adding a skill
+
+See [docs/adding-skills.md](docs/adding-skills.md) and the Claude Code commands:
+
+- `/new-skill-atom` — generic primitive (lib/robot_arm_skills) or provider-specific atom
+- `/new-compound-skill` — vetted, persisted compound skill
+- `/new-behavior-tree` — XML tree
+- `/debug-skill` — diagnose a failing skill or tree
+
+## Docker fallback
+
+Local Pixi is the preferred path; Docker remains as a fallback.
 
 ```bash
-pixi run lite-down && pixi run lite-native-up
-```
-
-### 7. Docker fallback
-
-The Docker workflows remain in Pixi for comparison and fallback:
-
-```bash
-pixi run lite-up
-pixi run lite-logs
-pixi run lite-down
-
-pixi run real-up
-pixi run real-logs
-pixi run real-down
-
+pixi run lite-up   pixi run lite-logs    pixi run lite-down
+pixi run real-up   pixi run real-logs    pixi run real-down
 pixi run docker-status
-pixi run docker-test
 ```
-
-## Docker Fallback
 
 | Container | Image | Purpose |
-|-----------|-------|---------|
-| `ros2_robot_skills_lite` | `ros2-jazzy-robot-skills-lite` | Lite mock skill stack |
-| `ros2_robot_skills_dev` | `ros2-jazzy-robot-skills` | Real robot skill server container |
+|---|---|---|
+| `ros2_robot_skills_lite` | `ros2-jazzy-robot-skills-lite` | lite mock skill stack |
+| `ros2_robot_skills_dev` | `ros2-jazzy-robot-skills` | real robot skill server |
 
-Docker containers use host networking for ROS2 DDS discovery and bind-mount
-`./src` for source edits. They are kept for fallback while local Pixi dev is
-the preferred path.
+Containers use host networking for DDS discovery and bind-mount `./src`.
 
-## Package Structure
+## Further reading
 
-| Package | Language | Role |
-|---------|----------|------|
-| `robot_skills_msgs` | — | ROS2 message/service/action definitions |
-| `robot_arm_skills` | C++ | Primitive skill action servers |
-| `robot_bt_nodes` | C++ | BT.CPP v4 leaf node plugins |
-| `robot_skill_server` | Python/C++ | Orchestrator: SkillRegistry, TaskComposer, BtExecutor |
-| `robot_behaviors` | XML | Pre-built behavior trees |
-| `robot_sim_config` | — | MoveIt2 + ros2_control config (URDF, SRDF, controllers) |
-
-## Skill Atoms
-
-| Skill | Action Topic | Description |
-|-------|-------------|-------------|
-| `move_to_named_config` | `/skill_atoms/move_to_named_config` | Move to named joint config (home, ready, stow, observe) |
-| `move_to_cartesian_pose` | `/skill_atoms/move_to_cartesian_pose` | Move EEF to 6-DOF pose |
-| `gripper_control` | `/skill_atoms/gripper_control` | Open/close/position gripper with force control |
-| `detect_object` | `/skill_atoms/detect_object` | Detect objects with RealSense (stub — needs ML backend) |
-
-## Pre-built Behaviors
-
-| Behavior | File | Description |
-|----------|------|-------------|
-| `move_to_home` | `trees/move_to_home.xml` | Safe home return (open gripper + move to home config) |
-| `seed_collection` | `trees/seed_collection.xml` | Full seed pick sequence (uses detect_object) |
-| `pick_and_place` | `trees/pick_and_place.xml` | Generic pick+place with retry logic |
-
-## Adding New Skills
-
-1. Create a new action definition in `robot_skills_msgs/action/`
-2. Implement `YourSkill : SkillBase<YourAction>` in `robot_arm_skills/src/`
-3. Add a `YourSkillNode : BT::RosActionNode<YourAction>` in `robot_bt_nodes/src/`
-4. Register in `bt_runner.cpp` and `bt_nodes_plugin.cpp`
-5. The skill auto-appears in `GetSkillDescriptions` after `colcon build`
+- [architecture.md](architecture.md) — full architecture writeup
+- [CLAUDE.md](CLAUDE.md) — development environment, validation status, known follow-ups
+- [docs/adding-skills.md](docs/adding-skills.md)

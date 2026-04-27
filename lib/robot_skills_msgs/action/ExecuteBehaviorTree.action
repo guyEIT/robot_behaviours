@@ -10,12 +10,26 @@ float64 tick_rate_hz               # TaskState heartbeat publish rate while the 
                                    # "tick rate" in the BT.CPP sense doesn't apply.
                                    # See docs/tick-based-bt-executor.md for the
                                    # rationale.
+uint8 MODE_REAL=0                  # Default. Run only against real action servers.
+uint8 MODE_SIM=1                   # Run only against /sim/* action servers.
+uint8 MODE_SIM_THEN_REAL=2         # Run sim first; on success publish DryRunStatus
+                                   # and wait for ApproveDryRun before running real.
+uint8 target_mode
+string sim_tree_xml                # Optional override BT XML for the sim phase.
+                                   # Empty -> sim phase reuses tree_xml.
+                                   # Useful when the sim variant elides long-running
+                                   # steps (e.g. multi-hour incubations).
 ---
 # Result
 bool success
 string message
 string final_status                # "SUCCESS", "FAILURE", "HALTED", "ERROR"
 float64 total_execution_time_sec
+string sim_final_status            # Sim-phase status when target_mode=SIM_THEN_REAL,
+                                   # otherwise empty. Same enum as final_status, plus
+                                   # "SKIPPED" when sim wasn't run.
+string real_final_status           # Real-phase status when target_mode=SIM_THEN_REAL,
+                                   # otherwise empty. "SKIPPED" if approval rejected.
 ---
 # Feedback
 string current_node_name           # Name of currently executing BT node
@@ -23,3 +37,8 @@ string current_node_type           # Type of node (Action, Condition, Sequence, 
 string tree_status                 # "RUNNING", "SUCCESS", "FAILURE"
 float64 elapsed_time_sec
 string status_message
+uint8 PHASE_NONE=0                 # target_mode=REAL or SIM (single-phase run)
+uint8 PHASE_SIM=1                  # Sim phase running
+uint8 PHASE_AWAITING_APPROVAL=2    # Sim done, blocked on ApproveDryRun
+uint8 PHASE_REAL=3                 # Real phase running (after approval)
+uint8 phase

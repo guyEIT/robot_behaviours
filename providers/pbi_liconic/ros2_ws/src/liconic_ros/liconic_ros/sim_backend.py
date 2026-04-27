@@ -50,10 +50,21 @@ class LiconicSimBackend:
         model: Any = None,
         port: str = "",
         initial_tray_loaded: bool = True,
+        time_compression: float = 0.0,
     ) -> None:
         # Stored for parity with ExperimentalLiconicBackend's constructor.
         self._model = model
         self._port = port
+
+        # time_compression is the dry-run lever for long-running operations.
+        # 0.0 = no waits at all (sim returns immediately); >0.0 = future
+        # incubate/shaker actions divide their nominal duration by this
+        # factor before sleeping. Today's LiconicSimBackend has no native
+        # wait points, but the helper :meth:`compressed_sleep` is wired so
+        # that when long-duration actions are added (e.g. a future
+        # WaitForStableClimate / Incubate), they call this and respect the
+        # operator's compression preference.
+        self._time_compression: float = float(time_compression)
 
         self._racks: List[PlateCarrier] = []
         # site_id (string, unique resource name) -> Plate on it
@@ -73,6 +84,20 @@ class LiconicSimBackend:
         self._humidity: float = 0.0
 
         self._shaking_hz: float = 0.0
+
+    async def compressed_sleep(self, real_seconds: float) -> None:
+        """Sleep ``real_seconds`` divided by the configured time_compression.
+
+        ``time_compression == 0.0`` (default): no sleep at all — the dry-run
+        skips the wait entirely. Otherwise the real duration collapses to
+        ``real_seconds / time_compression``. Long-duration actions added in
+        the future should call this rather than ``asyncio.sleep`` so the
+        sim respects the launch-time compression knob.
+        """
+        import asyncio
+        if self._time_compression <= 0.0:
+            return
+        await asyncio.sleep(real_seconds / self._time_compression)
 
     # ─── Lifecycle ────────────────────────────────────────────────────────────
 

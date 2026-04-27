@@ -404,6 +404,7 @@ uvicorn = "*"
 [feature.lab-sim.tasks]
 lab-sim-run   = { cmd = "ros2 launch robot_skill_server sim_lab.launch.py", description = "Launch every provider sim + orchestrator + dashboard. Open http://localhost:8081 to drive BTs from the UI." }
 lab-sim-shell = { cmd = "bash -i", description = "Shell in the lab-sim pixi environment" }
+lab-run       = { cmd = "ros2 launch robot_skill_server lab_full.launch.py", description = "Launch every provider in BOTH real-mode and sim-mode (paired /sim namespace). Lets the orchestrator dry-run trees on the sim before running on real. http://localhost:8081 to drive BTs." }
 
 # ── MCP server env (BT executor exposed as Model Context Protocol over stdio) ──
 # Lightweight env: just rclpy + msgs + the mcp PyPI lib. No skill_server here —
@@ -498,6 +499,7 @@ hamilton-sim-up       = { cmd = "pixi run hamilton-server-sim", depends-on = ["l
 # ── Whole-lab sim (every provider + orchestrator + dashboard, one launch) ────
 lab-sim-install       = { cmd = "pixi install --environment lab-sim", depends-on = ["update-msgs", "dashboard-build"], description = "Build msgs + dashboard frontend + resolve lab-sim env (every provider + framework)" }
 lab-sim-up            = { cmd = "pixi run lab-sim-run", depends-on = ["lab-sim-install"], description = "Build everything and launch all sims + skill_server + dashboard. http://localhost:8081 to drive BTs." }
+lab-up                = { cmd = "pixi run lab-run", depends-on = ["lab-sim-install"], description = "Like lab-sim-up but brings up real-mode AND sim-mode action servers side-by-side under paired namespaces. Use target_mode=MODE_SIM_THEN_REAL to dry-run a tree on /sim before running on real." }
 
 # ── MCP (BT executor over Model Context Protocol on stdio) ────────────────────
 mcp-install = { cmd = "pixi install --environment mcp", depends-on = ["update-msgs"], description = "Resolve mcp env (rclpy + msgs + mcp PyPI lib)" }

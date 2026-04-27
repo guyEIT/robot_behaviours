@@ -20,9 +20,9 @@ import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, GroupAction, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import ComposableNodeContainer, Node
+from launch_ros.actions import ComposableNodeContainer, Node, PushRosNamespace
 from launch_ros.descriptions import ComposableNode
 
 
@@ -47,6 +47,7 @@ def _setup(context, *args, **kwargs):
     robot_id = LaunchConfiguration("robot_id").perform(context)
     robots_config_path = LaunchConfiguration("robots_config").perform(context)
     log_level = LaunchConfiguration("log_level").perform(context)
+    namespace_prefix = LaunchConfiguration("namespace_prefix").perform(context)
 
     with open(robots_config_path) as f:
         robots_yaml = yaml.safe_load(f)
@@ -58,7 +59,17 @@ def _setup(context, *args, **kwargs):
             f"available: {sorted(robots.keys())}"
         )
     robot_cfg = robots[robot_id]
-    ns = robot_cfg.get("namespace", f"/{robot_id}")
+    base_ns = robot_cfg.get("namespace", f"/{robot_id}")
+    # When namespace_prefix is set (e.g. "/sim"), the proxy + atoms run under
+    # that prefix and advertise action paths like /sim/<robot>/skill_atoms/...
+    # The orchestrator's tree_executor reaches them by prepending /sim to the
+    # discovered real-mode server_name at parse time.
+    if namespace_prefix:
+        if not namespace_prefix.startswith("/"):
+            namespace_prefix = "/" + namespace_prefix
+        ns = namespace_prefix + base_ns
+    else:
+        ns = base_ns
     has_gripper = robot_cfg.get("has_gripper", False)
     arm_controller_action = robot_cfg.get(
         "arm_controller_action",
@@ -175,7 +186,14 @@ def _setup(context, *args, **kwargs):
         }],
     )
 
-    return [container, manifest_publisher, rosbag_skills]
+    actions = [container, manifest_publisher, rosbag_skills]
+    if namespace_prefix:
+        # PushRosNamespace shifts the manifest topic to /sim/<robot>_skill_server/skills
+        # and tucks the rosbag node under /sim/. SkillDiscovery filters /sim/*
+        # manifest topics so this side-by-side deployment doesn't clobber the
+        # real registry; trees reach sim atoms via parse-time prefix prepend.
+        return [GroupAction([PushRosNamespace(namespace_prefix), *actions])]
+    return actions
 
 
 def generate_launch_description():
@@ -202,6 +220,17 @@ def generate_launch_description():
             "log_level",
             default_value="info",
             description="ROS2 log level (debug, info, warn, error).",
+        ),
+        DeclareLaunchArgument(
+            "namespace_prefix",
+            default_value="",
+            description=(
+                "Top-level namespace prefix for the skill server + atoms "
+                "(e.g. \"/sim\"). When set, atoms advertise under "
+                "<prefix><robot_namespace>/skill_atoms/<name> and the manifest "
+                "topic moves to <prefix>/<robot_id>_skill_server/skills. "
+                "Default empty = real-mode paths."
+            ),
         ),
         OpaqueFunction(function=_setup),
     ])

@@ -31,8 +31,9 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import String
 
 from robot_skills_msgs.action import ExecuteBehaviorTree
-from robot_skills_msgs.msg import LogEvent, TaskState
+from robot_skills_msgs.msg import DryRunStatus, LogEvent, TaskState
 from robot_skills_msgs.srv import (
+    ApproveDryRun,
     ComposeTask,
     GetSkillDescriptions,
     RegisterCompoundSkill,
@@ -55,6 +56,7 @@ class _Caches:
     recent_log_events: collections.deque = field(
         default_factory=lambda: collections.deque(maxlen=200)
     )
+    dryrun_status: dict[str, Any] | None = None
 
 
 class MCPRosBridge:
@@ -83,6 +85,9 @@ class MCPRosBridge:
         self._descriptions_client: Client = self._node.create_client(
             GetSkillDescriptions, "/skill_server/get_skill_descriptions"
         )
+        self._approve_client: Client = self._node.create_client(
+            ApproveDryRun, "/skill_server/approve_dry_run"
+        )
 
         self._node.create_subscription(
             TaskState, "/skill_server/task_state", self._on_task_state, 10
@@ -95,6 +100,9 @@ class MCPRosBridge:
         )
         self._node.create_subscription(
             LogEvent, "/skill_server/log_events", self._on_log_event, 50
+        )
+        self._node.create_subscription(
+            DryRunStatus, "/skill_server/dryrun_status", self._on_dryrun_status, LATCHED_QOS
         )
 
         self._spin_thread = threading.Thread(
@@ -154,6 +162,28 @@ class MCPRosBridge:
         }
         with self._cache_lock:
             self._caches.recent_log_events.append(snap)
+
+    def _on_dryrun_status(self, msg: DryRunStatus) -> None:
+        # An empty task_id means "no goal pending" — clear the cache so
+        # callers don't mistake a stale entry for a fresh approval prompt.
+        if not msg.task_id:
+            with self._cache_lock:
+                self._caches.dryrun_status = None
+            return
+        snap = {
+            "task_id": msg.task_id,
+            "tree_name": msg.tree_name,
+            "sim_status": msg.sim_status,
+            "message": msg.message,
+            "sim_duration_sec": float(msg.sim_duration_sec),
+            "completed_skills": list(msg.completed_skills),
+            "failed_skills": list(msg.failed_skills),
+            "published_at_sec": (
+                msg.published_at.sec + msg.published_at.nanosec / 1e9
+            ),
+        }
+        with self._cache_lock:
+            self._caches.dryrun_status = snap
 
     # ── Cache accessors (called from MCP tool handlers, asyncio thread) ────
 
@@ -360,6 +390,8 @@ class MCPRosBridge:
         tick_rate_hz: float,
         wait_for_completion: bool,
         timeout_sec: float | None,
+        target_mode: int = 0,
+        sim_tree_xml: str = "",
     ) -> dict[str, Any]:
         if not self._action_client.wait_for_server(timeout_sec=5.0):
             raise RuntimeError("execute_behavior_tree action server not available")
@@ -374,6 +406,8 @@ class MCPRosBridge:
         goal.tick_rate_hz = float(tick_rate_hz)
         goal.enable_groot_monitor = False
         goal.groot_zmq_port = 1666
+        goal.target_mode = int(target_mode)
+        goal.sim_tree_xml = sim_tree_xml or ""
 
         send_future = self._action_client.send_goal_async(goal)
         goal_handle = await self._await_ros_future(send_future)
@@ -414,9 +448,35 @@ class MCPRosBridge:
             "accepted": True,
             "success": result.success,
             "final_status": result.final_status,
+            "sim_final_status": getattr(result, "sim_final_status", "") or "",
+            "real_final_status": getattr(result, "real_final_status", "") or "",
             "total_execution_time_sec": float(result.total_execution_time_sec),
             "message": result.message,
         }
+
+    async def approve_dry_run(
+        self,
+        approve: bool,
+        task_id: str = "",
+        reason: str = "",
+    ) -> dict[str, Any]:
+        if not self._approve_client.wait_for_service(timeout_sec=2.0):
+            raise RuntimeError("approve_dry_run service not available")
+        req = ApproveDryRun.Request()
+        req.task_id = task_id
+        req.approve = bool(approve)
+        req.reason = reason
+        future = self._approve_client.call_async(req)
+        resp = await self._await_ros_future(future)
+        return {
+            "accepted": bool(resp.accepted),
+            "message": resp.message,
+        }
+
+    def get_dryrun_status(self) -> dict[str, Any] | None:
+        with self._cache_lock:
+            snap = self._caches.dryrun_status
+            return dict(snap) if snap is not None else None
 
     async def cancel_execution(self) -> dict[str, Any]:
         with self._goal_lock:

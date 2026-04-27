@@ -32,8 +32,8 @@ from diagnostic_updater import Updater
 from std_msgs.msg import String
 
 from robot_skills_msgs.action import ExecuteBehaviorTree
-from robot_skills_msgs.msg import LeaseEvent, LogEvent, TaskState
-from robot_skills_msgs.srv import ReleaseLease
+from robot_skills_msgs.msg import DryRunStatus, LeaseEvent, LogEvent, TaskState
+from robot_skills_msgs.srv import ApproveDryRun, ReleaseLease
 
 from robot_skill_server.tree_executor import (
     Blackboard,
@@ -43,6 +43,9 @@ from robot_skill_server.tree_executor import (
     get_main_tree_name,
     parse_trees,
 )
+
+
+SIM_NAMESPACE_PREFIX = "/sim"
 
 
 def _humanise(s: str) -> str:
@@ -83,6 +86,22 @@ class BtExecutor(Node):
         )
         self._log_event_pub = self.create_publisher(
             LogEvent, "/skill_server/log_events", 10
+        )
+        self._dryrun_status_pub = self.create_publisher(
+            DryRunStatus, "/skill_server/dryrun_status", latched_qos
+        )
+
+        # Approval gate state for SIM_THEN_REAL goals. Exactly one goal can be
+        # parked at a time — _execute_bt is async-serialised by the goal
+        # callback. The service handler completes the future to release the
+        # await in the running coroutine.
+        self._pending_approval_task_id: Optional[str] = None
+        self._pending_approval_future: Optional[asyncio.Future] = None
+        self._approve_service = self.create_service(
+            ApproveDryRun,
+            "/skill_server/approve_dry_run",
+            self._on_approve_dry_run,
+            callback_group=callback_group,
         )
 
         # Listen for lease lifecycle; 'revoked' on a lease we hold triggers
@@ -161,7 +180,11 @@ class BtExecutor(Node):
         self._current_task_id = task_id
         self._current_task_name = goal.tree_name
         self._task_started_at = self.get_clock().now().to_msg()
-        start_time = time.time()
+        overall_start = time.time()
+
+        target_mode = int(getattr(goal, "target_mode", 0))
+        is_sim_only = target_mode == ExecuteBehaviorTree.Goal.MODE_SIM
+        is_sim_then_real = target_mode == ExecuteBehaviorTree.Goal.MODE_SIM_THEN_REAL
 
         # Honour the goal's tick_rate_hz if non-zero; falls back to the node
         # default. Clamp to a sensible range so a goal can't accidentally DoS
@@ -173,78 +196,136 @@ class BtExecutor(Node):
         if abs(new_period - self._heartbeat_period) > 1e-3:
             self._install_heartbeat_timer(new_period)
 
+        mode_label = {
+            ExecuteBehaviorTree.Goal.MODE_REAL: "real",
+            ExecuteBehaviorTree.Goal.MODE_SIM: "sim",
+            ExecuteBehaviorTree.Goal.MODE_SIM_THEN_REAL: "sim_then_real",
+        }.get(target_mode, "real")
         self.get_logger().info(
             f"Executing BT '{goal.tree_name}' (id={task_id}) "
-            f"heartbeat={effective_hz:.1f}Hz"
+            f"mode={mode_label} heartbeat={effective_hz:.1f}Hz"
         )
 
-        self._active_bt_xml_pub.publish(String(data=goal.tree_xml))
+        # Active XML displayed on the dashboard reflects the tree about to run
+        # next — for SIM_THEN_REAL this is initially the sim variant.
+        sim_xml = goal.sim_tree_xml if (is_sim_only or is_sim_then_real) and goal.sim_tree_xml else goal.tree_xml
+        if is_sim_only or is_sim_then_real:
+            self._active_bt_xml_pub.publish(String(data=sim_xml))
+        else:
+            self._active_bt_xml_pub.publish(String(data=goal.tree_xml))
 
         self._publish_log_event(
             "task_started",
-            f"Task '{goal.tree_name}' started",
+            f"Task '{goal.tree_name}' started (mode={mode_label})",
             task_id=task_id,
         )
-        self._publish_task_state(
-            task_id=task_id,
-            task_name=goal.tree_name,
-            status="RUNNING",
-        )
+
+        sim_status_str = ""
+        real_status_str = ""
 
         try:
-            # Parse the XML into tree nodes
-            trees = parse_trees(goal.tree_xml, discovery=self._skill_discovery)
-            main_tree_name = get_main_tree_name(goal.tree_xml)
-            main_tree = trees.get(main_tree_name)
+            # ── Sim phase ────────────────────────────────────────────────
+            if is_sim_only or is_sim_then_real:
+                self._publish_task_state(
+                    task_id=task_id,
+                    task_name=goal.tree_name,
+                    status="RUNNING",
+                )
+                phase_start = time.time()
+                sim_status_str, sim_ctx = await self._run_phase(
+                    xml=sim_xml,
+                    task_id=task_id,
+                    task_name=goal.tree_name,
+                    sim_namespace_prefix=SIM_NAMESPACE_PREFIX,
+                )
+                sim_elapsed = time.time() - phase_start
 
-            if not main_tree:
-                raise ValueError(
-                    f"Main tree '{main_tree_name}' not found in XML. "
-                    f"Available: {list(trees.keys())}"
+                # SIM_ONLY: terminate after the sim phase.
+                if is_sim_only:
+                    return self._finalise_goal(
+                        goal_handle=goal_handle,
+                        result=result,
+                        task_id=task_id,
+                        tree_name=goal.tree_name,
+                        ctx=sim_ctx,
+                        final_status=sim_status_str,
+                        elapsed=time.time() - overall_start,
+                        sim_status=sim_status_str,
+                        real_status="",
+                    )
+
+                # SIM_THEN_REAL: publish dry-run status and wait for approval.
+                self._publish_dryrun_status(
+                    task_id=task_id,
+                    tree_name=goal.tree_name,
+                    sim_status=sim_status_str,
+                    sim_elapsed=sim_elapsed,
+                    ctx=sim_ctx,
                 )
 
-            # Create execution context. task_name + started_at travel with
-            # the ctx so per-skill TaskState publishes (emitted from
-            # tree_executor's on_skill_* hooks) carry the right correlation
-            # info for the dashboard's BT viewer.
-            ctx = ExecutionContext(
-                self, trees, task_id=task_id, task_name=goal.tree_name,
+                if sim_status_str != "SUCCESS":
+                    # Sim failed — never promote to real. Surface the sim
+                    # outcome as the overall result.
+                    return self._finalise_goal(
+                        goal_handle=goal_handle,
+                        result=result,
+                        task_id=task_id,
+                        tree_name=goal.tree_name,
+                        ctx=sim_ctx,
+                        final_status=sim_status_str,
+                        elapsed=time.time() - overall_start,
+                        sim_status=sim_status_str,
+                        real_status="SKIPPED",
+                    )
+
+                approved = await self._await_approval(task_id, goal_handle)
+                if not approved:
+                    # Operator rejected (or cancelled). Sim succeeded; we
+                    # report SUCCESS overall but flag real as SKIPPED.
+                    return self._finalise_goal(
+                        goal_handle=goal_handle,
+                        result=result,
+                        task_id=task_id,
+                        tree_name=goal.tree_name,
+                        ctx=sim_ctx,
+                        final_status="SUCCESS",
+                        elapsed=time.time() - overall_start,
+                        sim_status=sim_status_str,
+                        real_status="SKIPPED",
+                    )
+
+            # ── Real phase ────────────────────────────────────────────────
+            self._active_bt_xml_pub.publish(String(data=goal.tree_xml))
+            self._publish_task_state(
+                task_id=task_id,
+                task_name=goal.tree_name,
+                status="RUNNING",
             )
-            ctx.started_at = self._task_started_at
-            ctx.total_action_nodes = count_action_nodes(main_tree)
-            self._current_ctx = ctx
+            real_status_str, real_ctx = await self._run_phase(
+                xml=goal.tree_xml,
+                task_id=task_id,
+                task_name=goal.tree_name,
+                sim_namespace_prefix="",
+            )
 
-            # Execute the tree
-            bb = Blackboard()
-            ctx.root_bb = bb
-            try:
-                tree_status = await main_tree.tick(bb, ctx)
-            finally:
-                # Best-effort release of any leases the tree held but didn't
-                # <ReleaseLease/> itself — e.g. mid-tree failure, cancel,
-                # or a forgotten release in the XML.
-                self._release_surviving_leases(ctx)
-
-            elapsed = time.time() - start_time
-
-            if ctx.cancelled:
-                final_status = "HALTED"
-                success = False
-                await main_tree.halt(ctx)
-            elif tree_status == NodeStatus.SUCCESS:
-                final_status = "SUCCESS"
-                success = True
-            else:
-                final_status = "FAILURE"
-                success = False
-            self._current_ctx = None
+            return self._finalise_goal(
+                goal_handle=goal_handle,
+                result=result,
+                task_id=task_id,
+                tree_name=goal.tree_name,
+                ctx=real_ctx,
+                final_status=real_status_str,
+                elapsed=time.time() - overall_start,
+                sim_status=sim_status_str if is_sim_then_real else "",
+                real_status=real_status_str if is_sim_then_real else "",
+            )
 
         except Exception as e:
             import traceback
             if self._current_ctx is not None:
                 self._release_surviving_leases(self._current_ctx)
             self._current_ctx = None
-            elapsed = time.time() - start_time
+            elapsed = time.time() - overall_start
             self.get_logger().error(
                 f"Tree execution error: {type(e).__name__}: {e}\n"
                 f"{traceback.format_exc()}"
@@ -253,14 +334,14 @@ class BtExecutor(Node):
             result.final_status = "ERROR"
             result.message = f"Tree execution error: {e}"
             result.total_execution_time_sec = elapsed
+            result.sim_final_status = sim_status_str
+            result.real_final_status = real_status_str
             self._publish_log_event(
                 "task_error", str(e), severity="error", task_id=task_id
             )
-            # Clear current-task pointers BEFORE the terminal publish so the
-            # heartbeat timer (gated on _current_ctx / _current_task_id) can't
-            # race with a stale RUNNING after FAILURE has been emitted.
             self._current_task_id = None
             self._current_task_name = None
+            self._clear_pending_approval()
             self._publish_task_state(
                 task_id=task_id,
                 task_name=goal.tree_name,
@@ -270,27 +351,90 @@ class BtExecutor(Node):
             goal_handle.abort(result)
             return result
 
+    async def _run_phase(
+        self,
+        xml: str,
+        task_id: str,
+        task_name: str,
+        sim_namespace_prefix: str,
+    ) -> tuple[str, ExecutionContext]:
+        """Parse and tick a single tree to completion.
+
+        Returns ``(final_status_str, ctx)`` where final_status_str is one of
+        "SUCCESS" / "FAILURE" / "HALTED". Raises on parse / setup errors so
+        the caller can fold them into the goal-level ERROR path.
+        """
+        trees = parse_trees(
+            xml,
+            discovery=self._skill_discovery,
+            sim_namespace_prefix=sim_namespace_prefix,
+        )
+        main_tree_name = get_main_tree_name(xml)
+        main_tree = trees.get(main_tree_name)
+        if not main_tree:
+            raise ValueError(
+                f"Main tree '{main_tree_name}' not found in XML. "
+                f"Available: {list(trees.keys())}"
+            )
+
+        ctx = ExecutionContext(
+            self, trees, task_id=task_id, task_name=task_name,
+        )
+        ctx.started_at = self._task_started_at
+        ctx.total_action_nodes = count_action_nodes(main_tree)
+        self._current_ctx = ctx
+
+        bb = Blackboard()
+        ctx.root_bb = bb
+        try:
+            tree_status = await main_tree.tick(bb, ctx)
+        finally:
+            self._release_surviving_leases(ctx)
+
+        if ctx.cancelled:
+            await main_tree.halt(ctx)
+            return "HALTED", ctx
+        if tree_status == NodeStatus.SUCCESS:
+            return "SUCCESS", ctx
+        return "FAILURE", ctx
+
+    def _finalise_goal(
+        self,
+        goal_handle,
+        result: ExecuteBehaviorTree.Result,
+        task_id: str,
+        tree_name: str,
+        ctx: ExecutionContext,
+        final_status: str,
+        elapsed: float,
+        sim_status: str,
+        real_status: str,
+    ) -> ExecuteBehaviorTree.Result:
+        success = final_status == "SUCCESS"
         result.success = success
         result.final_status = final_status
         result.total_execution_time_sec = elapsed
+        result.sim_final_status = sim_status
+        result.real_final_status = real_status
+        suffix = ""
+        if sim_status or real_status:
+            suffix = f" [sim={sim_status or '-'} real={real_status or '-'}]"
         result.message = (
-            f"BT '{goal.tree_name}' completed: {final_status} "
-            f"in {elapsed:.2f}s"
+            f"BT '{tree_name}' completed: {final_status} in {elapsed:.2f}s{suffix}"
         )
 
         self._total_tasks_executed += 1
         self._last_task_result = final_status
         self.get_logger().info(result.message)
 
-        # Clear current-task pointers BEFORE the terminal publish so the
-        # heartbeat timer can't race with a stale RUNNING after the terminal
-        # state has been emitted.
         self._current_task_id = None
         self._current_task_name = None
+        self._current_ctx = None
+        self._clear_pending_approval()
 
         self._publish_task_state(
             task_id=task_id,
-            task_name=goal.tree_name,
+            task_name=tree_name,
             status=final_status,
             current_node=ctx.current_skill if not success else "",
             progress=1.0 if success else ctx.progress,
@@ -304,7 +448,7 @@ class BtExecutor(Node):
         if final_status == "HALTED" and goal_handle.is_cancel_requested:
             self._publish_log_event(
                 "task_cancelled",
-                f"Task '{goal.tree_name}' cancelled after {elapsed:.1f}s",
+                f"Task '{tree_name}' cancelled after {elapsed:.1f}s",
                 severity="warn",
                 task_id=task_id,
             )
@@ -312,21 +456,126 @@ class BtExecutor(Node):
         elif success:
             self._publish_log_event(
                 "task_completed",
-                f"Task '{goal.tree_name}' completed in {elapsed:.1f}s",
+                f"Task '{tree_name}' completed in {elapsed:.1f}s{suffix}",
                 task_id=task_id,
             )
             goal_handle.succeed(result)
         else:
             self._publish_log_event(
                 "task_failed",
-                f"Task '{goal.tree_name}' failed after {elapsed:.1f}s",
+                f"Task '{tree_name}' failed after {elapsed:.1f}s{suffix}",
                 severity="error",
                 task_id=task_id,
             )
             goal_handle.abort(result)
-
-        self._current_task_id = None
         return result
+
+    # ── Dry-run approval gate ───────────────────────────────────────────────
+
+    async def _await_approval(self, task_id: str, goal_handle) -> bool:
+        """Block until /skill_server/approve_dry_run is called for ``task_id``,
+        or the goal is cancelled. Returns True if approved, False otherwise.
+        """
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future = loop.create_future()
+        self._pending_approval_task_id = task_id
+        self._pending_approval_future = future
+
+        self._publish_task_state(
+            task_id=task_id,
+            task_name=self._current_task_name or "",
+            status="AWAITING_APPROVAL",
+        )
+        self._publish_log_event(
+            "dryrun_awaiting_approval",
+            f"Sim phase succeeded; awaiting /skill_server/approve_dry_run for {task_id}",
+            task_id=task_id,
+        )
+
+        # Poll for cancel: if the goal is cancelled while we're parked,
+        # treat it as rejection so the coroutine unwinds cleanly.
+        while not future.done():
+            if goal_handle.is_cancel_requested:
+                self._clear_pending_approval()
+                return False
+            try:
+                return await asyncio.wait_for(asyncio.shield(future), timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                self._clear_pending_approval()
+                raise
+        return future.result()
+
+    def _on_approve_dry_run(self, request, response):
+        """Service handler for /skill_server/approve_dry_run."""
+        task_id = self._pending_approval_task_id
+        future = self._pending_approval_future
+        if task_id is None or future is None or future.done():
+            response.accepted = False
+            response.message = "no goal awaiting approval"
+            return response
+        if request.task_id and request.task_id != task_id:
+            response.accepted = False
+            response.message = (
+                f"task_id {request.task_id!r} does not match the parked goal {task_id!r}"
+            )
+            return response
+
+        # Resolving on the executor's loop is unsafe from a sync service
+        # callback — schedule via call_soon_threadsafe.
+        try:
+            loop = future.get_loop()
+            loop.call_soon_threadsafe(future.set_result, bool(request.approve))
+        except Exception as e:
+            response.accepted = False
+            response.message = f"failed to release gate: {e}"
+            return response
+
+        verb = "approved" if request.approve else "rejected"
+        self._publish_log_event(
+            "dryrun_decision",
+            f"Dry-run {verb} for {task_id}"
+            + (f" — {request.reason}" if request.reason else ""),
+            task_id=task_id,
+        )
+        response.accepted = True
+        response.message = verb
+        return response
+
+    def _publish_dryrun_status(
+        self,
+        task_id: str,
+        tree_name: str,
+        sim_status: str,
+        sim_elapsed: float,
+        ctx: ExecutionContext,
+    ):
+        msg = DryRunStatus()
+        msg.task_id = task_id
+        msg.tree_name = tree_name
+        msg.sim_status = sim_status
+        msg.message = (
+            ctx.failed_skills[-1] if ctx.failed_skills and sim_status != "SUCCESS"
+            else ""
+        )
+        msg.sim_duration_sec = sim_elapsed
+        msg.completed_skills = list(ctx.completed_skills)
+        msg.failed_skills = list(ctx.failed_skills)
+        msg.published_at = self.get_clock().now().to_msg()
+        self._dryrun_status_pub.publish(msg)
+
+    def _clear_pending_approval(self):
+        if self._pending_approval_task_id is None and self._pending_approval_future is None:
+            return
+        self._pending_approval_task_id = None
+        self._pending_approval_future = None
+        # Latch a "no goal pending" status so subscribers stop showing the
+        # approval modal once the gate has been released or the goal ended.
+        cleared = DryRunStatus()
+        cleared.task_id = ""
+        cleared.published_at = self.get_clock().now().to_msg()
+        self._dryrun_status_pub.publish(cleared)
 
     # ── Lease integration ────────────────────────────────────────────────────
 
