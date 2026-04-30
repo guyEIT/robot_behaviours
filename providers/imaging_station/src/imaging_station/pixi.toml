@@ -10,6 +10,7 @@ distro = "jazzy"
 extra-input-globs = [
   "imaging_station/**/*.py",
   "launch/**/*.py",
+  "rviz/**/*.rviz",
   "test/**/*.py",
   "resource/**/*",
 ]

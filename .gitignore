@@ -79,3 +79,12 @@ providers/pbi_liconic/ros2_ws/src/*/files.txt
 
 # Host-local binaries (Groot2 etc.)
 .local/
+
+# Seed-detector YOLO weights — shipped out of band, not via git
+providers/seed_detector/**/models/*.pt
+
+# NDI runtime bundle assembled by scripts/setup-ndi-runtime-bundle.sh.
+# Contains license-gated libndi.so.6 (from $HOME/.ndi-sdk/) plus FFmpeg-7.x
+# codec libs copied from the pixi env. Re-assemble after pixi env updates
+# via `pixi run setup-ndi-bundle`.
+.ndi-runtime-bundle/

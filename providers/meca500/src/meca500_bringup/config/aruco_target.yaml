@@ -1,5 +1,11 @@
 aruco_target:
+  # ROBOT-side fiducial (camera-extrinsic calibration). Rigidly mounted at a
+  # known pose on the bench / mecatable; detection inverts to give the
+  # camera_link transform that gets written to camera_calibration.yaml.
+  # See providers/imaging_station/calibration/imaging_aruco_target.yaml for
+  # the imaging-station fiducial that runs in the *same* camera view.
   enable_startup_calibration: false
+  role: camera_extrinsic
   dictionary: DICT_6X6_250
   marker_id: 23
   marker_size_m: 0.05

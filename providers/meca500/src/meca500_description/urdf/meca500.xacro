@@ -1,4 +1,37 @@
 <robot name="meca500_arm" xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- ============================================================ -->
+  <!-- Seed-gripper overlay args (local divergence from upstream).   -->
+  <!-- When use_seed_gripper=true the Schunk MEGP 25E finger meshes  -->
+  <!-- are suppressed and the 3D-printed seed fingers + corrected    -->
+  <!-- TCP (seed_gripper_tip_link) are added in their place. The     -->
+  <!-- prismatic finger joints + meca_gripper_finger1/2 frames stay  -->
+  <!-- so the gripper open/close still drives the seed fingers.      -->
+  <!-- Offset values come from providers/meca500/tools/              -->
+  <!-- seed_gripper_offsets.yaml (saved by seed_gripper_visualizer). -->
+  <!-- ============================================================ -->
+  <xacro:arg name="use_seed_gripper" default="false" />
+  <xacro:arg name="left_mesh"   default="" />
+  <xacro:arg name="right_mesh"  default="" />
+  <xacro:arg name="stl_scale"   default="0.001" />
+  <xacro:arg name="left_xyz_x"  default="0.0" />
+  <xacro:arg name="left_xyz_y"  default="0.0" />
+  <xacro:arg name="left_xyz_z"  default="0.0" />
+  <xacro:arg name="left_rpy_r"  default="0.0" />
+  <xacro:arg name="left_rpy_p"  default="0.0" />
+  <xacro:arg name="left_rpy_y"  default="0.0" />
+  <xacro:arg name="right_xyz_x" default="0.0" />
+  <xacro:arg name="right_xyz_y" default="0.0" />
+  <xacro:arg name="right_xyz_z" default="0.0" />
+  <xacro:arg name="right_rpy_r" default="0.0" />
+  <xacro:arg name="right_rpy_p" default="0.0" />
+  <xacro:arg name="right_rpy_y" default="0.0" />
+  <xacro:arg name="grip_xyz_x"  default="0.0" />
+  <xacro:arg name="grip_xyz_y"  default="0.0" />
+  <xacro:arg name="grip_xyz_z"  default="0.0" />
+  <xacro:arg name="grip_rpy_r"  default="0.0" />
+  <xacro:arg name="grip_rpy_p"  default="0.0" />
+  <xacro:arg name="grip_rpy_y"  default="0.0" />
+
   <!-- Base link is the center of the robot's bottom plate -->
   <link name="meca_base_link">
     <visual>
@@ -185,20 +218,24 @@
     <child link="meca_gripper_link" />
   </joint>
 
-  <!-- Finger 1 (active prismatic joint) -->
+  <!-- Finger 1 (active prismatic joint). Visual/collision are conditional:
+       Schunk MEGP 25E mesh when use_seed_gripper=false, empty when true
+       (the seed-gripper block below adds its own meshes parented here). -->
   <link name="meca_gripper_finger1">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://meca500_description/meshes/visual/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
-      </geometry>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://meca500_description/meshes/collision/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
-      </geometry>
-    </collision>
+    <xacro:unless value="$(arg use_seed_gripper)">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://meca500_description/meshes/visual/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://meca500_description/meshes/collision/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </collision>
+    </xacro:unless>
   </link>
 
   <joint name="meca_gripper_finger1_joint" type="prismatic">
@@ -211,18 +248,20 @@
 
   <!-- Finger 2 (mimic of finger 1) -->
   <link name="meca_gripper_finger2">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://meca500_description/meshes/visual/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
-      </geometry>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://meca500_description/meshes/collision/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
-      </geometry>
-    </collision>
+    <xacro:unless value="$(arg use_seed_gripper)">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://meca500_description/meshes/visual/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://meca500_description/meshes/collision/schunk_megp25e_finger.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </collision>
+    </xacro:unless>
   </link>
 
   <joint name="meca_gripper_finger2_joint" type="prismatic">
@@ -234,7 +273,10 @@
     <mimic joint="meca_gripper_finger1_joint" multiplier="1.0" offset="0.0" />
   </joint>
 
-  <!-- Tool center point (virtual frame between finger tips) -->
+  <!-- Tool center point (virtual frame between Schunk finger tips). Stays
+       even when use_seed_gripper=true so existing trees / kinematics
+       calibrations that target gripper_tip_link don't break; new code
+       should target seed_gripper_tip_link below. -->
   <link name="gripper_tip_link" />
 
   <joint name="gripper_tip_joint" type="fixed">
@@ -242,5 +284,67 @@
     <parent link="meca_gripper_link" />
     <child link="gripper_tip_link" />
   </joint>
+
+  <!-- Seed-gripper geometry. Only materialised when use_seed_gripper=true.
+       Offsets come from launch-time mappings populated from
+       providers/meca500/tools/seed_gripper_offsets.yaml. -->
+  <xacro:if value="$(arg use_seed_gripper)">
+    <link name="seed_finger_left">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(arg left_mesh)"
+                scale="$(arg stl_scale) $(arg stl_scale) $(arg stl_scale)" />
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(arg left_mesh)"
+                scale="$(arg stl_scale) $(arg stl_scale) $(arg stl_scale)" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="seed_finger_left_joint" type="fixed">
+      <origin xyz="$(arg left_xyz_x) $(arg left_xyz_y) $(arg left_xyz_z)"
+              rpy="$(arg left_rpy_r) $(arg left_rpy_p) $(arg left_rpy_y)" />
+      <parent link="meca_gripper_finger1" />
+      <child link="seed_finger_left" />
+    </joint>
+
+    <link name="seed_finger_right">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(arg right_mesh)"
+                scale="$(arg stl_scale) $(arg stl_scale) $(arg stl_scale)" />
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(arg right_mesh)"
+                scale="$(arg stl_scale) $(arg stl_scale) $(arg stl_scale)" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="seed_finger_right_joint" type="fixed">
+      <origin xyz="$(arg right_xyz_x) $(arg right_xyz_y) $(arg right_xyz_z)"
+              rpy="$(arg right_rpy_r) $(arg right_rpy_p) $(arg right_rpy_y)" />
+      <parent link="meca_gripper_finger2" />
+      <child link="seed_finger_right" />
+    </joint>
+
+    <!-- Corrected TCP for the seed gripper: full offset from the gripper
+         body mount to the contact point. Use this in place of
+         gripper_tip_link for grasp planning. -->
+    <link name="seed_gripper_tip_link" />
+    <joint name="seed_gripper_tip_joint" type="fixed">
+      <origin xyz="$(arg grip_xyz_x) $(arg grip_xyz_y) $(arg grip_xyz_z)"
+              rpy="$(arg grip_rpy_r) $(arg grip_rpy_p) $(arg grip_rpy_y)" />
+      <parent link="meca_gripper_link" />
+      <child link="seed_gripper_tip_link" />
+    </joint>
+  </xacro:if>
 
 </robot>

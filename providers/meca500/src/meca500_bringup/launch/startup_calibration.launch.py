@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import yaml
 
 from launch import LaunchDescription
@@ -9,9 +11,50 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
+def _read_aruco_yaml(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    return data.get("aruco_target", {}) or {}
+
+
+def _find_imaging_aruco_yaml() -> str:
+    """Locate providers/imaging_station/calibration/imaging_aruco_target.yaml.
+
+    pixi-build-ros copies launch files into .pixi/envs/.../share/ rather than
+    symlinking, so __file__ doesn't reach the source tree directly. Walk up
+    looking for the workspace root (the pixi.toml) and join from there.
+    Falls back to the source path relative to this file (works when running
+    against the source tree in dev mode).
+    """
+    candidates: list[Path] = []
+    here = Path(__file__).resolve().parent
+    for anchor in [here, *here.parents]:
+        if (anchor / "pixi.toml").exists():
+            candidates.append(
+                anchor / "providers" / "imaging_station" / "calibration"
+                / "imaging_aruco_target.yaml"
+            )
+            break
+    candidates.append(
+        here.parents[3] / "imaging_station" / "calibration"
+        / "imaging_aruco_target.yaml"
+    )
+    cwd_candidate = (
+        Path.cwd() / "providers" / "imaging_station" / "calibration"
+        / "imaging_aruco_target.yaml"
+    )
+    candidates.append(cwd_candidate)
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    return str(candidates[0])
+
+
 def launch_setup(context, *args, **kwargs):
     camera_config_file = LaunchConfiguration("camera_config_file")
     aruco_config_file = LaunchConfiguration("aruco_config_file")
+    imaging_aruco_config_file = LaunchConfiguration("imaging_aruco_config_file")
+    enable_imaging_aruco_calibration = LaunchConfiguration("enable_imaging_aruco_calibration")
     enable_realsense = LaunchConfiguration("enable_realsense")
     realsense_camera_name = LaunchConfiguration("realsense_camera_name")
     realsense_camera_namespace = LaunchConfiguration("realsense_camera_namespace")
@@ -36,9 +79,8 @@ def launch_setup(context, *args, **kwargs):
         camera_config = yaml.safe_load(config_handle) or {}
     camera_config = camera_config.get("camera_calibration", {})
 
-    with open(aruco_config_file.perform(context), "r", encoding="utf-8") as aruco_config_handle:
-        aruco_config = yaml.safe_load(aruco_config_handle) or {}
-    aruco_config = aruco_config.get("aruco_target", {})
+    aruco_config = _read_aruco_yaml(aruco_config_file.perform(context))
+    imaging_aruco_config = _read_aruco_yaml(imaging_aruco_config_file.perform(context))
 
     ignore_existing_camera_config_value = (
         ignore_existing_camera_config.perform(context).strip().lower() in ("1", "true", "yes", "on")
@@ -86,17 +128,15 @@ def launch_setup(context, *args, **kwargs):
         save_startup_calibration_value = "true"
     save_startup_calibration_value = save_startup_calibration_value.lower()
 
-    aruco_dictionary_value = str(aruco_config.get("dictionary", "DICT_6X6_250"))
-    aruco_marker_id_value = int(aruco_config.get("marker_id", 23))
-    aruco_marker_size_value = float(aruco_config.get("marker_size_m", 0.05))
-    aruco_averaging_window_value = float(aruco_config.get("averaging_window_s", 5.0))
-    marker_in_parent = aruco_config.get("marker_in_parent", {})
-    marker_parent_x = float(marker_in_parent.get("x", 0.0))
-    marker_parent_y = float(marker_in_parent.get("y", 0.0))
-    marker_parent_z = float(marker_in_parent.get("z", 0.0))
-    marker_parent_roll = float(marker_in_parent.get("roll", 0.0))
-    marker_parent_pitch = float(marker_in_parent.get("pitch", 0.0))
-    marker_parent_yaw = float(marker_in_parent.get("yaw", 0.0))
+    enable_imaging_aruco_calibration_value = str(
+        enable_imaging_aruco_calibration.perform(context)
+    ).strip()
+    if enable_imaging_aruco_calibration_value == "":
+        enable_imaging_aruco_calibration_value = str(
+            imaging_aruco_config.get("enable_startup_calibration", True)
+        )
+    enable_imaging_aruco_calibration_value = enable_imaging_aruco_calibration_value.lower()
+
     camera_namespace_clean = realsense_camera_namespace_value.strip("/")
     if camera_namespace_clean:
         camera_topic_prefix = f"/{camera_namespace_clean}/{realsense_camera_name_value}"
@@ -129,6 +169,60 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
+    def _build_calibrator_params(
+        cfg: dict,
+        *,
+        role_default: str,
+        default_marker_id: int,
+        default_dictionary: str,
+        default_marker_y_in_parent: float = 0.0,
+        default_target_y_in_marker: float = 0.0,
+        default_marker_frame_id: str = "calibration_marker",
+        default_target_frame_id: str = "calibration_target_centre",
+        save_to_camera_config: bool = False,
+    ) -> dict:
+        marker_in_parent = cfg.get("marker_in_parent", {}) or {}
+        target_in_marker = cfg.get("target_in_marker", {}) or {}
+        return {
+            "role": str(cfg.get("role", role_default)),
+            "parent_frame": realsense_parent_frame_value,
+            "camera_frame": realsense_frame_id_value,
+            "calibration_camera_frame": calibration_camera_frame_value,
+            "image_topic": image_topic_value,
+            "camera_info_topic": camera_info_topic_value,
+            "aruco_dictionary": str(cfg.get("dictionary", default_dictionary)),
+            "marker_id": int(cfg.get("marker_id", default_marker_id)),
+            "marker_size_m": float(cfg.get("marker_size_m", 0.05)),
+            "averaging_window_s": float(cfg.get("averaging_window_s", 5.0)),
+            "marker_parent_x": float(marker_in_parent.get("x", 0.0)),
+            "marker_parent_y": float(marker_in_parent.get("y", default_marker_y_in_parent)),
+            "marker_parent_z": float(marker_in_parent.get("z", 0.0)),
+            "marker_parent_roll": float(marker_in_parent.get("roll", 0.0)),
+            "marker_parent_pitch": float(marker_in_parent.get("pitch", 0.0)),
+            "marker_parent_yaw": float(marker_in_parent.get("yaw", 0.0)),
+            "target_marker_x": float(target_in_marker.get("x", 0.0)),
+            "target_marker_y": float(
+                target_in_marker.get("y", default_target_y_in_marker)
+            ),
+            "target_marker_z": float(target_in_marker.get("z", 0.0)),
+            "target_marker_roll": float(target_in_marker.get("roll", 0.0)),
+            "target_marker_pitch": float(target_in_marker.get("pitch", 0.0)),
+            "target_marker_yaw": float(target_in_marker.get("yaw", 0.0)),
+            "marker_frame_id": str(
+                cfg.get("marker_frame_id", default_marker_frame_id)
+            ),
+            "target_frame_id": str(
+                cfg.get("target_frame_id", default_target_frame_id)
+            ),
+            "publish_marker_frame": bool(cfg.get("publish_marker_frame", True)),
+            "publish_target_frame": bool(cfg.get("publish_target_frame", True)),
+            "camera_config_file": camera_config_file.perform(context),
+            "save_to_camera_config": save_to_camera_config,
+            "shutdown_on_complete": shutdown_on_complete,
+            "status_topic": status_topic,
+            "marker_topic": marker_topic,
+        }
+
     startup_aruco_calibrator_node = Node(
         package="meca500_bringup",
         executable="startup_aruco_calibrator.py",
@@ -136,27 +230,40 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
         condition=IfCondition(enable_startup_aruco_calibration_value),
         parameters=[
-            {
-                "parent_frame": realsense_parent_frame_value,
-                "camera_frame": realsense_frame_id_value,
-                "calibration_camera_frame": calibration_camera_frame_value,
-                "image_topic": image_topic_value,
-                "camera_info_topic": camera_info_topic_value,
-                "aruco_dictionary": aruco_dictionary_value,
-                "marker_id": aruco_marker_id_value,
-                "marker_size_m": aruco_marker_size_value,
-                "averaging_window_s": aruco_averaging_window_value,
-                "marker_parent_x": marker_parent_x,
-                "marker_parent_y": marker_parent_y,
-                "marker_parent_z": marker_parent_z,
-                "marker_parent_roll": marker_parent_roll,
-                "marker_parent_pitch": marker_parent_pitch,
-                "marker_parent_yaw": marker_parent_yaw,
-                "camera_config_file": camera_config_file.perform(context),
-                "save_to_camera_config": save_startup_calibration_value == "true",
-                "shutdown_on_complete": shutdown_on_complete,
-                "status_topic": status_topic,
-                "marker_topic": marker_topic,
+            _build_calibrator_params(
+                aruco_config,
+                role_default="camera_extrinsic",
+                default_marker_id=23,
+                default_dictionary="DICT_6X6_250",
+                default_marker_frame_id="robot_calibration_marker",
+                default_target_frame_id="robot_calibration_target",
+                save_to_camera_config=save_startup_calibration_value == "true",
+            )
+        ],
+    )
+
+    imaging_aruco_calibrator_node = Node(
+        package="meca500_bringup",
+        executable="startup_aruco_calibrator.py",
+        name="imaging_aruco_calibrator",
+        output="screen",
+        condition=IfCondition(enable_imaging_aruco_calibration_value),
+        parameters=[
+            _build_calibrator_params(
+                imaging_aruco_config,
+                role_default="imaging_target",
+                default_marker_id=0,
+                default_dictionary="DICT_4X4_50",
+                default_target_y_in_marker=-0.080,
+                default_marker_frame_id="calibration_marker",
+                default_target_frame_id="calibration_target_centre",
+                save_to_camera_config=False,
+            )
+            | {
+                # Two calibrator instances on one camera stream — they
+                # mustn't fight over the same status / marker topics.
+                "status_topic": "/imaging_aruco/status",
+                "marker_topic": "/imaging_aruco/markers",
             }
         ],
     )
@@ -192,6 +299,7 @@ def launch_setup(context, *args, **kwargs):
         world_to_base_tf_node,
         realsense_node,
         startup_aruco_calibrator_node,
+        imaging_aruco_calibrator_node,
         rviz_node,
     ]
 
@@ -211,7 +319,17 @@ def generate_launch_description():
                 default_value=PathJoinSubstitution(
                     [FindPackageShare("meca500_bringup"), "config", "aruco_target.yaml"]
                 ),
-                description="YAML file for startup ArUco calibration target settings",
+                description="YAML file for the ROBOT-side ArUco fiducial (camera-extrinsic calibration).",
+            ),
+            DeclareLaunchArgument(
+                "imaging_aruco_config_file",
+                default_value=_find_imaging_aruco_yaml(),
+                description="YAML file for the IMAGING-STATION ArUco fiducial (publishes detected marker + centre target as TFs).",
+            ),
+            DeclareLaunchArgument(
+                "enable_imaging_aruco_calibration",
+                default_value="",
+                description="Run imaging-station ArUco calibrator alongside the robot one. Empty uses imaging_aruco_config_file's enable_startup_calibration.",
             ),
             DeclareLaunchArgument(
                 "enable_realsense",

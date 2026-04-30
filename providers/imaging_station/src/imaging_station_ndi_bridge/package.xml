@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>imaging_station_ndi_bridge</name>
+  <version>0.1.0</version>
+  <description>
+    Native NDI receiver executable for the imaging_station provider. Vendored
+    from experiment_collector's ndi_sdk_av_bridge: dlopens libndi.so.6 at
+    runtime, listens on a Unix socket, and streams NDI video/audio frames as
+    "AVB1" binary packets so a Python rclpy node can republish them as
+    sensor_msgs/Image. The Python side lives in the imaging_station package;
+    this package only ships the binary.
+  </description>
+  <maintainer email="guy.burroughes@eit.org">Guy Burroughes</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

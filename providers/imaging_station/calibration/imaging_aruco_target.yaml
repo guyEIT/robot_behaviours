@@ -1,0 +1,39 @@
+aruco_target:
+  # IMAGING-STATION fiducial. Detected in the same camera view as the
+  # robot fiducial (providers/meca500/src/meca500_bringup/config/aruco_target.yaml)
+  # but its role is the opposite: detection IS the truth, marker_in_parent
+  # is computed (not given). Matches the printable target at
+  # providers/imaging_station/calibration/calibration_target_a4.{svg,pdf}.
+  enable_startup_calibration: true
+  role: imaging_target
+  dictionary: DICT_4X4_50
+  marker_id: 0
+  marker_size_m: 0.05
+  averaging_window_s: 5.0
+
+  # Centre-target pose in the marker frame (OpenCV ArUco convention:
+  # +x right of marker, +y up of marker, +z out of marker plane).
+  # The cross-hair box sits 80 mm below the fiducial on the print, so
+  # in marker frame the target is 80 mm in -y of the marker.
+  target_in_marker:
+    x: 0.0
+    y: -0.080
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+
+  # Frame ids the calibrator publishes once a stable detection has averaged.
+  # Chain ends up as: <camera_link> -> calibration_marker -> calibration_target_centre.
+  marker_frame_id: calibration_marker
+  target_frame_id: calibration_target_centre
+  publish_marker_frame: true
+  publish_target_frame: true
+
+  notes: |
+    Imaging-station fiducial. Print providers/imaging_station/calibration/
+    calibration_target_a4.pdf at 100% scale, mount flat under the macro
+    camera, and run pixi run aruco-calibrate-run alongside the robot
+    fiducial. The averaged camera->marker pose is published as a static
+    TF, and the centre-target frame is chained off it via target_in_marker
+    so the imaging station can plan motions to the cross-hair directly.

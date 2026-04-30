@@ -1,0 +1,18 @@
+
+# YOLO seed detector. Subscribes to /camera/color/image_raw + the aligned
+# depth image, publishes vision_msgs/Detection3DArray in the camera frame.
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+# ament_python sources / launches / tests / model file aren't in the default
+# pixi-build-ros input set, so without these globs edits to *.py or a swapped
+# last.pt silently reuse the build cache.
+extra-input-globs = [
+  "seed_detector/**/*.py",
+  "launch/**/*.py",
+  "test/**/*.py",
+  "resource/**/*",
+  "models/**/*",
+]

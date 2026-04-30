@@ -11,6 +11,33 @@
     <xacro:arg name="connect_timeout_ms" default="2000" />
     <xacro:arg name="response_timeout_ms" default="30000" />
 
+    <!-- Seed-gripper overlay args. Defaults match meca500.xacro so leaving
+         use_seed_gripper=false keeps the legacy Schunk geometry untouched.
+         The bringup launch reads providers/meca500/tools/
+         seed_gripper_offsets.yaml and overrides these via xacro mappings. -->
+    <xacro:arg name="use_seed_gripper" default="false" />
+    <xacro:arg name="left_mesh"   default="" />
+    <xacro:arg name="right_mesh"  default="" />
+    <xacro:arg name="stl_scale"   default="0.001" />
+    <xacro:arg name="left_xyz_x"  default="0.0" />
+    <xacro:arg name="left_xyz_y"  default="0.0" />
+    <xacro:arg name="left_xyz_z"  default="0.0" />
+    <xacro:arg name="left_rpy_r"  default="0.0" />
+    <xacro:arg name="left_rpy_p"  default="0.0" />
+    <xacro:arg name="left_rpy_y"  default="0.0" />
+    <xacro:arg name="right_xyz_x" default="0.0" />
+    <xacro:arg name="right_xyz_y" default="0.0" />
+    <xacro:arg name="right_xyz_z" default="0.0" />
+    <xacro:arg name="right_rpy_r" default="0.0" />
+    <xacro:arg name="right_rpy_p" default="0.0" />
+    <xacro:arg name="right_rpy_y" default="0.0" />
+    <xacro:arg name="grip_xyz_x"  default="0.0" />
+    <xacro:arg name="grip_xyz_y"  default="0.0" />
+    <xacro:arg name="grip_xyz_z"  default="0.0" />
+    <xacro:arg name="grip_rpy_r"  default="0.0" />
+    <xacro:arg name="grip_rpy_p"  default="0.0" />
+    <xacro:arg name="grip_rpy_y"  default="0.0" />
+
     <!-- Import meca500 urdf file -->
     <xacro:include filename="$(find meca500_description)/urdf/meca500.xacro" />
 

@@ -20,6 +20,16 @@
   <depend>robot_skills_msgs</depend>
   <depend>robot_skill_advertise</depend>
 
+  <!-- NDI bridge node deps. The bridge binary lives in the sibling
+       imaging_station_ndi_bridge package; that's an OPTIONAL runtime — only
+       imaging_station_ndi_node needs it, sim_node does not. Kept out of
+       <exec_depend> so envs that only run the sim don't need the NDI SDK
+       installed. ndi_node detects a missing bridge at startup and emits a
+       clear error pointing at the install steps. -->
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

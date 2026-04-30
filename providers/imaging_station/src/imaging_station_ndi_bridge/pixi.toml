@@ -1,0 +1,14 @@
+# Native NDI receiver executable for the imaging_station provider.
+# Builds the standalone ndi_av_bridge binary (no ROS deps; only libdl + the
+# NDI SDK headers). The Python rclpy node in the imaging_station package
+# spawns this binary as a subprocess and reads frames over a Unix socket.
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+extra-input-globs = [
+  "src/**/*.cpp",
+  "src/**/*.h",
+  "cmake/**/*.cmake",
+]

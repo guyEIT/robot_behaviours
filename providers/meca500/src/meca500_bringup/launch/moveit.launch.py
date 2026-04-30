@@ -1,3 +1,5 @@
+import os
+
 import yaml
 
 from launch import LaunchDescription
@@ -17,6 +19,88 @@ from launch_ros.substitutions import FindPackageShare
 from launch_param_builder import ParameterBuilder
 from moveit_configs_utils import MoveItConfigsBuilder
 
+# Default location for the seed-gripper offsets YAML, which the
+# seed_gripper_visualizer writes via /seed_gripper/save_offsets.
+#
+# pixi-build-ros installs this launch file as a hard copy under
+# .pixi/envs/.../share/meca500_bringup/launch/, so __file__ doesn't have a
+# stable relative path to providers/meca500/tools/. Resolve via the
+# workspace root marker (pixi.toml) instead — works for both source-tree
+# and installed copies, since the install path is itself nested under the
+# workspace root.
+def _find_workspace_root():
+    env_root = os.environ.get("PIXI_PROJECT_ROOT") or os.environ.get(
+        "PIXI_WORKSPACE_ROOT"
+    )
+    if env_root and os.path.isfile(os.path.join(env_root, "pixi.toml")):
+        return env_root
+    here = os.path.dirname(os.path.abspath(__file__))
+    while here != os.path.dirname(here):
+        if os.path.isfile(os.path.join(here, "pixi.toml")):
+            return here
+        here = os.path.dirname(here)
+    return None
+
+
+_WORKSPACE_ROOT = _find_workspace_root() or ""
+_PROVIDER_DIR = os.path.join(_WORKSPACE_ROOT, "providers", "meca500") if _WORKSPACE_ROOT else ""
+_DEFAULT_SEED_GRIPPER_OFFSETS_YAML = (
+    os.path.join(_PROVIDER_DIR, "tools", "seed_gripper_offsets.yaml")
+    if _PROVIDER_DIR else ""
+)
+_DEFAULT_SEED_GRIPPER_LEFT_MESH = (
+    os.path.join(_PROVIDER_DIR, "seed_gripper-Finger.stl")
+    if _PROVIDER_DIR else ""
+)
+_DEFAULT_SEED_GRIPPER_RIGHT_MESH = (
+    os.path.join(_PROVIDER_DIR, "seed_gripper-Finger-right.stl")
+    if _PROVIDER_DIR else ""
+)
+_DEFAULT_IMAGING_STATION_SCENE_LAUNCH = (
+    os.path.join(
+        _WORKSPACE_ROOT, "providers", "imaging_station", "launch",
+        "imaging_station_scene.launch.py",
+    )
+    if _WORKSPACE_ROOT else ""
+)
+
+
+def _seed_gripper_mappings(use_seed_gripper, yaml_path, left_mesh, right_mesh):
+    """Build the xacro:arg mappings consumed by meca500.xacro's seed-gripper
+    overlay. When use_seed_gripper is falsy or the YAML is missing we still
+    return a complete dict with safe zeros so xacro:arg defaults are
+    overridden deterministically.
+    """
+    use = str(use_seed_gripper).strip().lower() in ("true", "1", "yes", "on")
+    mappings = {
+        "use_seed_gripper": "true" if use else "false",
+        "left_mesh": left_mesh or "",
+        "right_mesh": right_mesh or "",
+        "stl_scale": "0.001",
+    }
+    for key in ("left", "right", "grip"):
+        for axis in ("x", "y", "z"):
+            mappings[f"{key}_xyz_{axis}"] = "0.0"
+        for axis in ("r", "p", "y"):
+            mappings[f"{key}_rpy_{axis}"] = "0.0"
+    if not use:
+        return mappings
+
+    if yaml_path and os.path.isfile(yaml_path):
+        with open(yaml_path, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+        if "stl_scale" in data:
+            mappings["stl_scale"] = str(float(data["stl_scale"]))
+        for key in ("left", "right", "grip"):
+            section = data.get(key) or {}
+            xyz = section.get("xyz") or [0.0, 0.0, 0.0]
+            rpy = section.get("rpy") or [0.0, 0.0, 0.0]
+            for i, axis in enumerate(("x", "y", "z")):
+                mappings[f"{key}_xyz_{axis}"] = str(float(xyz[i]))
+            for i, axis in enumerate(("r", "p", "y")):
+                mappings[f"{key}_rpy_{axis}"] = str(float(rpy[i]))
+    return mappings
+
 
 def launch_setup(context, *args, **kwargs):
     # --------------------------
@@ -31,6 +115,10 @@ def launch_setup(context, *args, **kwargs):
     response_timeout_ms = LaunchConfiguration("response_timeout_ms")
     control_port = LaunchConfiguration("control_port")
     hardware_type = LaunchConfiguration("hardware_type")
+    use_seed_gripper = LaunchConfiguration("use_seed_gripper")
+    seed_gripper_offsets_yaml = LaunchConfiguration("seed_gripper_offsets_yaml")
+    seed_gripper_left_mesh = LaunchConfiguration("seed_gripper_left_mesh")
+    seed_gripper_right_mesh = LaunchConfiguration("seed_gripper_right_mesh")
     camera_config_file = LaunchConfiguration("camera_config_file")
     aruco_config_file = LaunchConfiguration("aruco_config_file")
     enable_realsense = LaunchConfiguration("enable_realsense")
@@ -184,6 +272,12 @@ def launch_setup(context, *args, **kwargs):
     # --------------------------
     # MoveIt configuration
     # --------------------------
+    seed_gripper_mappings = _seed_gripper_mappings(
+        use_seed_gripper.perform(context),
+        seed_gripper_offsets_yaml.perform(context),
+        seed_gripper_left_mesh.perform(context),
+        seed_gripper_right_mesh.perform(context),
+    )
     moveit_config = (
         MoveItConfigsBuilder(
             robot_name="meca500",
@@ -203,6 +297,7 @@ def launch_setup(context, *args, **kwargs):
                 "connect_timeout_ms": connect_timeout_ms.perform(context),
                 "response_timeout_ms": response_timeout_ms.perform(context),
                 "control_port": control_port.perform(context),
+                **seed_gripper_mappings,
             }
         )
         .trajectory_execution(file_path="config/moveit_controllers.yaml")
@@ -499,9 +594,26 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
+    # Imaging-station scene: TF chain + microscope CollisionObjects from
+    # the saved imaging-calibration / microscope-tune yamls. Falls back
+    # silently if the launch file or yamls aren't present (lite-native
+    # callers that don't have the imaging-station provider on disk).
+    show_imaging_station_value = LaunchConfiguration(
+        "show_imaging_station"
+    ).perform(context).strip().lower() in ("1", "true", "yes", "on")
+    imaging_station_scene = None
+    if show_imaging_station_value and _DEFAULT_IMAGING_STATION_SCENE_LAUNCH and \
+            os.path.isfile(_DEFAULT_IMAGING_STATION_SCENE_LAUNCH):
+        imaging_station_scene = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(_DEFAULT_IMAGING_STATION_SCENE_LAUNCH),
+        )
+
     # --------------------------
     # Launch ordering
     # --------------------------
+    extras_after_gripper = [move_group, servo_node, rviz, table_scene_publisher]
+    if imaging_station_scene is not None:
+        extras_after_gripper.append(imaging_station_scene)
     return [
         static_tf_node,
         camera_static_tf_node,
@@ -531,7 +643,7 @@ def launch_setup(context, *args, **kwargs):
         RegisterEventHandler(
             OnProcessExit(
                 target_action=gripper_controller_spawner,
-                on_exit=[move_group, servo_node, rviz, table_scene_publisher],
+                on_exit=extras_after_gripper,
             )
         ),
     ]
@@ -584,6 +696,31 @@ def generate_launch_description():
                 'hardware_type',
                 default_value='meca500_hardware',
                 description='Hardware plugin to load'
+            ),
+            DeclareLaunchArgument(
+                "use_seed_gripper",
+                default_value="true",
+                description="Bake the 3D-printed seed-gripper geometry into the URDF "
+                            "(suppresses the Schunk MEGP 25E finger meshes and adds "
+                            "seed_finger_left/right + seed_gripper_tip_link). Set false "
+                            "to fall back to the stock Schunk geometry.",
+            ),
+            DeclareLaunchArgument(
+                "seed_gripper_offsets_yaml",
+                default_value=_DEFAULT_SEED_GRIPPER_OFFSETS_YAML,
+                description="Path to the YAML written by the seed_gripper_visualizer's "
+                            "/seed_gripper/save_offsets service. Empty / missing = use "
+                            "the xacro defaults (zeros).",
+            ),
+            DeclareLaunchArgument(
+                "seed_gripper_left_mesh",
+                default_value=_DEFAULT_SEED_GRIPPER_LEFT_MESH,
+                description="Absolute path to the left seed-finger STL.",
+            ),
+            DeclareLaunchArgument(
+                "seed_gripper_right_mesh",
+                default_value=_DEFAULT_SEED_GRIPPER_RIGHT_MESH,
+                description="Absolute path to the right (mirrored) seed-finger STL.",
             ),
             DeclareLaunchArgument(
                 "camera_config_file",
@@ -640,6 +777,15 @@ def generate_launch_description():
                 "show_table",
                 default_value="",
                 description="Override: publish the table mesh (true/false). Empty uses config file.",
+            ),
+            DeclareLaunchArgument(
+                "show_imaging_station",
+                default_value="true",
+                description="Publish the imaging-station TF chain + microscope STL "
+                            "collision objects from the saved imaging-calibration / "
+                            "microscope-tune yamls. Set false to skip the include "
+                            "entirely (e.g. lite-native callers without the imaging "
+                            "provider on disk).",
             ),
             DeclareLaunchArgument(
                 "table_mesh_path",

@@ -1,0 +1,5 @@
+# NDI SDK is license-gated and must not be redistributed.
+# Drop Install_NDI_SDK_v6_Linux.tar.gz here, then run `pixi run setup-ndi`.
+*
+!.gitignore
+!README.md

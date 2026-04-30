@@ -112,6 +112,11 @@ ros-jazzy-meca500-description    = { path = "providers/meca500/src/meca500_descr
 ros-jazzy-xacro                  = "*"
 # Imaging-station provider — sim backend for the campaign tree's ImagePlate.
 ros-jazzy-imaging-station        = { path = "providers/imaging_station/src/imaging_station" }
+# Native NDI receiver (vendored from experiment_collector). Builds the
+# ndi_av_bridge binary that the imaging_station_ndi_node spawns. Build needs
+# the NDI 6 SDK headers (Processing.NDI.Lib.h) findable on the host — see
+# providers/imaging_station/README.md for install steps.
+ros-jazzy-imaging-station-ndi-bridge = { path = "providers/imaging_station/src/imaging_station_ndi_bridge" }
 # rosbridge-suite on robostack doesn't pull in cbor2 automatically; without it
 # rosbridge_websocket crashes with ModuleNotFoundError on startup.
 cbor2 = "*"
@@ -121,12 +126,45 @@ ros-jazzy-robot-state-publisher = "*"
 ros-jazzy-rosbridge-suite       = "*"
 ros-jazzy-tf2-ros               = "*"
 ros-jazzy-diagnostic-aggregator = "*"
+# rviz2 is only needed for the imaging-ndi-rviz preview task; harmless to
+# include since the rest of lite-native already pulls in Qt/Ogre transitively.
+ros-jazzy-rviz2                 = "*"
+# NDI 6.3.x dlopens libavcodec.so.61 / libavutil.so.59 (FFmpeg 7.x SONAMEs)
+# plus a cluster of codec helpers at runtime. Mirrors experiment_collector's
+# dep set — gst-libav drags in the FFmpeg 7.x stack, the rest are codec
+# helpers that libavcodec itself dlopens. Without these, NDI receivers
+# connect but report "video decoder not found" and no frames flow.
+gst-libav                       = ">=1.24,<1.25"
+lcms2                           = "*"
+dav1d                           = "*"
+openjpeg                        = "*"
+speex                           = "*"
+# avahi-browse gives us multi-NIC mDNS resolution that libndi's built-in
+# discovery silently misses on dev hosts with multiple interfaces.
+avahi                           = ">=0.8"
+
+[feature.lite-native.activation.env]
+# `pixi run setup-ndi` installs SDK headers + libndi.so.6 to $HOME/.ndi-sdk/
+# (host-stable, reachable from the pixi-build-ros build sandbox). It then
+# assembles a project-local runtime bundle by pulling FFmpeg 7.x + codec
+# helpers from $CONDA_PREFIX/lib (provided by gst-libav / lcms2 / dav1d /
+# openjpeg / speex deps above) and symlinking libndi alongside them.
+# The bridge dlopens libndi.so.6 from this single dir at runtime.
+IMAGING_STATION_NDI_RUNTIME_DIR = "$PIXI_PROJECT_ROOT/.ndi-runtime-bundle/lib"
+NDI_RUNTIME_DIR_V6              = "$PIXI_PROJECT_ROOT/.ndi-runtime-bundle/lib"
 
 [feature.lite-native.tasks]
 # Dashboard defaults to port 8081 (matches Docker-lite convention in CLAUDE.md).
 # Override at launch: `pixi run lite-native-run dashboard_port:=8082`.
 lite-native-run   = { cmd = "ros2 launch robot_skill_server skill_server_lite.launch.py dashboard_port:=8081", description = "Launch lite stack natively (pixi auto-builds on install)" }
 lite-native-shell = { cmd = "bash -i", description = "Shell in the lite-native pixi environment" }
+# One-time NDI 6 SDK install. Reads vendor/ndi/Install_NDI_SDK_v6_Linux.tar.gz,
+# installs to $HOME/.ndi-sdk/{include,lib}/ (host-stable, no pixi env needed).
+setup-ndi         = { cmd = "bash scripts/setup-ndi-host.sh", description = "Install the NDI 6 SDK to $HOME/.ndi-sdk/{include,lib} from vendor/ndi/Install_NDI_SDK_v6_Linux.tar.gz, then assemble .ndi-runtime-bundle/lib/ from $CONDA_PREFIX (FFmpeg 7.x via gst-libav). Run before `lite-native-install`." }
+setup-ndi-bundle  = { cmd = "bash scripts/setup-ndi-runtime-bundle.sh", description = "Re-assemble .ndi-runtime-bundle/lib/ from the active pixi env (libndi from $HOME/.ndi-sdk + FFmpeg/codecs from $CONDA_PREFIX). Run after pixi env updates that change FFmpeg version." }
+# Live ZowieBox preview: NDI bridge node + RViz with the Image display
+# pre-wired to /imaging_station/image_raw. Requires `setup-ndi` first.
+imaging-ndi-rviz  = { cmd = "ros2 launch imaging_station imaging_station_ndi_rviz.launch.py", depends-on = ["lite-native-install"], description = "Run the imaging_station NDI receiver and RViz pre-configured with the Image display. Override source via ndi_source_name:='OTHER (Source)'." }
 
 [feature.real-native]
 platforms = ["linux-64"]
@@ -202,7 +240,7 @@ ros-jazzy-ros2bag                          = "*"
 ros-jazzy-rosbag2-storage-default-plugins  = "*"
 
 [feature.orchestrator.tasks]
-orchestrator-run   = { cmd = "ros2 launch robot_skill_server skill_server.launch.py hardware_mode:=real use_rviz:=false use_rosboard:=false", description = "Run skill_server + dashboard only; atoms must run on their own host PCs (see meca500-host, provider-liconic tasks)" }
+orchestrator-run   = { cmd = "ros2 launch robot_skill_server orchestrator.launch.py", description = "Run skill_server + bb_operator + dashboard (rosbridge :9090, UI :8081). Atoms must run on their own host PCs (see meca500-real-up, liconic-up, hamilton-up)" }
 orchestrator-shell = { cmd = "bash -i", description = "Shell in the orchestrator pixi environment" }
 
 # ── Meca500 robot PC env (runs skill_atoms under /meca500 + providers/meca500 packages) ──
@@ -266,11 +304,20 @@ ros-jazzy-xacro                         = "*"
 ros-jazzy-tf2                           = "*"
 ros-jazzy-tf2-ros                       = "*"
 ros-jazzy-tf2-geometry-msgs             = "*"
+# seed-gripper visualisation tooling (providers/meca500/tools/)
+ros-jazzy-interactive-markers           = "*"
+ros-jazzy-rqt-reconfigure               = "*"
+pyyaml                                  = "*"
 
 [feature.meca500-host.tasks]
 meca500-moveit-run     = { cmd = "ros2 launch meca500_bringup moveit.launch.py", description = "Bring up Meca500 MoveIt2 stack (real hardware; robot_ip arg optional)" }
 meca500-moveit-sim-run = { cmd = "ros2 launch meca500_bringup moveit.launch.py simulation:=true enable_realsense:=false", description = "Bring up Meca500 MoveIt2 stack against fake_hardware (mock_components/GenericSystem; no real robot, no camera)" }
 meca500-atoms-run      = { cmd = "ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=meca500", description = "Start skill atoms under /meca500; they self-register with the orchestrator's SkillRegistry over DDS" }
+meca500-real-run       = { cmd = "ros2 launch robot_skill_server meca500_real.launch.py", description = "One-shot Meca500 robot host: real MoveIt2 + meca500_skill_server proxy (atoms). Pair with `pixi run orchestrator-run`. Override IP via robot_ip:=…" }
+meca500-calibrate-run  = { cmd = "ros2 launch meca500_bringup startup_calibration.launch.py", description = "Standalone two-fiducial ArUco calibration: RealSense + RViz + two calibrator instances on the same camera stream (no MoveIt, no robot activation). The robot fiducial (DICT_6X6_250 id=23 at aruco_target.yaml) solves meca_base_link→camera_link and writes camera_calibration.yaml; the imaging-station fiducial (DICT_4X4_50 id=0 at imaging_aruco_target.yaml) publishes camera_link→calibration_marker→calibration_target_centre as static TFs. Mount both prints in view first; pass enable_imaging_aruco_calibration:=false to skip the imaging one." }
+seed-gripper-viz       = { cmd = "ros2 launch providers/meca500/tools/seed_gripper_viz.launch.py", description = "Live-tunable seed-gripper finger visualiser. Brings up Meca500 sim + RViz + the seed-finger MarkerArray + 6-DoF interactive-marker handles + rqt_reconfigure sliders. Save: ros2 service call /seed_gripper/save_offsets std_srvs/srv/Trigger {}" }
+tune-gripper           = { cmd = "ros2 launch providers/meca500/tools/tune_gripper.launch.py", description = "One-shot launch for updating the seed-gripper zero/grip-point in the URDF. URDF = meca500.xacro + seed_gripper_overlay.xacro (adds seed_finger_left/right + seed_gripper_tip_link, offsets sourced from seed_gripper_offsets.yaml). Tune live with rqt_reconfigure / interactive markers, save: ros2 service call /seed_gripper/save_offsets std_srvs/srv/Trigger {} ; relaunch to see the URDF reflect the new offsets." }
+tune-microscope        = { cmd = "ros2 launch providers/imaging_station/calibration/tune_microscope.launch.py", description = "Live-tunable microscope-stand + camera placement, anchored on the ArUco-calibrated imaging centre. STANDALONE — replays the saved meca_base_link->camera_link->calibration_marker->calibration_target_centre chain from camera_calibration.yaml + imaging_calibration.yaml at startup, no live camera needed. Re-run meca500-calibrate-up only when the camera moves. UX matches tune-gripper: rqt_reconfigure sliders + 6-DoF interactive markers in RViz. Save: ros2 service call /microscope/save_offsets std_srvs/srv/Trigger {} . Pass stand_parent_frame:=world to tune against the world origin instead." }
 # Composite: MoveIt sim + atoms + orchestrator in one launch
 meca500-sim-test       = { cmd = "ros2 launch robot_skill_server sim_meca500.launch.py", description = "Meca500 sim (mock_components) + atoms + orchestrator in one launch. Submit test_meca500_sim.xml in another shell." }
 meca500-proxy-test     = { cmd = "ros2 launch meca500_skill_server sim_meca500_proxy.launch.py", description = "Phase 2 validation: Meca500 sim + meca500_skill_server proxy (one process, one combined manifest) + orchestrator. Submit test_meca500_sim.xml in another shell." }
@@ -365,6 +412,10 @@ hamilton_star_ros     = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_sta
 hamilton_star_bringup = { path = "providers/pbi_liconic/ros2_ws/src/hamilton_star_bringup" }
 # Imaging-station provider (sim backend; real driver swap-in later)
 ros-jazzy-imaging-station = { path = "providers/imaging_station/src/imaging_station" }
+# NOTE: imaging_station_ndi_bridge intentionally NOT included here — lab-sim
+# uses the placeholder PNG sim, not the live NDI receiver. Add it to envs
+# where ndi_node will actually run (e.g. lite-native for dev box; a future
+# imaging-host env once the imager is on its own PC).
 # rosbridge + dashboard runtime
 cbor2 = "*"
 ros-jazzy-rosbridge-suite = "*"
@@ -428,6 +479,55 @@ lab-run       = { cmd = "ros2 launch robot_skill_server lab_full.launch.py", des
 #   { "mcpServers": { "bt-executor": { "command": "pixi",
 #       "args": ["run", "-e", "mcp", "bt-mcp"],
 #       "cwd": "/home/eit/robot_behaviours" } } }
+# ── Seed detector (YOLO on RealSense, standalone provider env) ──────────────
+# Lives in its own env so a host can run it without pulling in the entire
+# Meca500 / lab-sim graphs. On the Meca500 robot PC: launch the camera via
+# `pixi run meca500-moveit-run` (or `meca500-real-up`) in one shell, then
+# `pixi run -e seed-detector seed-detector-run model_path:=/abs/last.pt
+# debug_markers:=true` in another. Drop last.pt under
+# providers/seed_detector/src/seed_detector/models/ to use the default.
+[feature.seed-detector]
+platforms = ["linux-64"]
+channels = [
+  "~/channel",
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/robostack-jazzy",
+  "https://prefix.dev/conda-forge",
+]
+
+[feature.seed-detector.dependencies]
+ros-jazzy-rclpy              = "*"
+ros-jazzy-sensor-msgs        = "*"
+ros-jazzy-std-msgs           = "*"
+ros-jazzy-geometry-msgs      = "*"
+ros-jazzy-vision-msgs        = "*"
+ros-jazzy-visualization-msgs = "*"
+ros-jazzy-cv-bridge          = "*"
+ros-jazzy-image-geometry     = "*"
+ros-jazzy-message-filters    = "*"
+ros-jazzy-ros2launch         = "*"
+ros-jazzy-ros2topic          = "*"
+numpy                        = "*"
+opencv                       = "*"
+# torch + torchvision both from conda-forge so they share an ABI. If we let
+# ultralytics pull torchvision from PyPI it builds against a different torch
+# wheel and crashes at import with `operator torchvision::nms does not exist`.
+# CPU builds resolve by default; swap in CUDA-enabled builds on a GPU host.
+# torchvision is pinned to `<0.26`: the unbounded solve picked torchvision
+# 0.26 (which expects torch >= 2.11) while torch resolved to 2.10, and
+# ultralytics complains at startup. `<0.26` settles on torchvision 0.25
+# which matches torch 2.10. Bump both bounds together when you upgrade.
+pytorch                      = ">=2.2"
+torchvision                  = ">=0.20,<0.26"
+ros-jazzy-seed-detector      = { path = "providers/seed_detector/src/seed_detector" }
+
+[feature.seed-detector.pypi-dependencies]
+ultralytics = "*"
+
+[feature.seed-detector.tasks]
+seed-detector-run     = { cmd = "ros2 launch seed_detector seed_detector.launch.py", description = "Launch the YOLO seed detector. Camera must already be publishing /camera/color/image_raw + /camera/aligned_depth_to_color/image_raw. Override model_path:=/abs/last.pt and debug_markers:=true as needed." }
+seed-detector-shell   = { cmd = "bash -i", description = "Shell in the seed-detector pixi environment" }
+
 [feature.mcp]
 platforms = ["linux-64"]
 channels = [
@@ -454,15 +554,16 @@ bt-mcp       = { cmd = "ros2 run robot_skill_mcp bt_executor_mcp", description =
 bt-mcp-shell = { cmd = "bash -i", description = "Shell in the mcp pixi environment" }
 
 [environments]
-ros-tools    = ["ros-tools"]
-local-dev    = ["local-dev"]
-lite-native  = ["lite-native"]
-real-native  = ["real-native"]
-orchestrator = ["orchestrator"]
-meca500-host = ["meca500-host"]
-liconic-host = ["liconic-host"]
-lab-sim      = ["lab-sim"]
-mcp          = ["mcp"]
+ros-tools     = ["ros-tools"]
+local-dev     = ["local-dev"]
+lite-native   = ["lite-native"]
+real-native   = ["real-native"]
+orchestrator  = ["orchestrator"]
+meca500-host  = ["meca500-host"]
+liconic-host  = ["liconic-host"]
+lab-sim       = ["lab-sim"]
+mcp           = ["mcp"]
+seed-detector = ["seed-detector"]
 
 [tasks]
 # ── msgs channel (populates ~/channel) ───────────────────────────────────────
@@ -507,6 +608,8 @@ orchestrator-up      = { cmd = "pixi run orchestrator-run", depends-on = ["orche
 # ── Meca500 robot PC ─────────────────────────────────────────────────────────
 meca500-host-install = { cmd = "pixi install --environment meca500-host", depends-on = ["update-msgs"], description = "Resolve meca500-host env (pulls in providers/meca500 path-deps)" }
 meca500-up           = { cmd = "pixi run meca500-atoms-run", depends-on = ["meca500-host-install"], description = "Start Meca500 skill atoms under /meca500 (assumes MoveIt2 already running; launch with `pixi run meca500-moveit-run` in another shell)" }
+meca500-real-up      = { cmd = "pixi run meca500-real-run", depends-on = ["meca500-host-install"], description = "One-shot Meca500 robot host: real MoveIt2 + atoms. Pair with `pixi run orchestrator-up` on the orchestrator PC (or same box). Override IP via robot_ip:=…" }
+meca500-calibrate-up = { cmd = "pixi run meca500-calibrate-run", depends-on = ["meca500-host-install"], description = "Run two-fiducial ArUco calibration on the Meca500 host: robot fiducial (DICT_6X6_250 id=23 — print providers/meca500/.../aruco_single_a5_50mm_id23.png at the pose in aruco_target.yaml, writes camera_calibration.yaml) plus imaging-station fiducial (DICT_4X4_50 id=0 — print providers/imaging_station/calibration/calibration_target_a4.pdf, publishes calibration_marker + calibration_target_centre as TFs). Mount BOTH prints in the camera view, then run this." }
 meca500-sim-up       = { cmd = "ros2 launch meca500_bringup moveit.launch.py simulation:=true", depends-on = ["meca500-host-install"], description = "Bring up the Meca500 MoveIt sim (fake_hardware) — ready to receive plans from skill atoms or direct MoveGroup clients" }
 
 # ── Liconic / Hamilton STAR PC ──────────────────────────────────────────────

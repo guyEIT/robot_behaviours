@@ -108,4 +108,43 @@
   <disable_collisions link1="meca_axis_6_link"  link2="meca_gripper_finger2" reason="Adjacent"/>
   <disable_collisions link1="meca_axis_6_link"  link2="gripper_tip_link"     reason="Adjacent"/>
 
+  <!-- Seed-gripper overlay: links only exist when use_seed_gripper:=true,
+       but listing them here is harmless when the arg is false (MoveIt
+       silently ignores disable_collisions for links not in the URDF).
+       Mirrors the meca_gripper_finger1/finger2 pattern above. -->
+  <disable_collisions link1="meca_gripper_link"     link2="seed_finger_left"      reason="Adjacent"/>
+  <disable_collisions link1="meca_gripper_link"     link2="seed_finger_right"     reason="Adjacent"/>
+  <disable_collisions link1="meca_gripper_link"     link2="seed_gripper_tip_link" reason="Adjacent"/>
+  <disable_collisions link1="meca_gripper_finger1"  link2="seed_finger_left"      reason="Adjacent"/>
+  <disable_collisions link1="meca_gripper_finger2"  link2="seed_finger_right"     reason="Adjacent"/>
+  <disable_collisions link1="meca_gripper_finger1"  link2="seed_finger_right"     reason="Default"/>
+  <disable_collisions link1="meca_gripper_finger2"  link2="seed_finger_left"      reason="Default"/>
+  <disable_collisions link1="seed_finger_left"      link2="seed_finger_right"     reason="Default"/>
+  <disable_collisions link1="seed_finger_left"      link2="seed_gripper_tip_link" reason="Default"/>
+  <disable_collisions link1="seed_finger_right"     link2="seed_gripper_tip_link" reason="Default"/>
+  <disable_collisions link1="gripper_tip_link"      link2="seed_finger_left"      reason="Default"/>
+  <disable_collisions link1="gripper_tip_link"      link2="seed_finger_right"     reason="Default"/>
+  <disable_collisions link1="gripper_tip_link"      link2="seed_gripper_tip_link" reason="Default"/>
+  <disable_collisions link1="meca_base_link"        link2="seed_finger_left"      reason="Never"/>
+  <disable_collisions link1="meca_base_link"        link2="seed_finger_right"     reason="Never"/>
+  <disable_collisions link1="meca_base_link"        link2="seed_gripper_tip_link" reason="Never"/>
+  <disable_collisions link1="meca_axis_1_link"      link2="seed_finger_left"      reason="Never"/>
+  <disable_collisions link1="meca_axis_1_link"      link2="seed_finger_right"     reason="Never"/>
+  <disable_collisions link1="meca_axis_1_link"      link2="seed_gripper_tip_link" reason="Never"/>
+  <disable_collisions link1="meca_axis_2_link"      link2="seed_finger_left"      reason="Never"/>
+  <disable_collisions link1="meca_axis_2_link"      link2="seed_finger_right"     reason="Never"/>
+  <disable_collisions link1="meca_axis_2_link"      link2="seed_gripper_tip_link" reason="Never"/>
+  <disable_collisions link1="meca_axis_3_link"      link2="seed_finger_left"      reason="Never"/>
+  <disable_collisions link1="meca_axis_3_link"      link2="seed_finger_right"     reason="Never"/>
+  <disable_collisions link1="meca_axis_3_link"      link2="seed_gripper_tip_link" reason="Never"/>
+  <disable_collisions link1="meca_axis_4_link"      link2="seed_finger_left"      reason="Never"/>
+  <disable_collisions link1="meca_axis_4_link"      link2="seed_finger_right"     reason="Never"/>
+  <disable_collisions link1="meca_axis_4_link"      link2="seed_gripper_tip_link" reason="Never"/>
+  <disable_collisions link1="meca_axis_5_link"      link2="seed_finger_left"      reason="Never"/>
+  <disable_collisions link1="meca_axis_5_link"      link2="seed_finger_right"     reason="Never"/>
+  <disable_collisions link1="meca_axis_5_link"      link2="seed_gripper_tip_link" reason="Never"/>
+  <disable_collisions link1="meca_axis_6_link"      link2="seed_finger_left"      reason="Adjacent"/>
+  <disable_collisions link1="meca_axis_6_link"      link2="seed_finger_right"     reason="Adjacent"/>
+  <disable_collisions link1="meca_axis_6_link"      link2="seed_gripper_tip_link" reason="Adjacent"/>
+
 </robot>

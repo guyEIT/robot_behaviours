@@ -2,6 +2,7 @@
 
 import math
 from datetime import datetime, timezone
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -113,11 +114,44 @@ class StartupArucoCalibrator(Node):
         self.declare_parameter("marker_parent_roll", 0.0)
         self.declare_parameter("marker_parent_pitch", 0.0)
         self.declare_parameter("marker_parent_yaw", 0.0)
+        # Centre-target pose in the marker frame. Defaults match the A4 print
+        # in providers/imaging_station/calibration/calibration_target_a4.pdf:
+        # the cross sits 80 mm below the fiducial, so target.y_marker = -0.080
+        # (OpenCV ArUco: +y up of marker, +z out of marker plane).
+        self.declare_parameter("target_marker_x", 0.0)
+        self.declare_parameter("target_marker_y", -0.080)
+        self.declare_parameter("target_marker_z", 0.0)
+        self.declare_parameter("target_marker_roll", 0.0)
+        self.declare_parameter("target_marker_pitch", 0.0)
+        self.declare_parameter("target_marker_yaw", 0.0)
+        self.declare_parameter("marker_frame_id", "calibration_marker")
+        self.declare_parameter("target_frame_id", "calibration_target_centre")
+        self.declare_parameter("publish_marker_frame", True)
+        self.declare_parameter("publish_target_frame", True)
         self.declare_parameter("camera_config_file", "")
         self.declare_parameter("save_to_camera_config", True)
         self.declare_parameter("shutdown_on_complete", True)
         self.declare_parameter("status_topic", "/startup_aruco/status")
         self.declare_parameter("marker_topic", "/startup_aruco/markers")
+        # Calibrator role:
+        #   "camera_extrinsic" — robot-side fiducial. marker_in_parent is the
+        #     truth; detection inverts to give parent->camera, written to
+        #     camera_calibration.yaml.
+        #   "imaging_target" — imaging-station fiducial. detection IS the
+        #     truth; the averaged camera->marker pose is published as a
+        #     static TF, then chained to the centre target via target_in_marker.
+        #     Doesn't touch camera_calibration.yaml.
+        self.declare_parameter(
+            "role",
+            "camera_extrinsic",
+            ParameterDescriptor(
+                description=(
+                    "Calibrator behaviour: 'camera_extrinsic' (solve camera-in-parent"
+                    " from a known-pose fiducial) or 'imaging_target' (publish"
+                    " detected-marker + offset target as TFs in the camera frame)."
+                ),
+            ),
+        )
 
         self.parent_frame = self.get_parameter("parent_frame").value
         self.camera_frame = self.get_parameter("camera_frame").value
@@ -147,6 +181,33 @@ class StartupArucoCalibrator(Node):
         self.t_parent_marker[:3, 3] = np.array(
             [marker_parent_x, marker_parent_y, marker_parent_z], dtype=np.float64
         )
+
+        target_marker_x = float(self.get_parameter("target_marker_x").value)
+        target_marker_y = float(self.get_parameter("target_marker_y").value)
+        target_marker_z = float(self.get_parameter("target_marker_z").value)
+        target_marker_roll = float(self.get_parameter("target_marker_roll").value)
+        target_marker_pitch = float(self.get_parameter("target_marker_pitch").value)
+        target_marker_yaw = float(self.get_parameter("target_marker_yaw").value)
+        self.t_marker_target = np.eye(4, dtype=np.float64)
+        self.t_marker_target[:3, :3] = rpy_to_matrix(
+            target_marker_roll, target_marker_pitch, target_marker_yaw
+        )
+        self.t_marker_target[:3, 3] = np.array(
+            [target_marker_x, target_marker_y, target_marker_z], dtype=np.float64
+        )
+        self.t_parent_target = self.t_parent_marker @ self.t_marker_target
+
+        self.marker_frame_id = str(self.get_parameter("marker_frame_id").value)
+        self.target_frame_id = str(self.get_parameter("target_frame_id").value)
+        self.publish_marker_frame = bool(self.get_parameter("publish_marker_frame").value)
+        self.publish_target_frame = bool(self.get_parameter("publish_target_frame").value)
+
+        self.role = str(self.get_parameter("role").value).strip()
+        if self.role not in ("camera_extrinsic", "imaging_target"):
+            raise RuntimeError(
+                f"Unsupported calibrator role '{self.role}' "
+                "(expected 'camera_extrinsic' or 'imaging_target')."
+            )
 
         dict_name = self.get_parameter("aruco_dictionary").value
         if not hasattr(cv2.aruco, dict_name):
@@ -193,6 +254,7 @@ class StartupArucoCalibrator(Node):
             f"Startup ArUco calibration enabled. Waiting for marker ID {self.marker_id} on "
             f"{self.image_topic} for {self.averaging_window_s:.1f}s averaging."
         )
+        self._publish_marker_and_target_static_tfs()
         self.publish_status("WAITING_CAMERA_INFO", "Waiting for camera intrinsics.")
         self.publish_visual_state(
             state="WAITING_CAMERA_INFO",
@@ -263,10 +325,17 @@ class StartupArucoCalibrator(Node):
         )
         rvec = rvecs[0][0]
         tvec = tvecs[0][0]
-        t_parent_camera = self.compute_parent_camera_transform(rvec, tvec)
-        self.parent_camera_samples.append(t_parent_camera)
-        translation = t_parent_camera[:3, 3]
-        quat = matrix_to_quaternion(t_parent_camera[:3, :3])
+        # Both roles use detected camera->marker pose; what we *store* per
+        # sample differs:
+        #   camera_extrinsic -> store inverted parent-from-camera
+        #   imaging_target   -> store raw camera-from-marker (averaged later)
+        if self.role == "camera_extrinsic":
+            sample = self.compute_parent_camera_transform(rvec, tvec)
+        else:  # imaging_target
+            sample = self._compute_camera_marker_transform(rvec, tvec)
+        self.parent_camera_samples.append(sample)
+        translation = sample[:3, 3]
+        quat = matrix_to_quaternion(sample[:3, :3])
 
         if self.start_time is None:
             self.start_time = now_s
@@ -331,11 +400,17 @@ class StartupArucoCalibrator(Node):
         return None
 
     def compute_parent_camera_transform(self, rvec, tvec):
+        return self.t_parent_marker @ np.linalg.inv(
+            self._compute_camera_marker_transform(rvec, tvec)
+        )
+
+    @staticmethod
+    def _compute_camera_marker_transform(rvec, tvec) -> np.ndarray:
         rot_camera_marker, _ = cv2.Rodrigues(rvec)
         t_camera_marker = np.eye(4, dtype=np.float64)
         t_camera_marker[:3, :3] = rot_camera_marker
         t_camera_marker[:3, 3] = np.array(tvec, dtype=np.float64)
-        return self.t_parent_marker @ np.linalg.inv(t_camera_marker)
+        return t_camera_marker
 
     def finish_calibration(self):
         samples = np.array(self.parent_camera_samples)
@@ -375,23 +450,30 @@ class StartupArucoCalibrator(Node):
         avg_quat = np.mean(quats, axis=0)
         avg_quat /= np.linalg.norm(avg_quat)
 
-        if self.camera_frame != self.calibration_camera_frame:
-            converted = self.convert_transform_to_output_frame(avg_translation, avg_quat)
-            if converted is None:
-                self.publish_status(
-                    "FAILED",
-                    (
-                        f"Could not convert {self.calibration_camera_frame} to {self.camera_frame}. "
-                        "Check camera TF tree."
-                    ),
-                    sample_count=len(filtered),
-                )
-                return
-            avg_translation, avg_quat = converted
-
-        self.publish_static_transform(avg_translation, avg_quat)
-        if self.save_to_camera_config and self.camera_config_file:
-            self.write_camera_config(avg_translation, avg_quat)
+        if self.role == "camera_extrinsic":
+            if self.camera_frame != self.calibration_camera_frame:
+                converted = self.convert_transform_to_output_frame(avg_translation, avg_quat)
+                if converted is None:
+                    self.publish_status(
+                        "FAILED",
+                        (
+                            f"Could not convert {self.calibration_camera_frame} to {self.camera_frame}. "
+                            "Check camera TF tree."
+                        ),
+                        sample_count=len(filtered),
+                    )
+                    return
+                avg_translation, avg_quat = converted
+            self.publish_static_transform(avg_translation, avg_quat)
+            if self.save_to_camera_config and self.camera_config_file:
+                self.write_camera_config(avg_translation, avg_quat)
+        else:
+            # imaging_target: publish detected marker (in camera_frame) and
+            # the static target offset chained off it. The averaged pose is
+            # in calibration_camera_frame (the optical frame); rebase to
+            # camera_frame so downstream code consumes a stable mechanical
+            # frame instead of the optical-axis convention.
+            self._publish_imaging_target_chain(filtered, avg_translation, avg_quat)
 
         self.done = True
         self.get_logger().info(
@@ -435,6 +517,195 @@ class StartupArucoCalibrator(Node):
         msg.transform.rotation.z = float(quaternion[2])
         msg.transform.rotation.w = float(quaternion[3])
         self.broadcaster.sendTransform(msg)
+
+    def _publish_marker_and_target_static_tfs(self):
+        """Broadcast known marker- and centre-target frames at startup.
+
+        Only meaningful for role=camera_extrinsic, where marker_in_parent is
+        a known a-priori pose. For role=imaging_target the marker pose
+        depends on detection, so we publish nothing until finalize.
+        """
+        if self.role != "camera_extrinsic":
+            return
+        msgs = []
+        now = self.get_clock().now().to_msg()
+        if self.publish_marker_frame:
+            msgs.append(
+                self._build_static_tf(
+                    self.parent_frame,
+                    self.marker_frame_id,
+                    self.t_parent_marker,
+                    stamp=now,
+                )
+            )
+        if self.publish_target_frame:
+            # Publish target relative to marker so the chain stays correct
+            # even if marker_in_parent is later refined.
+            msgs.append(
+                self._build_static_tf(
+                    self.marker_frame_id if self.publish_marker_frame else self.parent_frame,
+                    self.target_frame_id,
+                    self.t_marker_target if self.publish_marker_frame else self.t_parent_target,
+                    stamp=now,
+                )
+            )
+        if msgs:
+            self.broadcaster.sendTransform(msgs)
+            self.get_logger().info(
+                "Published static TFs: "
+                + ", ".join(f"{m.header.frame_id} -> {m.child_frame_id}" for m in msgs)
+            )
+
+    def _publish_imaging_target_chain(self, filtered_samples, avg_translation, avg_quat):
+        """Publish camera_frame -> marker -> centre_target after detection.
+
+        Samples are camera_optical -> marker matrices. We rebase to the
+        mechanical camera_frame using the static optical->mechanical TF
+        from the camera URDF, then chain the configured target_in_marker.
+        """
+        # Rebuild the averaged camera_optical->marker matrix once, in 4x4
+        # form, so we can compose with the optical->mechanical lookup.
+        t_optical_marker = np.eye(4, dtype=np.float64)
+        t_optical_marker[:3, :3] = rpy_to_matrix(
+            *quaternion_to_rpy(*avg_quat)
+        )
+        t_optical_marker[:3, 3] = np.array(avg_translation, dtype=np.float64)
+
+        if self.camera_frame != self.calibration_camera_frame:
+            try:
+                tf_msg = self.tf_buffer.lookup_transform(
+                    self.camera_frame,
+                    self.calibration_camera_frame,
+                    rclpy.time.Time(),
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.publish_status(
+                    "FAILED",
+                    (
+                        f"Could not look up {self.camera_frame} <- "
+                        f"{self.calibration_camera_frame}: {exc}"
+                    ),
+                    sample_count=len(filtered_samples),
+                )
+                return
+            rot = tf_msg.transform.rotation
+            trans = tf_msg.transform.translation
+            t_camera_optical = np.eye(4, dtype=np.float64)
+            t_camera_optical[:3, :3] = rpy_to_matrix(
+                *quaternion_to_rpy(rot.x, rot.y, rot.z, rot.w)
+            )
+            t_camera_optical[:3, 3] = np.array(
+                [trans.x, trans.y, trans.z], dtype=np.float64
+            )
+            t_camera_marker = t_camera_optical @ t_optical_marker
+        else:
+            t_camera_marker = t_optical_marker
+
+        msgs = []
+        stamp = self.get_clock().now().to_msg()
+        if self.publish_marker_frame:
+            msgs.append(
+                self._build_static_tf(
+                    self.camera_frame,
+                    self.marker_frame_id,
+                    t_camera_marker,
+                    stamp=stamp,
+                )
+            )
+        if self.publish_target_frame:
+            parent = self.marker_frame_id if self.publish_marker_frame else self.camera_frame
+            t_for_target = (
+                self.t_marker_target
+                if self.publish_marker_frame
+                else (t_camera_marker @ self.t_marker_target)
+            )
+            msgs.append(
+                self._build_static_tf(
+                    parent,
+                    self.target_frame_id,
+                    t_for_target,
+                    stamp=stamp,
+                )
+            )
+        if msgs:
+            self.broadcaster.sendTransform(msgs)
+            self.get_logger().info(
+                "Imaging-target TFs published: "
+                + ", ".join(f"{m.header.frame_id} -> {m.child_frame_id}" for m in msgs)
+            )
+
+        # imaging_target persistence is independent of save_to_camera_config:
+        # that flag gates writing to camera_calibration.yaml (which would
+        # corrupt the robot extrinsic). Imaging cal lives in its own yaml,
+        # so always write it when we have a config dir to write to.
+        if self.camera_config_file:
+            try:
+                self._write_imaging_calibration(t_camera_marker)
+            except OSError as exc:
+                self.get_logger().error(
+                    f"Failed to write imaging calibration file: {exc}"
+                )
+
+    def _write_imaging_calibration(self, t_camera_marker: np.ndarray) -> None:
+        """Persist the imaging-target detection so tune-microscope can replay it.
+
+        The file lives next to camera_config_file (same directory) and stores
+        the averaged camera_frame -> marker_frame transform plus the static
+        marker -> target offset. tune-microscope reads it back to reconstruct
+        the chain meca_base_link -> camera_link -> calibration_marker ->
+        calibration_target_centre without re-running the live detection.
+        """
+        camera_dir = Path(self.camera_config_file).resolve().parent
+        out_path = camera_dir / "imaging_calibration.yaml"
+        roll, pitch, yaw = quaternion_to_rpy(
+            *matrix_to_quaternion(t_camera_marker[:3, :3])
+        )
+        target_roll, target_pitch, target_yaw = quaternion_to_rpy(
+            *matrix_to_quaternion(self.t_marker_target[:3, :3])
+        )
+        payload = {
+            "imaging_calibration": {
+                "parent_frame": self.camera_frame,
+                "marker_frame_id": self.marker_frame_id,
+                "target_frame_id": self.target_frame_id,
+                "marker_in_camera": {
+                    "x": float(t_camera_marker[0, 3]),
+                    "y": float(t_camera_marker[1, 3]),
+                    "z": float(t_camera_marker[2, 3]),
+                    "roll": float(roll),
+                    "pitch": float(pitch),
+                    "yaw": float(yaw),
+                },
+                "target_in_marker": {
+                    "x": float(self.t_marker_target[0, 3]),
+                    "y": float(self.t_marker_target[1, 3]),
+                    "z": float(self.t_marker_target[2, 3]),
+                    "roll": float(target_roll),
+                    "pitch": float(target_pitch),
+                    "yaw": float(target_yaw),
+                },
+                "calibrated_at_utc": datetime.now(timezone.utc).isoformat(),
+            }
+        }
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(yaml.safe_dump(payload, sort_keys=False))
+        self.get_logger().info(f"Wrote imaging calibration to {out_path}")
+
+    @staticmethod
+    def _build_static_tf(parent: str, child: str, t: np.ndarray, stamp) -> TransformStamped:
+        msg = TransformStamped()
+        msg.header.stamp = stamp
+        msg.header.frame_id = parent
+        msg.child_frame_id = child
+        msg.transform.translation.x = float(t[0, 3])
+        msg.transform.translation.y = float(t[1, 3])
+        msg.transform.translation.z = float(t[2, 3])
+        q = matrix_to_quaternion(t[:3, :3])
+        msg.transform.rotation.x = float(q[0])
+        msg.transform.rotation.y = float(q[1])
+        msg.transform.rotation.z = float(q[2])
+        msg.transform.rotation.w = float(q[3])
+        return msg
 
     def convert_transform_to_output_frame(self, translation, quaternion):
         try:
@@ -572,6 +843,33 @@ class StartupArucoCalibrator(Node):
         target_arrow.color.g = 0.8
         target_arrow.color.b = 1.0
         marker_list.append(target_arrow)
+
+        # Centre-target marker (the cross-hair box on the print). Shows where
+        # the imaging-station's centred-FOV datum sits in the parent frame.
+        if self.publish_target_frame:
+            centre_dot = Marker()
+            centre_dot.header.frame_id = self.parent_frame
+            centre_dot.header.stamp = now
+            centre_dot.ns = "startup_aruco_target_centre"
+            centre_dot.id = 4
+            centre_dot.type = Marker.CYLINDER
+            centre_dot.action = Marker.ADD
+            centre_quat = matrix_to_quaternion(self.t_parent_target[:3, :3])
+            centre_dot.pose.position.x = float(self.t_parent_target[0, 3])
+            centre_dot.pose.position.y = float(self.t_parent_target[1, 3])
+            centre_dot.pose.position.z = float(self.t_parent_target[2, 3])
+            centre_dot.pose.orientation.x = float(centre_quat[0])
+            centre_dot.pose.orientation.y = float(centre_quat[1])
+            centre_dot.pose.orientation.z = float(centre_quat[2])
+            centre_dot.pose.orientation.w = float(centre_quat[3])
+            centre_dot.scale.x = 0.010  # 10 mm box on the print
+            centre_dot.scale.y = 0.010
+            centre_dot.scale.z = 0.001
+            centre_dot.color.a = 0.9
+            centre_dot.color.r = 1.0
+            centre_dot.color.g = 0.4
+            centre_dot.color.b = 0.0
+            marker_list.append(centre_dot)
 
         # Lightweight robot-base orientation marker (no full robot model required).
         base_arrow = Marker()

@@ -1,0 +1,101 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Cell Size: 0.1
+      Plane Cell Count: 10
+      Color: 160; 160; 164
+      Enabled: true
+      Reference Frame: meca_base_link
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Visual Enabled: true
+      Collision Enabled: false
+      Alpha: 1
+      Enabled: true
+      Update Interval: 0
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: false
+      Marker Scale: 0.1
+      Frames:
+        All Enabled: false
+        meca_base_link: { Value: true }
+        meca_axis_6_link: { Value: true }
+        meca_gripper_link: { Value: true }
+        meca_gripper_finger1: { Value: true }
+        meca_gripper_finger2: { Value: true }
+        gripper_tip_link: { Value: true }
+        seed_finger_left: { Value: true }
+        seed_finger_right: { Value: true }
+        seed_gripper_tip_link: { Value: true }
+    - Class: rviz_default_plugins/MarkerArray
+      Name: SeedGripperMarkers
+      Enabled: true
+      Topic:
+        Value: /seed_gripper/visualization
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Namespaces:
+        seed_gripper: true
+        seed_gripper_axes: true
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Name: SeedGripperHandles
+      Enabled: true
+      Interactive Markers Namespace: /seed_gripper_im
+      Show Axes: false
+      Show Descriptions: true
+      Show Visual Aids: true
+      Update Topic: /seed_gripper_im/update
+      Enable Transparency: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: meca_base_link
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 0.6
+      Focal Point: { X: 0.15, Y: 0.0, Z: 0.1 }
+      Pitch: 0.4
+      Yaw: 0.8
+      Target Frame: meca_base_link
+      Near Clip Distance: 0.01
+Window Geometry:
+  Displays: { collapsed: false }
+  Height: 900
+  Width: 1400
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff
