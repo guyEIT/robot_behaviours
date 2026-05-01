@@ -1,0 +1,12 @@
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+extra-input-globs = [
+  "robots/**/*",
+  "end_effectors/**/*",
+  "meshes/**/*",
+  "rviz/**/*",
+  "launch/**/*",
+]

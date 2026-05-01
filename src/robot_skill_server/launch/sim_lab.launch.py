@@ -23,6 +23,11 @@ Notes:
     Liconic expose their own actions directly under
     /hamilton_star_action_server/<name> and /liconic_action_server/<name>;
     BTs reach them via tree_executor's ACTION_REGISTRY defaults.
+  - The FR3 sim runs as a SEPARATE entry point (`pixi run fr3-sim-test`,
+    not bundled here) because FR3's move_group would clash with Meca500's
+    at the root namespace, and the FR3 hand needs the franka_gripper_skill
+    bridge that the Meca500 path doesn't load. Both share the lab-sim
+    pixi env (so `pixi install` resolves all of them once).
 """
 
 from launch import LaunchDescription

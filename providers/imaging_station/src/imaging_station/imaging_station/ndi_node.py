@@ -32,9 +32,10 @@ from ament_index_python.packages import (
 )
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo, Image
 
 from . import avahi_discovery, ndi_discovery
+from .camera_info import resolve_camera_info
 from .ndi_bridge_protocol import (
     FOURCC_BGRA,
     FOURCC_BGRX,
@@ -77,6 +78,8 @@ class NdiBridgeNode(Node):
         self.declare_parameter("bandwidth", "highest")
         self.declare_parameter("socket_path", "")
         self.declare_parameter("image_topic", "image_raw")
+        self.declare_parameter("camera_info_topic", "camera_info")
+        self.declare_parameter("camera_info_url", "")
         self.declare_parameter("recv_name", "imaging_station NDI bridge")
         self.declare_parameter("startup_timeout_sec", 12.0)
 
@@ -95,6 +98,11 @@ class NdiBridgeNode(Node):
             else f"/tmp/imaging_station_ndi_{os.getpid()}.sock"
         )
         self._image_topic = self.get_parameter("image_topic").value
+        self._camera_info_topic = self.get_parameter("camera_info_topic").value
+        camera_info_url = (self.get_parameter("camera_info_url").value or "").strip()
+        self._camera_info_path: Path | None = Path(camera_info_url) if camera_info_url else None
+        self._cached_camera_info: CameraInfo | None = None
+        self._cached_camera_info_dims: tuple[int, int] | None = None
         self._recv_name = self.get_parameter("recv_name").value
         self._startup_timeout_sec = float(self.get_parameter("startup_timeout_sec").value)
 
@@ -116,6 +124,12 @@ class NdiBridgeNode(Node):
 
         qos = QoSProfile(depth=2, reliability=ReliabilityPolicy.BEST_EFFORT)
         self._image_pub = self.create_publisher(Image, self._image_topic, qos)
+        # CameraInfo is light + paired 1:1 with Image; share the BE QoS so
+        # subscribers like image_proc can reconcile the streams without
+        # reliability-mismatch warnings.
+        self._camera_info_pub = self.create_publisher(
+            CameraInfo, self._camera_info_topic, qos
+        )
 
         self._stop = threading.Event()
         self._proc: subprocess.Popen | None = None
@@ -345,6 +359,42 @@ class NdiBridgeNode(Node):
         msg.step = packet.width * 3
         msg.data = bgr.tobytes()
         self._image_pub.publish(msg)
+
+        info = self._get_camera_info(packet.width, packet.height)
+        info.header.stamp = now
+        info.header.frame_id = self._frame_id
+        self._camera_info_pub.publish(info)
+
+    def _get_camera_info(self, width: int, height: int) -> CameraInfo:
+        """Lazily resolve and cache the CameraInfo template.
+
+        Recomputed if the live frame resolution diverges from the cached
+        one — e.g. ZowieBox switches between 1080p and 720p modes. The
+        per-call cost when the cache hits is one dict lookup; we only
+        rebuild the (small, immutable) template on resolution change.
+        """
+        if self._cached_camera_info is None or self._cached_camera_info_dims != (width, height):
+            info, source = resolve_camera_info(self._camera_info_path, width, height)
+            self.get_logger().info(
+                f"CameraInfo {width}x{height}: {source}"
+            )
+            self._cached_camera_info = info
+            self._cached_camera_info_dims = (width, height)
+        # Return a copy so per-frame stamp/frame_id mutations don't leak
+        # into the cache (CameraInfo is a flat msg — shallow copy is enough).
+        cached = self._cached_camera_info
+        out = CameraInfo()
+        out.height = cached.height
+        out.width = cached.width
+        out.distortion_model = cached.distortion_model
+        out.d = list(cached.d)
+        out.k = list(cached.k)
+        out.r = list(cached.r)
+        out.p = list(cached.p)
+        out.binning_x = cached.binning_x
+        out.binning_y = cached.binning_y
+        out.roi = cached.roi
+        return out
 
     # ------------------------------------------------------------------
     # Shutdown

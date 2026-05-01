@@ -50,6 +50,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveToJointConfig.action"
   "action/MoveCartesianLinear.action"
   "action/GripperControl.action"
+  "action/FrankaGripperControl.action"
   "action/DetectObject.action"
   "action/CapturePointCloud.action"
   "action/SetDigitalIO.action"

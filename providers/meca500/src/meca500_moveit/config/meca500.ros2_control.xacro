@@ -10,7 +10,7 @@
          arg is declared in meca500.urdf.xacro and forwarded here. -->
     <xacro:arg name="simulation" default="false"/>
 
-    <xacro:macro name="meca500_ros2_control" params="name initial_positions_file robot_ip robot_port connect_timeout_ms response_timeout_ms">
+    <xacro:macro name="meca500_ros2_control" params="name initial_positions_file robot_ip robot_port connect_timeout_ms response_timeout_ms auto_home:=false">
         <xacro:property name="initial_positions" value="${load_yaml(initial_positions_file)['initial_positions']}"/>
 
         <ros2_control name="${name}" type="system">
@@ -32,6 +32,13 @@
                 <param name="robot_port">${robot_port}</param>
                 <param name="connect_timeout_ms">${connect_timeout_ms}</param>
                 <param name="response_timeout_ms">${response_timeout_ms}</param>
+                <!-- Skip the activation-time Home command by default —
+                     Meca500 retains absolute encoder homing across power
+                     cycles, so once-per-power-on homing is sufficient and
+                     blocking the controller-manager activation on Home
+                     just slows MoveIt bringup. Pass auto_home:=true on
+                     `meca500-real-up` after a fresh power-on. -->
+                <param name="auto_home">${auto_home}</param>
             </hardware>
         </xacro:unless>
 

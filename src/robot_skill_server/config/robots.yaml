@@ -68,23 +68,51 @@ robots:
       min_z: -0.05
       max_z: 0.7
 
-  # Uncomment when the Franka PC is ready.
-  # The Franka's MoveIt2 runs on its own PC; skill atoms are launched there
-  # via: ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=franka
+  # Franka FR3 + Franka Hand. The FR3's MoveIt2 runs on its own PC alongside
+  # the franka_gripper_node; skill atoms are launched on that PC via
+  # `pixi run fr3-real-up` (or per-component via `fr3-atoms-run`).
   #
-  # franka:
-  #   namespace: "/franka"
-  #   planning_group: "arm"
-  #   velocity_scaling: 0.3
-  #   arm_controller_action: "/arm_controller/follow_joint_trajectory"
-  #   allowed_named_configs: ["home", "ready"]
-  #   has_gripper: true
-  #   local: false
-  #   check_systems: ["move_group", "joint_states", "arm_controller", "gripper_controller"]
-  #   workspace:
-  #     min_x: -0.85
-  #     max_x: 0.85
-  #     min_y: -0.85
-  #     max_y: 0.85
-  #     min_z: 0.0
-  #     max_z: 1.2
+  # `check_systems` deliberately omits `gripper_controller` because the
+  # Franka Hand is NOT a ros2_control controller — it's a separate
+  # franka_gripper action server. Gripper readiness is exercised
+  # implicitly by the FrankaGripperControl skill (mode=HOMING) at the
+  # start of each tree.
+  fr3:
+    namespace: "/fr3"
+    planning_group: "fr3_arm"
+    velocity_scaling: 0.3
+    arm_controller_action: "/fr3_arm_controller/follow_joint_trajectory"
+    allowed_named_configs: ["ready", "extended"]
+    has_gripper: true
+    local: false
+    check_systems: ["move_group", "joint_states", "arm_controller"]
+    workspace:
+      min_x: -0.85
+      max_x: 0.85
+      min_y: -0.85
+      max_y: 0.85
+      min_z: 0.0
+      max_z: 1.2
+
+  # FR3 lab-sim peer of the meca500 lab_sim entry. Same SRDF planning group
+  # but at root namespace so test BTs (test_fr3_sim.xml) need no overrides.
+  fr3_lab_sim:
+    namespace: ""
+    planning_group: "fr3_arm"
+    velocity_scaling: 0.3
+    arm_controller_action: "/fr3_arm_controller/follow_joint_trajectory"
+    allowed_named_configs: ["ready", "extended"]
+    has_gripper: true
+    local: true
+    # franka_gripper_node is NOT launched in sim (it can't talk to libfranka
+    # without a real robot). The franka_gripper_skill atom short-circuits via
+    # simulate_grasp:=true so trees still resolve FrankaGripperControl goals.
+    simulate_perception: true
+    check_systems: ["move_group", "joint_states", "arm_controller"]
+    workspace:
+      min_x: -0.85
+      max_x: 0.85
+      min_y: -0.85
+      max_y: 0.85
+      min_z: 0.0
+      max_z: 1.2

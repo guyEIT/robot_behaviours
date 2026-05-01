@@ -1,0 +1,30 @@
+# ros2_control hardware interface plugin against libfranka. Build-time deps
+# resolved via path-deps (sibling franka_msgs) and conda-forge (libfranka).
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+extra-input-globs = [
+  "include/**/*",
+  "src/**/*",
+  "*.xml",
+]
+# `<depend>libfranka</depend>` defaults to ros-jazzy-libfranka (which doesn't
+# exist on robostack). Override to consume the conda-forge libfranka.
+extra-package-mappings = [
+  { libfranka = { conda = ["libfranka"] } },
+]
+
+[package.host-dependencies]
+ros-jazzy-franka-msgs = { path = "../franka_msgs" }
+libfranka = ">=0.21.1"
+# Upstream's CMakeLists.txt does find_package(rclcpp_components) but its
+# package.xml omits the <depend>; declare it here so pixi-build-ros pulls
+# it into the build env. (Local divergence — see UPSTREAM.md.)
+ros-jazzy-rclcpp-components = "*"
+
+[package.build-dependencies]
+ros-jazzy-franka-msgs = { path = "../franka_msgs" }
+libfranka = ">=0.21.1"
+ros-jazzy-rclcpp-components = "*"

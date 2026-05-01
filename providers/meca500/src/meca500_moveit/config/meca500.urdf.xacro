@@ -10,6 +10,11 @@
     <xacro:arg name="robot_port" default="10000" />
     <xacro:arg name="connect_timeout_ms" default="2000" />
     <xacro:arg name="response_timeout_ms" default="30000" />
+    <!-- Meca500 retains absolute joint encoders across power cycles, so
+         the activation-time Home command is unnecessary except after a
+         fresh power-on. Default off to keep MoveIt bringup snappy; flip
+         to "true" via the meca500_bringup launch arg of the same name. -->
+    <xacro:arg name="auto_home" default="false" />
 
     <!-- Seed-gripper overlay args. Defaults match meca500.xacro so leaving
          use_seed_gripper=false keeps the legacy Schunk geometry untouched.
@@ -54,5 +59,6 @@
         robot_port="$(arg robot_port)"
         connect_timeout_ms="$(arg connect_timeout_ms)"
         response_timeout_ms="$(arg response_timeout_ms)"
+        auto_home="$(arg auto_home)"
     />
 </robot>

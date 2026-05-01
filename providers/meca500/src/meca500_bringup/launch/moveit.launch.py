@@ -115,6 +115,7 @@ def launch_setup(context, *args, **kwargs):
     response_timeout_ms = LaunchConfiguration("response_timeout_ms")
     control_port = LaunchConfiguration("control_port")
     hardware_type = LaunchConfiguration("hardware_type")
+    auto_home = LaunchConfiguration("auto_home")
     use_seed_gripper = LaunchConfiguration("use_seed_gripper")
     seed_gripper_offsets_yaml = LaunchConfiguration("seed_gripper_offsets_yaml")
     seed_gripper_left_mesh = LaunchConfiguration("seed_gripper_left_mesh")
@@ -297,6 +298,7 @@ def launch_setup(context, *args, **kwargs):
                 "connect_timeout_ms": connect_timeout_ms.perform(context),
                 "response_timeout_ms": response_timeout_ms.perform(context),
                 "control_port": control_port.perform(context),
+                "auto_home": auto_home.perform(context),
                 **seed_gripper_mappings,
             }
         )
@@ -696,6 +698,17 @@ def generate_launch_description():
                 'hardware_type',
                 default_value='meca500_hardware',
                 description='Hardware plugin to load'
+            ),
+            DeclareLaunchArgument(
+                "auto_home",
+                default_value="false",
+                description="Issue the Meca500 Home command on hardware "
+                            "activation. Off by default — the robot retains "
+                            "absolute joint encoders across power cycles, "
+                            "so once-per-power-on homing is sufficient and "
+                            "skipping it shaves seconds off MoveIt bringup. "
+                            "Set true on the first activation after a fresh "
+                            "robot power-on.",
             ),
             DeclareLaunchArgument(
                 "use_seed_gripper",

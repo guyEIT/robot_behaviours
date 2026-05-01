@@ -1,0 +1,9 @@
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+extra-input-globs = [
+  "fr3_skill_server/**/*.py",
+  "launch/**/*",
+]

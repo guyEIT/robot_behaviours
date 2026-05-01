@@ -1,0 +1,22 @@
+# Goal: control the Franka Hand via franka_gripper's action endpoints.
+# `mode` selects which underlying action to invoke:
+#   "MOVE"    -> /franka_gripper/move   (open/close to `width`, no force feedback)
+#   "GRASP"   -> /franka_gripper/grasp  (close to `width` with `force` clamping;
+#                                        epsilon_inner/outer define the success window)
+#   "HOMING"  -> /franka_gripper/homing (calibrate; `width` ignored)
+#   "STOP"    -> /franka_gripper/stop   (interrupt active goal; all numeric fields ignored)
+string mode
+float64 width            # target finger gap in metres (0 .. ~0.08 for Franka Hand)
+float64 speed            # commanded speed, m/s (typical 0.05 .. 0.3)
+float64 force            # force limit, N (GRASP only; ignored otherwise)
+float64 epsilon_inner    # acceptable grasp deviation below `width`, m
+float64 epsilon_outer    # acceptable grasp deviation above `width`, m
+---
+# Result
+bool success
+string message
+float64 final_width      # measured finger gap at completion, m
+bool object_grasped      # GRASP only — true when finger force exceeded the threshold
+---
+# Feedback
+float64 current_width

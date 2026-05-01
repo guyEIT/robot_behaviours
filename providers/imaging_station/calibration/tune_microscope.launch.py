@@ -146,6 +146,7 @@ def generate_launch_description() -> LaunchDescription:
     stand_mesh = LaunchConfiguration("stand_mesh")
     camera_mesh = LaunchConfiguration("camera_mesh")
     stand_parent_frame = LaunchConfiguration("stand_parent_frame")
+    camera_parent_frame = LaunchConfiguration("camera_parent_frame")
     base_x = LaunchConfiguration("base_x")
     base_y = LaunchConfiguration("base_y")
     base_z = LaunchConfiguration("base_z")
@@ -236,6 +237,7 @@ def generate_launch_description() -> LaunchDescription:
             "-p", ["stand_mesh_path:=", stand_mesh],
             "-p", ["camera_mesh_path:=", camera_mesh],
             "-p", ["stand_parent_frame:=", stand_parent_frame],
+            "-p", ["camera_parent_frame:=", camera_parent_frame],
             "-p", ["meca_base_mesh_path:=", meca_base_mesh],
             "-p", ["mecatable_mesh_path:=", mecatable_mesh],
             "-p", f"mecatable_x:={mecatable_x_default}",
@@ -299,6 +301,16 @@ def generate_launch_description() -> LaunchDescription:
                         "Default ties the rig to the ArUco-calibrated imaging "
                         "centre — requires meca500-calibrate-up running. "
                         "Pass stand_parent_frame:=world for standalone tuning."),
+        DeclareLaunchArgument(
+            "camera_parent_frame", default_value="",
+            description="Parent frame for the microscope_camera (and its "
+                        "chained imaging_station_camera_optical_frame) TF. "
+                        "Empty = inherit stand_parent_frame. Pass "
+                        "camera_parent_frame:=calibration_marker to tune the "
+                        "camera centre directly against the ArUco fiducial; "
+                        "useful when the marker frame is offset from the "
+                        "printed cross-hair and you'd rather absorb that "
+                        "offset here than chase it via target_in_marker."),
         DeclareLaunchArgument(
             "base_x", default_value="0.0",
             description="meca_base_link x offset in world frame [m]."),

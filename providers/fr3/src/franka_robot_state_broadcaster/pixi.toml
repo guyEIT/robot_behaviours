@@ -1,0 +1,20 @@
+[package.build]
+backend = { name = "pixi-build-ros", version = "*" }
+
+[package.build.config]
+distro = "jazzy"
+extra-input-globs = [
+  "include/**/*",
+  "src/**/*",
+  "*.xml",
+]
+
+[package.host-dependencies]
+ros-jazzy-franka-msgs = { path = "../franka_msgs" }
+ros-jazzy-franka-hardware = { path = "../franka_hardware" }
+ros-jazzy-franka-semantic-components = { path = "../franka_semantic_components" }
+
+[package.build-dependencies]
+ros-jazzy-franka-msgs = { path = "../franka_msgs" }
+ros-jazzy-franka-hardware = { path = "../franka_hardware" }
+ros-jazzy-franka-semantic-components = { path = "../franka_semantic_components" }

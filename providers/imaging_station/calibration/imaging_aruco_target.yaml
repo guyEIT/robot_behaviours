@@ -8,16 +8,29 @@ aruco_target:
   role: imaging_target
   dictionary: DICT_4X4_50
   marker_id: 0
-  marker_size_m: 0.05
+  # Measured 2026-04-30 with calipers on the printed PDF: 47.85 mm square,
+  # not the 50 mm the SVG specifies — the printer scaled to ~95.7%. Telling
+  # OpenCV the wrong size makes its camera→marker translation magnitude
+  # off by the same ratio, so re-run `meca500-calibrate-up` after editing
+  # this value to refresh imaging_calibration.yaml's marker_in_camera.
+  marker_size_m: 0.04785
   averaging_window_s: 5.0
 
-  # Centre-target pose in the marker frame (OpenCV ArUco convention:
-  # +x right of marker, +y up of marker, +z out of marker plane).
-  # The cross-hair box sits 80 mm below the fiducial on the print, so
-  # in marker frame the target is 80 mm in -y of the marker.
+  # Centre-target pose in the marker frame.
+  # In theory (OpenCV ArUco docs: marker frame at fiducial CENTRE, +x right,
+  # +y up, +z out of page) this should be (0, -0.080, 0) — cross-hair sits
+  # 80 mm below the fiducial centre on the printed PDF. In practice the
+  # cv2 build this workspace ships emits the marker frame at a corner of
+  # the printed fiducial, so the empirical offset is bigger:
+  #   measured 2026-04-30 by jogging seed_gripper_tip_link to the cross-hair
+  #   on the printed page and reading TF calibration_marker -> tip:
+  #     x = -0.02769, y = -0.04715, z = +0.0312 (tip stand-off above page)
+  # Keep Z=0 (the cross-hair is coplanar with the marker on the page);
+  # absorb only the X/Y measurement into the offset. Re-measure if the
+  # OpenCV ArUco convention changes upstream or the printed target swaps.
   target_in_marker:
-    x: 0.0
-    y: -0.080
+    x: -0.02769
+    y: -0.04715
     z: 0.0
     roll: 0.0
     pitch: 0.0

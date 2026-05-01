@@ -1,0 +1,70 @@
+<!--
+  FR3 sim smoke test — mirrors test_meca500_sim.xml.
+
+  Run via the FR3 sim one-shot:
+    pixi run fr3-sim-test
+    # then in another shell, submit to /skill_server/execute_behavior_tree
+
+  The tree:
+    - waits for the system to be ready (CheckSystemReady; gripper omitted
+      because fr3_lab_sim drops gripper_controller from check_systems)
+    - homes the gripper via FrankaGripperControl mode="HOMING" (sim
+      short-circuits this — simulate_grasp:=true on fr3_lab_sim)
+    - moves to the SRDF named config "ready"
+    - moves to a mid-range 7-DoF joint config
+    - returns to "extended" then "ready"
+
+  No `server_name=` overrides — fr3_lab_sim launches atoms at the root
+  namespace (`/skill_atoms/<name>`), matching tree_executor's runtime
+  registry. The same XML works against the production fr3-host setup
+  IF its atoms are also launched at the root, OR if the BT is wrapped
+  with explicit `server_name="/fr3/..."` overrides per action node.
+-->
+<root BTCPP_format="4" main_tree_to_execute="Fr3SimSmokeTest">
+
+  <BehaviorTree ID="Fr3SimSmokeTest">
+    <Sequence name="fr3_sim_main">
+      <LogEvent name="log_start"
+                event_name="fr3_sim_test_start"
+                severity="info"
+                message="FR3 sim smoke test starting"/>
+
+      <CheckSystemReady name="check_fr3_ready"
+                        timeout_sec="15.0"/>
+
+      <FrankaGripperControl name="home_gripper"
+                            mode="HOMING"
+                            width="0.0"
+                            speed="0.1"
+                            force="0.0"
+                            epsilon_inner="0.005"
+                            epsilon_outer="0.005"/>
+
+      <MoveToNamedConfig name="go_ready"
+                         config_name="ready"
+                         velocity_scaling="0.3"/>
+
+      <MoveToJointConfig name="go_to_mid"
+                         joint_positions="0.5, -0.5, 0.0, -1.5, 0.0, 1.0, 0.7854"
+                         velocity_scaling="0.3"/>
+
+      <WaitForDuration name="settle" seconds="0.5"/>
+
+      <MoveToNamedConfig name="go_extended"
+                         config_name="extended"
+                         velocity_scaling="0.3"/>
+
+      <WaitForDuration name="settle_again" seconds="0.5"/>
+
+      <MoveToNamedConfig name="go_ready_end"
+                         config_name="ready"
+                         velocity_scaling="0.3"/>
+
+      <LogEvent name="log_done"
+                event_name="fr3_sim_test_done"
+                severity="info"
+                message="FR3 sim smoke test complete"/>
+    </Sequence>
+  </BehaviorTree>
+
+</root>

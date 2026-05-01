@@ -156,6 +156,13 @@ class MicroscopeVisualizer(Node):
         # be retargeted (e.g. parent='world' for standalone tuning when no
         # ArUco calibration is running).
         self.declare_parameter("stand_parent_frame", "calibration_target_centre")
+        # Empty string means "use stand_parent_frame" — keeps the legacy
+        # one-parent-for-both behaviour. Set to e.g. 'calibration_marker' to
+        # tune just the camera (and its chained optical frame) directly
+        # against the ArUco fiducial — useful when the marker frame is
+        # offset from the printed cross-hair and you want to absorb that
+        # offset into camera.xyz rather than chasing it via target_in_marker.
+        self.declare_parameter("camera_parent_frame", "")
         self.declare_parameter("stand_frame_id", "microscope_stand")
         self.declare_parameter("camera_frame_id", "microscope_camera")
 
@@ -202,14 +209,20 @@ class MicroscopeVisualizer(Node):
         self._load_now_prev = False
 
         stand_parent_frame = self.get_parameter("stand_parent_frame").value
+        camera_parent_frame_override = (
+            self.get_parameter("camera_parent_frame").value or ""
+        ).strip()
+        camera_parent_frame = camera_parent_frame_override or stand_parent_frame
         stand_frame_id = self.get_parameter("stand_frame_id").value
         camera_frame_id = self.get_parameter("camera_frame_id").value
         stand_mesh = self.get_parameter("stand_mesh_path").value
         camera_mesh = self.get_parameter("camera_mesh_path").value
 
-        # Both meshes are tuned independently against the same anchor frame
-        # (default: calibration_target_centre, the ArUco-resolved imaging
-        # centre). Their xyz/rpy are mesh-pose-in-anchor, not chained.
+        # Both meshes are tuned independently — by default against the same
+        # anchor frame (calibration_target_centre, the ArUco-resolved imaging
+        # centre), but the camera entry can be re-parented (camera_parent_frame
+        # parameter) so its xyz/rpy is interpreted in e.g. calibration_marker
+        # directly. xyz/rpy are mesh-pose-in-anchor, never chained.
         self.poses: dict[str, PoseEntry] = {
             "stand": PoseEntry(
                 key="stand",
@@ -221,7 +234,7 @@ class MicroscopeVisualizer(Node):
             ),
             "camera": PoseEntry(
                 key="camera",
-                parent_frame=stand_parent_frame,
+                parent_frame=camera_parent_frame,
                 child_frame=camera_frame_id,
                 label="Microscope camera",
                 color=(0.20, 0.65, 1.0, 1.0),

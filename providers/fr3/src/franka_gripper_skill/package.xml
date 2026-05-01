@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>franka_gripper_skill</name>
+  <version>0.1.0</version>
+  <description>
+    Skill atom that bridges robot_skills_msgs/FrankaGripperControl onto
+    franka_gripper's Move / Grasp / Homing / Stop action endpoints.
+    Replaces GripperControlSkill (control_msgs/GripperCommand) for the
+    Franka FR3 since the Franka Hand is not driven by ros2_control.
+  </description>
+  <maintainer email="dev@example.com">Robot Skills Framework</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>robot_skills_msgs</exec_depend>
+  <exec_depend>robot_skill_advertise</exec_depend>
+  <exec_depend>franka_msgs</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

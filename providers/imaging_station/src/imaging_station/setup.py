@@ -18,6 +18,9 @@ setup(
         ("share/" + package_name + "/rviz", [
             "rviz/imaging_station_ndi.rviz",
         ]),
+        ("share/" + package_name + "/calibration", [
+            "calibration/zowiebox_camera_info.yaml",
+        ]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

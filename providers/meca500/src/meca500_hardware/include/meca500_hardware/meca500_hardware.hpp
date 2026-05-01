@@ -121,6 +121,13 @@ namespace meca500_hardware
         int robot_port_{10000};
         int connect_timeout_ms_{2000};
         int response_timeout_ms_{30000};
+        // Meca500 firmware retains absolute joint encoders across power
+        // cycles, so the robot reports `already homed` after the first
+        // post-power-on home. Skip the activation-time Home call by
+        // default — re-enable per-launch via the auto_home hardware param
+        // (xacro arg + launch arg of the same name) when bringing up a
+        // freshly-powered robot.
+        bool auto_home_{false};
         int socket_fd_{-1}; // socket file descriptor
 
         // Joint data

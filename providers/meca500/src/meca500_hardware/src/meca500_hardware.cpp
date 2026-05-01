@@ -40,6 +40,16 @@ namespace meca500_hardware
     {
       response_timeout_ms_ = std::stoi(response_timeout->second);
     }
+    if (const auto auto_home = info.hardware_parameters.find("auto_home");
+        auto_home != info.hardware_parameters.end())
+    {
+      // Accept "true" / "1" (case-insensitive) — anything else, including
+      // an empty string, leaves auto_home_ at its default (false).
+      std::string v = auto_home->second;
+      std::transform(v.begin(), v.end(), v.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      auto_home_ = (v == "true" || v == "1" || v == "yes" || v == "on");
+    }
 
     size_t num_joints = info.joints.size();
     hw_states_pos_.resize(num_joints, 0.0);
@@ -49,12 +59,13 @@ namespace meca500_hardware
 
     RCLCPP_INFO(
         rclcpp::get_logger("Meca500Hardware"),
-        "Configured robot connection to %s:%d (connect timeout: %d ms, response timeout: %d ms, gripper: %s)",
+        "Configured robot connection to %s:%d (connect timeout: %d ms, response timeout: %d ms, gripper: %s, auto_home: %s)",
         robot_ip_.c_str(),
         robot_port_,
         connect_timeout_ms_,
         response_timeout_ms_,
-        has_gripper_ ? "yes" : "no");
+        has_gripper_ ? "yes" : "no",
+        auto_home_ ? "yes" : "no");
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -109,10 +120,21 @@ namespace meca500_hardware
       return hardware_interface::CallbackReturn::ERROR;
     }
     
-    if (!homeRobot())
+    if (auto_home_)
     {
-      RCLCPP_WARN(rclcpp::get_logger("Meca500Hardware"), "Failed to home robot");
-      return hardware_interface::CallbackReturn::ERROR;
+      if (!homeRobot())
+      {
+        RCLCPP_WARN(rclcpp::get_logger("Meca500Hardware"), "Failed to home robot");
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+    }
+    else
+    {
+      RCLCPP_INFO(
+          rclcpp::get_logger("Meca500Hardware"),
+          "auto_home=false: skipping Home command. The Meca500 retains its "
+          "homing state across power cycles, so once-per-power-on homing is "
+          "sufficient. Set auto_home:=true on launch to re-enable.");
     }
 
     if (has_gripper_)

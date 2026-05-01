@@ -1,0 +1,46 @@
+# ZowieBox-40435 lens calibration — pin-hole intrinsics derived from a
+# direct FOV measurement (no checkerboard yet).
+#
+# Measurement (2026-04-30): at the optical frame's working distance
+# (calibration_target_centre -> imaging_station_camera_optical_frame
+# z = 0.193 m) the visible image area on the printed target is
+# 29 mm wide × 16.2 mm tall — read off the mm rulers on the calibration
+# print at the live image extents.
+#
+# fx = (W_px / 2) * z_m / (W_m / 2) = 960 * 0.193 / 0.0145 ≈ 12 778
+# fy = (H_px / 2) * z_m / (H_m / 2) = 540 * 0.193 / 0.0081 ≈ 12 867
+# 16:9 sensor + square-pixel assumption → fx = fy ≈ 12 822 (geometric
+# mean). The 29:16.2 (= 1.790) vs 16:9 (= 1.778) aspect-ratio mismatch
+# is well within measurement noise.
+#
+# Distortion left at zero — not measured. Replace this whole file with a
+# `ros2 run camera_calibration cameracalibrator` output once a checkerboard
+# pass has been done at the macro lens's nominal working distance to also
+# capture k1 / k2 / p1 / p2 / k3.
+
+image_width: 1920
+image_height: 1080
+camera_name: imaging_station
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [12822.0,     0.0,  960.0,
+             0.0, 12822.0,  540.0,
+             0.0,     0.0,    1.0]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0,
+         0.0, 1.0, 0.0,
+         0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [12822.0,     0.0,  960.0,  0.0,
+             0.0, 12822.0,  540.0,  0.0,
+             0.0,     0.0,    1.0,  0.0]

@@ -256,6 +256,26 @@ def launch_setup(context, *args, **kwargs):
             )
         )
 
+    # The ZowieBox optical frame (the sensor) sits along +Z above the
+    # cross-hair / imaging target centre. Parented to calibration_target_centre
+    # — NOT microscope_camera — so the camera-body CAD's yaw=π modelled-
+    # orientation correction doesn't propagate into the published image's
+    # axes. The image frame is independent of the model frame: drag the
+    # CAD around and the image stays anchored on the imaging target.
+    optical_offset_z = float(LaunchConfiguration("optical_offset_z").perform(context))
+    optical_roll = float(LaunchConfiguration("optical_roll").perform(context))
+    optical_pitch = float(LaunchConfiguration("optical_pitch").perform(context))
+    optical_yaw = float(LaunchConfiguration("optical_yaw").perform(context))
+    nodes.append(
+        _static_tf_node(
+            "static_tf_imaging_station_optical_frame",
+            target_frame,
+            "imaging_station_camera_optical_frame",
+            {"x": 0.0, "y": 0.0, "z": optical_offset_z,
+             "roll": optical_roll, "pitch": optical_pitch, "yaw": optical_yaw},
+        )
+    )
+
     # Collision objects. publish_table_scene.py is a generic STL pusher in
     # meca500_bringup; conditioning on enable_collision lets you keep the
     # TFs but skip the MoveIt scene write (e.g. when running tune-microscope
@@ -342,6 +362,44 @@ def generate_launch_description() -> LaunchDescription:
             "imaging_station_collision", default_value="true",
             description="Push the microscope STLs as MoveIt collision objects "
                         "in addition to the TFs.",
+        ),
+        DeclareLaunchArgument(
+            "optical_offset_z", default_value="0.193",
+            description="Translation along +Z from microscope_camera to "
+                        "imaging_station_camera_optical_frame [m]. Tuned to "
+                        "sit just inside the macro-lens body mesh so the "
+                        "frame doesn't clip the camera CAD; override per "
+                        "launch with optical_offset_z:=…",
+        ),
+        # ROS optical-frame convention is X-right, Y-down, Z-forward (along
+        # optical axis, into the scene). microscope_camera has Z-up so for
+        # a downward-facing macroscope we rotate the optical frame 180°
+        # about X (roll=π): Y flips up→down, Z flips up→down. The
+        # additional yaw=π rotates the image about its own optical axis to
+        # align with the live ZowieBox sensor mount (the camera body's
+        # CAD mesh is correctly oriented in microscope_offsets.yaml; the
+        # image rotation belongs on the optical frame, not the model).
+        # Override per launch with optical_roll:=… / optical_pitch:=… /
+        # optical_yaw:=… if the live image comes out rotated or mirrored.
+        DeclareLaunchArgument(
+            "optical_roll", default_value="3.141592653589793",
+            description="Roll [rad] of optical frame relative to microscope_camera.",
+        ),
+        DeclareLaunchArgument(
+            "optical_pitch", default_value="0.0",
+            description="Pitch [rad] of optical frame relative to microscope_camera.",
+        ),
+        DeclareLaunchArgument(
+            "optical_yaw", default_value="0.0",
+            description="Yaw [rad] of optical frame relative to its parent. "
+                        "Was π while the optical frame was chained off the "
+                        "microscope_camera model frame (which carried its "
+                        "own yaw=π for the CAD orientation). After re-parenting "
+                        "the optical frame directly onto calibration_target_centre, "
+                        "that 180° is no longer needed — the model's yaw doesn't "
+                        "propagate any more, so the image inherits target-centre's "
+                        "axes directly. Override on the launch if the live "
+                        "sensor mount disagrees.",
         ),
         OpaqueFunction(function=launch_setup),
     ])

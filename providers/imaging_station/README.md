@@ -113,22 +113,49 @@ ros2 run imaging_station_ndi_bridge ndi_av_bridge --help    # bridge CLI
 
 ### Parameters
 
-| name                    | default                                   | meaning                                      |
-|-------------------------|-------------------------------------------|----------------------------------------------|
-| `ndi_source_name`       | `"ZOWIEBOX-40435 (ZowieBox-40435)"`       | NDI source to subscribe to                   |
-| `frame_id`              | `imaging_station_camera_optical_frame`    | `frame_id` stamped on every Image            |
-| `target_fps`            | `0.0`                                     | Cap publish rate (0 = pass through)          |
-| `discovery_timeout_sec` | `5.0`                                     | mDNS discovery wait at startup               |
-| `bandwidth`             | `highest`                                 | NDI receiver bandwidth (`highest`/`lowest`)  |
-| `image_topic`           | `image_raw`                               | Topic name (under `/imaging_station/`)       |
-| `startup_timeout_sec`   | `12.0`                                    | Bridge waits this long for the source        |
+| name                    | default                                          | meaning                                      |
+|-------------------------|--------------------------------------------------|----------------------------------------------|
+| `ndi_source_name`       | `"ZOWIEBOX-40435 (ZowieBox-40435)"`              | NDI source to subscribe to                   |
+| `frame_id`              | `imaging_station_camera_optical_frame`           | `frame_id` stamped on every Image            |
+| `target_fps`            | `0.0`                                            | Cap publish rate (0 = pass through)          |
+| `discovery_timeout_sec` | `5.0`                                            | mDNS discovery wait at startup               |
+| `bandwidth`             | `highest`                                        | NDI receiver bandwidth (`highest`/`lowest`)  |
+| `image_topic`           | `image_raw`                                      | Topic name (under `/imaging_station/`)       |
+| `camera_info_topic`     | `camera_info`                                    | CameraInfo topic name (under `/imaging_station/`) |
+| `camera_info_url`       | `<share>/imaging_station/calibration/zowiebox_camera_info.yaml` | Calibration YAML; empty/missing → 50° HFOV placeholder |
+| `startup_timeout_sec`   | `12.0`                                           | Bridge waits this long for the source        |
+
+The node publishes a `sensor_msgs/CameraInfo` paired 1:1 with each Image
+(matching `header.stamp` + `frame_id`, both `BEST_EFFORT` QoS). When
+`camera_info_url` points at a present file the standard
+`camera_calibration_parsers` YAML is loaded; otherwise the node
+synthesises a 50° HFOV pinhole `CameraInfo` from the live frame
+dimensions — good for RViz frustum visualisation, **not** for metric
+reconstruction. Replace
+[calibration/zowiebox_camera_info.yaml](src/imaging_station/calibration/zowiebox_camera_info.yaml)
+with real `camera_calibration` output once a checkerboard pass has been
+done at the macro lens's nominal working distance.
+
+The static TF `microscope_camera → imaging_station_camera_optical_frame`
+(0.193 m along +Z, 180° roll so Z-forward points down through the lens —
+ROS optical-frame convention X-right Y-down Z-forward; override
+translation with `optical_offset_z:=…` and rotation with
+`optical_roll:=…` / `optical_pitch:=…` / `optical_yaw:=…`) is
+published by
+[imaging_station_scene.launch.py](launch/imaging_station_scene.launch.py),
+which `meca500_bringup/moveit.launch.py` already includes via
+`show_imaging_station:=true`. Run `pixi run meca500-real-up` (or the sim
+equivalent) and the optical frame appears in RViz relative to
+`meca_base_link` without the bridge running.
 
 ## Follow-ups
 
 - A real `ImagePlate` backend that captures N frames per site from the live
   NDI stream and writes them to `output_root` (replacing or living alongside
   `sim_backend`). Today the sim and the NDI bridge run independently.
-- ZowieBox lens calibration → `calibration/zowiebox_camera_info.yaml`,
-  republished as `sensor_msgs/CameraInfo`.
 - Audio packets from the bridge are dropped in v1; add a ROS publisher when
   a consumer materialises.
+- Replace the placeholder
+  [zowiebox_camera_info.yaml](src/imaging_station/calibration/zowiebox_camera_info.yaml)
+  with real intrinsics from `camera_calibration` once the macro lens has
+  been calibrated against a checkerboard at its nominal working distance.

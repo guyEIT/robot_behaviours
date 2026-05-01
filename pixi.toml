@@ -266,6 +266,22 @@ ros-jazzy-meca500-hardware      = { path = "providers/meca500/src/meca500_hardwa
 ros-jazzy-meca500-moveit        = { path = "providers/meca500/src/meca500_moveit" }
 ros-jazzy-meca500-bringup       = { path = "providers/meca500/src/meca500_bringup" }
 ros-jazzy-meca500-skill-server  = { path = "providers/meca500/src/meca500_skill_server" }
+# Imaging-station provider — supplies the microscope_camera +
+# imaging_station_camera_optical_frame TFs that meca500_bringup/moveit.launch.py
+# includes via show_imaging_station:=true. The NDI bridge subpackage is what
+# turns the ZowieBox into a sensor_msgs/Image source on /imaging_station/image_raw;
+# its build needs the NDI 6 SDK on the host (`pixi run setup-ndi` once per box).
+ros-jazzy-imaging-station            = { path = "providers/imaging_station/src/imaging_station" }
+ros-jazzy-imaging-station-ndi-bridge = { path = "providers/imaging_station/src/imaging_station_ndi_bridge" }
+# Codec / mDNS deps libndi.so.6 dlopens at runtime — see lite-native feature
+# for the rationale; without these the bridge connects but reports
+# "video decoder not found" and no frames flow.
+gst-libav                       = ">=1.24,<1.25"
+lcms2                           = "*"
+dav1d                           = "*"
+openjpeg                        = "*"
+speex                           = "*"
+avahi                           = ">=0.8"
 # meca500_bringup's moveit.launch.py pulls these in via `Node(package=...)`
 # and `IncludeLaunchDescription(...)`. Since they're not declared as
 # <depend> in its package.xml (only <exec_depend>), the robostack mapping
@@ -309,19 +325,121 @@ ros-jazzy-interactive-markers           = "*"
 ros-jazzy-rqt-reconfigure               = "*"
 pyyaml                                  = "*"
 
+[feature.meca500-host.activation.env]
+# Same NDI runtime bundle convention as feature.lite-native — `pixi run
+# setup-ndi` (or `setup-ndi-bundle`) populates this dir; the bridge
+# dlopens libndi.so.6 from here at runtime.
+IMAGING_STATION_NDI_RUNTIME_DIR = "$PIXI_PROJECT_ROOT/.ndi-runtime-bundle/lib"
+NDI_RUNTIME_DIR_V6              = "$PIXI_PROJECT_ROOT/.ndi-runtime-bundle/lib"
+
 [feature.meca500-host.tasks]
 meca500-moveit-run     = { cmd = "ros2 launch meca500_bringup moveit.launch.py", description = "Bring up Meca500 MoveIt2 stack (real hardware; robot_ip arg optional)" }
+imaging-ndi-up         = { cmd = "ros2 launch imaging_station imaging_station_ndi.launch.py", depends-on = ["meca500-host-install"], description = "Run the imaging_station NDI receiver against the ZowieBox so /imaging_station/image_raw is available alongside meca500-real-up. Requires `pixi run -e meca500-host setup-ndi` once per host. Pair with `meca500-real-up` (its RViz already has the imaging-station TFs)." }
+# Same scripts as feature.lite-native — duplicated here so the meca500
+# host PC (which may not have the lite-native env installed) can install
+# the NDI 6 SDK + assemble the runtime bundle from its own pixi env.
+setup-ndi              = { cmd = "bash scripts/setup-ndi-host.sh", description = "Install the NDI 6 SDK to $HOME/.ndi-sdk and assemble .ndi-runtime-bundle/lib (libndi + FFmpeg/codecs from $CONDA_PREFIX). Run before imaging-ndi-up." }
+setup-ndi-bundle       = { cmd = "bash scripts/setup-ndi-runtime-bundle.sh", description = "Re-assemble .ndi-runtime-bundle/lib/ from the active pixi env. Run after pixi env updates that change FFmpeg version." }
 meca500-moveit-sim-run = { cmd = "ros2 launch meca500_bringup moveit.launch.py simulation:=true enable_realsense:=false", description = "Bring up Meca500 MoveIt2 stack against fake_hardware (mock_components/GenericSystem; no real robot, no camera)" }
 meca500-atoms-run      = { cmd = "ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=meca500", description = "Start skill atoms under /meca500; they self-register with the orchestrator's SkillRegistry over DDS" }
-meca500-real-run       = { cmd = "ros2 launch robot_skill_server meca500_real.launch.py", description = "One-shot Meca500 robot host: real MoveIt2 + meca500_skill_server proxy (atoms). Pair with `pixi run orchestrator-run`. Override IP via robot_ip:=…" }
+meca500-real-run       = { cmd = "ros2 launch robot_skill_server meca500_real.launch.py", description = "One-shot Meca500 robot host: real MoveIt2 + meca500_skill_server proxy (atoms) + imaging-station scene TFs + ZowieBox NDI bridge (auto-publishes /imaging_station/image_raw at the imaging_station_camera_optical_frame). Pair with `pixi run orchestrator-run`. Override IP via robot_ip:=…; disable NDI on a host without the imager via enable_ndi_bridge:=false. The bridge needs `pixi run -e meca500-host setup-ndi` once per host." }
 meca500-calibrate-run  = { cmd = "ros2 launch meca500_bringup startup_calibration.launch.py", description = "Standalone two-fiducial ArUco calibration: RealSense + RViz + two calibrator instances on the same camera stream (no MoveIt, no robot activation). The robot fiducial (DICT_6X6_250 id=23 at aruco_target.yaml) solves meca_base_link→camera_link and writes camera_calibration.yaml; the imaging-station fiducial (DICT_4X4_50 id=0 at imaging_aruco_target.yaml) publishes camera_link→calibration_marker→calibration_target_centre as static TFs. Mount both prints in view first; pass enable_imaging_aruco_calibration:=false to skip the imaging one." }
 seed-gripper-viz       = { cmd = "ros2 launch providers/meca500/tools/seed_gripper_viz.launch.py", description = "Live-tunable seed-gripper finger visualiser. Brings up Meca500 sim + RViz + the seed-finger MarkerArray + 6-DoF interactive-marker handles + rqt_reconfigure sliders. Save: ros2 service call /seed_gripper/save_offsets std_srvs/srv/Trigger {}" }
 tune-gripper           = { cmd = "ros2 launch providers/meca500/tools/tune_gripper.launch.py", description = "One-shot launch for updating the seed-gripper zero/grip-point in the URDF. URDF = meca500.xacro + seed_gripper_overlay.xacro (adds seed_finger_left/right + seed_gripper_tip_link, offsets sourced from seed_gripper_offsets.yaml). Tune live with rqt_reconfigure / interactive markers, save: ros2 service call /seed_gripper/save_offsets std_srvs/srv/Trigger {} ; relaunch to see the URDF reflect the new offsets." }
 tune-microscope        = { cmd = "ros2 launch providers/imaging_station/calibration/tune_microscope.launch.py", description = "Live-tunable microscope-stand + camera placement, anchored on the ArUco-calibrated imaging centre. STANDALONE — replays the saved meca_base_link->camera_link->calibration_marker->calibration_target_centre chain from camera_calibration.yaml + imaging_calibration.yaml at startup, no live camera needed. Re-run meca500-calibrate-up only when the camera moves. UX matches tune-gripper: rqt_reconfigure sliders + 6-DoF interactive markers in RViz. Save: ros2 service call /microscope/save_offsets std_srvs/srv/Trigger {} . Pass stand_parent_frame:=world to tune against the world origin instead." }
+tune-camera-centre     = { cmd = "ros2 launch providers/imaging_station/calibration/tune_microscope.launch.py camera_parent_frame:=calibration_marker publish_world_tf:=false", description = "Drag the camera CAD (and its chained imaging_station_camera_optical_frame) directly against calibration_marker — same UX as tune-microscope, but the camera entry is re-parented to the ArUco fiducial so its xyz absorbs any marker-corner-vs-centre offset directly. Workflow: bring up `meca500-real-up` (publishes the meca arm + ArUco TF chain), then in another shell run this; jog the robot tip to the physical camera centre, drag the camera marker in RViz to overlap the tip, save with `ros2 service call /microscope/save_offsets std_srvs/srv/Trigger {}`. publish_world_tf:=false because meca500-real-up already owns world->meca_base_link." }
 # Composite: MoveIt sim + atoms + orchestrator in one launch
 meca500-sim-test       = { cmd = "ros2 launch robot_skill_server sim_meca500.launch.py", description = "Meca500 sim (mock_components) + atoms + orchestrator in one launch. Submit test_meca500_sim.xml in another shell." }
 meca500-proxy-test     = { cmd = "ros2 launch meca500_skill_server sim_meca500_proxy.launch.py", description = "Phase 2 validation: Meca500 sim + meca500_skill_server proxy (one process, one combined manifest) + orchestrator. Submit test_meca500_sim.xml in another shell." }
 meca500-shell          = { cmd = "bash -i", description = "Shell in the meca500-host pixi environment" }
+
+# ── FR3 robot PC env (runs skill_atoms under /fr3 + providers/fr3 packages) ──
+# libfranka comes from conda-forge (verified 2026-05-01: libfranka 0.21.1 with
+# its own libpinocchio/eigen-abi/poco/fmt deps). No source vendor needed —
+# franka_hardware's CMakeLists.txt does `find_package(Franka REQUIRED)` and
+# the conda-forge libfranka resolves automatically inside the pixi env.
+[feature.fr3-host]
+platforms = ["linux-64"]
+channels = [
+  "~/channel",
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/robostack-jazzy",
+  "https://prefix.dev/conda-forge",
+]
+
+[feature.fr3-host.system-requirements]
+libc = { family = "glibc", version = "2.34" }
+
+[feature.fr3-host.dependencies]
+ros-jazzy-robot-skills-msgs     = "*"
+ros-jazzy-robot-skill-advertise = "*"
+ros-jazzy-robot-arm-skills      = { path = "lib/robot_arm_skills" }
+ros-jazzy-robot-skill-server    = { path = "src/robot_skill_server" }
+# Cherry-picked franka_* packages — keep upstream package.xml unmodified.
+# Build-time sibling deps are wired via per-package host/build-dependencies
+# (so `<depend>franka_msgs</depend>` resolves to the local path-dep, not a
+# missing robostack-jazzy package). All conda names keep the default
+# ros-jazzy- prefix.
+ros-jazzy-franka-description       = { path = "providers/fr3/src/franka_description" }
+ros-jazzy-franka-msgs              = { path = "providers/fr3/src/franka_msgs" }
+ros-jazzy-franka-hardware          = { path = "providers/fr3/src/franka_hardware" }
+ros-jazzy-franka-semantic-components       = { path = "providers/fr3/src/franka_semantic_components" }
+ros-jazzy-franka-robot-state-broadcaster   = { path = "providers/fr3/src/franka_robot_state_broadcaster" }
+ros-jazzy-franka-gripper           = { path = "providers/fr3/src/franka_gripper" }
+ros-jazzy-franka-fr3-moveit-config = { path = "providers/fr3/src/franka_fr3_moveit_config" }
+# Local wrappers
+ros-jazzy-fr3-bringup           = { path = "providers/fr3/src/fr3_bringup" }
+ros-jazzy-fr3-skill-server      = { path = "providers/fr3/src/fr3_skill_server" }
+ros-jazzy-franka-gripper-skill  = { path = "providers/fr3/src/franka_gripper_skill" }
+# libfranka comes from conda-forge — required by franka_hardware + franka_gripper.
+libfranka                       = ">=0.21.1"
+# Franka's panda/FR3 robot_state_broadcaster wants generate_parameter_library
+# + backward_ros + realtime_tools at link/launch time.
+ros-jazzy-generate-parameter-library = "*"
+ros-jazzy-backward-ros          = "*"
+ros-jazzy-realtime-tools        = "*"
+# MoveIt + ros2_control runtime (mirrors meca500-host)
+ros-jazzy-ros2launch                       = "*"
+ros-jazzy-ros2cli                          = "*"
+ros-jazzy-ros2action                       = "*"
+ros-jazzy-ros2topic                        = "*"
+ros-jazzy-ros2node                         = "*"
+ros-jazzy-ros2service                      = "*"
+ros-jazzy-ros2interface                    = "*"
+ros-jazzy-moveit-ros-move-group            = "*"
+ros-jazzy-moveit-ros-planning-interface    = "*"
+ros-jazzy-moveit-ros-planning              = "*"
+ros-jazzy-moveit-core                      = "*"
+ros-jazzy-moveit-msgs                      = "*"
+ros-jazzy-moveit-kinematics                = "*"
+ros-jazzy-moveit-planners                  = "*"
+ros-jazzy-moveit-simple-controller-manager = "*"
+ros-jazzy-moveit-configs-utils             = "*"
+ros-jazzy-control-msgs                     = "*"
+ros-jazzy-controller-manager-msgs          = "*"
+ros-jazzy-controller-manager               = "*"
+filelock                                   = "*"   # controller_manager spawner
+ros-jazzy-ros2-control                     = "*"
+ros-jazzy-ros2-controllers                 = "*"
+ros-jazzy-joint-state-broadcaster          = "*"
+ros-jazzy-joint-state-publisher            = "*"
+ros-jazzy-joint-trajectory-controller      = "*"
+ros-jazzy-position-controllers             = "*"
+ros-jazzy-robot-state-publisher            = "*"
+ros-jazzy-xacro                            = "*"
+ros-jazzy-tf2                              = "*"
+ros-jazzy-tf2-ros                          = "*"
+ros-jazzy-tf2-geometry-msgs                = "*"
+ros-jazzy-rviz2                            = "*"
+pyyaml                                     = "*"
+
+[feature.fr3-host.tasks]
+fr3-moveit-run     = { cmd = "ros2 launch fr3_bringup moveit.launch.py", description = "Real FR3 MoveIt2 stack (talks libfranka over network; pass robot_ip:=… as required)." }
+fr3-moveit-sim-run = { cmd = "ros2 launch fr3_bringup moveit.launch.py simulation:=true", description = "FR3 MoveIt sim against mock_components/GenericSystem (no real robot, no franka_gripper_node)." }
+fr3-atoms-run      = { cmd = "ros2 launch robot_skill_server skill_atoms_remote.launch.py robot_name:=fr3", description = "Start FR3 skill atoms under /fr3; they self-register with the orchestrator's SkillRegistry over DDS." }
+fr3-real-run       = { cmd = "ros2 launch robot_skill_server fr3_real.launch.py", description = "One-shot FR3 robot host: real MoveIt2 + fr3_skill_server proxy + franka_gripper_node. Pair with `pixi run orchestrator-run`. Override IP via robot_ip:=…" }
+fr3-sim-test       = { cmd = "ros2 launch robot_skill_server sim_fr3.launch.py", description = "FR3 sim (mock_components) + fr3_skill_server proxy + orchestrator in one launch. Submit test_fr3_sim.xml in another shell." }
+fr3-shell          = { cmd = "bash -i", description = "Shell in the fr3-host pixi environment" }
 
 # ── Liconic + Hamilton host PC env (runs both action servers + their clients) ──
 # Now that pbi_liconic is on Jazzy, all 5 packages path-dep into the root workspace.
@@ -404,6 +522,24 @@ ros-jazzy-meca500-hardware      = { path = "providers/meca500/src/meca500_hardwa
 ros-jazzy-meca500-moveit        = { path = "providers/meca500/src/meca500_moveit" }
 ros-jazzy-meca500-bringup       = { path = "providers/meca500/src/meca500_bringup" }
 ros-jazzy-meca500-skill-server  = { path = "providers/meca500/src/meca500_skill_server" }
+# FR3 provider — sim path uses mock_components, but franka_hardware still
+# links libfranka at build time so the dep is required for the package to
+# compile even in lab-sim. Sim itself never reaches the libfranka network
+# code path.
+ros-jazzy-franka-description       = { path = "providers/fr3/src/franka_description" }
+ros-jazzy-franka-msgs              = { path = "providers/fr3/src/franka_msgs" }
+ros-jazzy-franka-hardware          = { path = "providers/fr3/src/franka_hardware" }
+ros-jazzy-franka-semantic-components       = { path = "providers/fr3/src/franka_semantic_components" }
+ros-jazzy-franka-robot-state-broadcaster   = { path = "providers/fr3/src/franka_robot_state_broadcaster" }
+ros-jazzy-franka-gripper           = { path = "providers/fr3/src/franka_gripper" }
+ros-jazzy-franka-fr3-moveit-config = { path = "providers/fr3/src/franka_fr3_moveit_config" }
+ros-jazzy-fr3-bringup           = { path = "providers/fr3/src/fr3_bringup" }
+ros-jazzy-fr3-skill-server      = { path = "providers/fr3/src/fr3_skill_server" }
+ros-jazzy-franka-gripper-skill  = { path = "providers/fr3/src/franka_gripper_skill" }
+libfranka                       = ">=0.21.1"
+ros-jazzy-generate-parameter-library = "*"
+ros-jazzy-backward-ros          = "*"
+ros-jazzy-realtime-tools        = "*"
 # Liconic + Hamilton provider
 liconic_msgs          = { path = "providers/pbi_liconic/ros2_ws/src/liconic_msgs" }
 liconic_ros           = { path = "providers/pbi_liconic/ros2_ws/src/liconic_ros" }
@@ -560,6 +696,7 @@ lite-native   = ["lite-native"]
 real-native   = ["real-native"]
 orchestrator  = ["orchestrator"]
 meca500-host  = ["meca500-host"]
+fr3-host      = ["fr3-host"]
 liconic-host  = ["liconic-host"]
 lab-sim       = ["lab-sim"]
 mcp           = ["mcp"]
@@ -590,7 +727,7 @@ real-native-install = { cmd = "pixi install --environment real-native", depends-
 real-native-up      = { cmd = "pixi run real-native-run", depends-on = ["real-native-install"], description = "Build and launch real stack natively (connects to host MoveIt2)" }
 
 # ── Shared native helpers ────────────────────────────────────────────────────
-native-clean = { cmd = "rm -rf .pixi/build .pixi/envs/lite-native .pixi/envs/real-native .pixi/envs/orchestrator .pixi/envs/meca500-host .pixi/envs/liconic-host .pixi/envs/lab-sim", description = "Delete pixi-build cache and native envs (keeps ~/channel — use `rm -rf ~/channel` to wipe msgs too)" }
+native-clean = { cmd = "rm -rf .pixi/build .pixi/envs/lite-native .pixi/envs/real-native .pixi/envs/orchestrator .pixi/envs/meca500-host .pixi/envs/fr3-host .pixi/envs/liconic-host .pixi/envs/lab-sim", description = "Delete pixi-build cache and native envs (keeps ~/channel — use `rm -rf ~/channel` to wipe msgs too)" }
 
 # Hard-stop every framework / provider process this workspace can spawn —
 # skill_server, bb_operator, atoms, rosbridge, sim launches, MoveIt, the
@@ -599,7 +736,7 @@ native-clean = { cmd = "rm -rf .pixi/build .pixi/envs/lite-native .pixi/envs/rea
 # tanks BT parsing with "advertised by multiple robots". Greedy on
 # purpose; pkill ignores patterns that don't match anything. Leaves
 # ~/channel and the experiment_collector Docker stack alone.
-kill-all = { cmd = "pkill -9 -f 'robot_skill_server|skill_server_lite|skill_server_node|skill_server_imaging_only|sim_lab|lab_sim|skill_atom|skill_advertise|bb_operator_node|imaging_station_sim|hamilton_star|liconic|move_group|ros2_control|controller_manager|robot_state_publisher|joint_state_publisher|rosbridge_websocket|serve_dashboard|publish_table_scene|component_container_mt|meca500_manifest|ros2 launch robot_skill_server|ros2 launch meca500|ros2 launch lab_sim'; pkill -9 -f 'static_transform_publisher.*meca'; sleep 1; echo 'killed'", description = "pkill -9 every framework/provider/sim process this workspace can spawn (skill_server, atoms, sims, rosbridge, dashboard server, MoveIt, …). Survives most race conditions; leaves ~/channel and unrelated Docker stacks." }
+kill-all = { cmd = "pkill -9 -f 'robot_skill_server|skill_server_lite|skill_server_node|skill_server_imaging_only|sim_lab|lab_sim|skill_atom|skill_advertise|bb_operator_node|imaging_station_sim|hamilton_star|liconic|fr3_bringup|fr3_skill_server|fr3_manifest|franka_gripper|franka_gripper_skill|move_group|ros2_control|controller_manager|robot_state_publisher|joint_state_publisher|rosbridge_websocket|serve_dashboard|publish_table_scene|component_container_mt|meca500_manifest|ros2 launch robot_skill_server|ros2 launch meca500|ros2 launch fr3|ros2 launch lab_sim'; pkill -9 -f 'static_transform_publisher.*(meca|fr3)'; sleep 1; echo 'killed'", description = "pkill -9 every framework/provider/sim process this workspace can spawn (skill_server, atoms, sims, rosbridge, dashboard server, MoveIt, …). Survives most race conditions; leaves ~/channel and unrelated Docker stacks." }
 
 # ── Orchestrator PC (skill_server + dashboard only) ──────────────────────────
 orchestrator-install = { cmd = "pixi install --environment orchestrator", depends-on = ["update-msgs", "dashboard-build"], description = "Rebuild msgs + dashboard + resolve orchestrator env" }
@@ -611,6 +748,13 @@ meca500-up           = { cmd = "pixi run meca500-atoms-run", depends-on = ["meca
 meca500-real-up      = { cmd = "pixi run meca500-real-run", depends-on = ["meca500-host-install"], description = "One-shot Meca500 robot host: real MoveIt2 + atoms. Pair with `pixi run orchestrator-up` on the orchestrator PC (or same box). Override IP via robot_ip:=…" }
 meca500-calibrate-up = { cmd = "pixi run meca500-calibrate-run", depends-on = ["meca500-host-install"], description = "Run two-fiducial ArUco calibration on the Meca500 host: robot fiducial (DICT_6X6_250 id=23 — print providers/meca500/.../aruco_single_a5_50mm_id23.png at the pose in aruco_target.yaml, writes camera_calibration.yaml) plus imaging-station fiducial (DICT_4X4_50 id=0 — print providers/imaging_station/calibration/calibration_target_a4.pdf, publishes calibration_marker + calibration_target_centre as TFs). Mount BOTH prints in the camera view, then run this." }
 meca500-sim-up       = { cmd = "ros2 launch meca500_bringup moveit.launch.py simulation:=true", depends-on = ["meca500-host-install"], description = "Bring up the Meca500 MoveIt sim (fake_hardware) — ready to receive plans from skill atoms or direct MoveGroup clients" }
+
+# ── FR3 robot PC ────────────────────────────────────────────────────────────
+fr3-host-install = { cmd = "pixi install --environment fr3-host", depends-on = ["update-msgs"], description = "Resolve fr3-host env (pulls in providers/fr3 path-deps + libfranka from conda-forge)" }
+fr3-up           = { cmd = "pixi run fr3-atoms-run", depends-on = ["fr3-host-install"], description = "Start FR3 skill atoms under /fr3 (assumes MoveIt2 already running on the FR3 PC)" }
+fr3-real-up      = { cmd = "pixi run fr3-real-run", depends-on = ["fr3-host-install"], description = "One-shot FR3 robot host: real MoveIt2 + atoms + franka_gripper_node. Pair with `pixi run orchestrator-up`. Override IP via robot_ip:=…" }
+fr3-sim-up       = { cmd = "ros2 launch fr3_bringup moveit.launch.py simulation:=true", depends-on = ["fr3-host-install"], description = "Bring up the FR3 MoveIt sim (mock_components) — ready to receive plans from skill atoms or direct MoveGroup clients" }
+fr3-sim-test-up  = { cmd = "pixi run fr3-sim-test", depends-on = ["fr3-host-install"], description = "FR3 sim + atoms + orchestrator one-shot. Submit test_fr3_sim.xml via /skill_server/execute_behavior_tree." }
 
 # ── Liconic / Hamilton STAR PC ──────────────────────────────────────────────
 # pbi_liconic is now on Jazzy, so all 5 packages path-dep into the root
